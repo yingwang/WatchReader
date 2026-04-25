@@ -1,0 +1,1 @@
+# WatchReader Mobile ProGuard rules

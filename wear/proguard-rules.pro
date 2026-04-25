@@ -1,0 +1,1 @@
+# WatchReader Wear ProGuard rules
