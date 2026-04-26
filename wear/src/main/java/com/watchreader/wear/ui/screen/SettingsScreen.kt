@@ -56,9 +56,14 @@ fun loadTtsVoice(context: Context): String =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_TTS_VOICE, "") ?: ""
 
 private val FONT_OPTIONS = listOf(
-    "sans" to "黑体",
-    "serif" to "宋体",
-    "kai" to "楷体",
+    "sans" to "黑体 Sans",
+    "serif" to "宋体 Serif",
+    "kai" to "楷体 Kai",
+)
+
+private val VOICE_LABELS = mapOf(
+    "zh" to "中文 Chinese",
+    "en" to "英文 English",
 )
 
 @Composable
@@ -72,28 +77,23 @@ fun SettingsScreen() {
     var speechRate by remember { mutableFloatStateOf(loadSpeechRate(context)) }
     var fontFamily by remember { mutableStateOf(loadFontFamily(context)) }
     var ttsVoice by remember { mutableStateOf(loadTtsVoice(context)) }
-    var voiceList by remember { mutableStateOf<List<String>>(emptyList()) }
+    // voiceOptions: list of (langCode, voiceName) — exactly one entry per language available on device
+    var voiceOptions by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
 
-    // Load TTS voices
+    // Load TTS voices: pick the best (highest-quality, offline) voice for zh and for en
     DisposableEffect(Unit) {
         var tts: TextToSpeech? = null
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // Only pick voices that support Chinese or English
-                val wantedLangs = setOf("zh", "en")
-                voiceList = tts?.voices
-                    ?.filter { v ->
-                        !v.isNetworkConnectionRequired &&
-                            v.locale.language in wantedLangs
-                    }
-                    ?.sortedWith(
-                        compareBy<android.speech.tts.Voice> { if (it.locale.language == "zh") 0 else 1 }
-                            .thenByDescending { it.quality }
-                    )
-                    ?.map { it.name }
-                    ?.take(8)
-                    ?: emptyList()
-                    ?: emptyList()
+                val offline = tts?.voices?.filter { !it.isNetworkConnectionRequired } ?: emptyList()
+                val opts = mutableListOf<Pair<String, String>>()
+                listOf("zh", "en").forEach { lang ->
+                    offline
+                        .filter { it.locale.language == lang }
+                        .maxByOrNull { it.quality }
+                        ?.let { opts.add(lang to it.name) }
+                }
+                voiceOptions = opts
             }
         }
         onDispose { tts?.shutdown() }
@@ -152,7 +152,7 @@ fun SettingsScreen() {
 
                 // Font family
                 item {
-                    val displayName = FONT_OPTIONS.find { it.first == fontFamily }?.second ?: "黑体"
+                    val displayName = FONT_OPTIONS.find { it.first == fontFamily }?.second ?: "黑体 Sans"
                     Text(
                         text = "Typeface: $displayName  \u25B6",
                         color = WarmWhite,
@@ -193,24 +193,21 @@ fun SettingsScreen() {
                     )
                 }
 
-                // TTS voice
-                if (voiceList.isNotEmpty()) {
+                // TTS voice: cycle between Chinese and English (whichever the device has installed)
+                if (voiceOptions.isNotEmpty()) {
                     item {
-                        val idx = voiceList.indexOf(ttsVoice).coerceAtLeast(0)
-                        val shortName = voiceList.getOrNull(idx)
-                            ?.replace(".*#".toRegex(), "")
-                            ?.replace(".*-x-".toRegex(), "")
-                            ?.take(12)
-                            ?: "default"
+                        val idx = voiceOptions.indexOfFirst { it.second == ttsVoice }.coerceAtLeast(0)
+                        val (lang, _) = voiceOptions[idx]
+                        val label = VOICE_LABELS[lang] ?: lang
                         Text(
-                            text = "Voice: $shortName  \u25B6",
+                            text = "Voice: $label  \u25B6",
                             color = WarmWhite,
                             fontSize = 12.sp,
                             modifier = Modifier
                                 .padding(top = 8.dp)
                                 .clickable {
-                                    val nextIdx = (idx + 1) % voiceList.size
-                                    ttsVoice = voiceList[nextIdx]
+                                    val nextIdx = (idx + 1) % voiceOptions.size
+                                    ttsVoice = voiceOptions[nextIdx].second
                                     save()
                                     view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                 },
