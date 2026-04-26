@@ -13,9 +13,13 @@ import java.util.Locale
 
 enum class TtsState { IDLE, LOADING, PLAYING, PAUSED }
 
-class TtsManager(context: Context) {
+class TtsManager(private val context: Context) {
     private var tts: TextToSpeech? = null
     private var isReady = false
+
+    private val prefs by lazy {
+        context.getSharedPreferences("watchreader_settings", Context.MODE_PRIVATE)
+    }
 
     private val _state = MutableStateFlow(TtsState.LOADING)
     val state: StateFlow<TtsState> = _state.asStateFlow()
@@ -41,11 +45,11 @@ class TtsManager(context: Context) {
         tts = TextToSpeech(context) { status ->
             isReady = status == TextToSpeech.SUCCESS
             _state.value = TtsState.IDLE
-            tts?.setSpeechRate(speechRate)
 
-            // Load saved voice preference
-            val savedVoice = context.getSharedPreferences("watchreader_settings", android.content.Context.MODE_PRIVATE)
-                .getString("tts_voice", null)
+            // Load saved speed + voice preferences
+            speechRate = prefs.getFloat("speech_rate", 1.0f)
+
+            val savedVoice = prefs.getString("tts_voice", null)
             if (savedVoice != null) setVoiceName(savedVoice)
 
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -76,6 +80,9 @@ class TtsManager(context: Context) {
     fun speakPage(sentencesWithRanges: List<Pair<String, IntRange>>) {
         if (!isReady) return
         tts?.stop()
+
+        // Pick up any speed changes the user made in Settings since the last page
+        speechRate = prefs.getFloat("speech_rate", 1.0f)
 
         sentences = sentencesWithRanges
         currentIndex = 0
