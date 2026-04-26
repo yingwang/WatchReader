@@ -10,7 +10,8 @@ A minimalist e-book reader for Wear OS. Send books from your phone and read them
 
 ## Features
 
-- **Phone-to-watch transfer** — Add .txt books on the phone app, they sync to your watch instantly
+- **Supports .txt and .epub** — Epub is parsed to text on the phone before syncing
+- **Phone-to-watch transfer** — Add books on the phone app, they sync to your watch instantly
 - **Smart pagination** — Automatic page breaks at sentence/paragraph boundaries, optimized for round screens
 - **Text-to-speech** — Long press to open TTS controls, auto-detects Chinese/English and switches voices
 - **Rotary crown** — Turn the crown to flip pages (reader) or scroll (library/settings)
