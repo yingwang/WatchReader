@@ -29,6 +29,7 @@ class TtsManager(context: Context) {
     private var sentences: List<Pair<String, IntRange>> = emptyList()
     private var currentIndex = 0
     private var currentLocale: Locale = Locale.US
+    private var hasCustomVoice = false
 
     var speechRate: Float = 1.0f
         set(value) {
@@ -82,12 +83,13 @@ class TtsManager(context: Context) {
 
         for ((i, pair) in sentences.withIndex()) {
             val (text, _) = pair
-            val locale = LanguageDetector.detect(text)
-
-            // Only switch locale when language actually changes
-            if (locale != currentLocale) {
-                currentLocale = locale
-                tts?.language = locale
+            // Only auto-switch language if no custom voice is set
+            if (!hasCustomVoice) {
+                val locale = LanguageDetector.detect(text)
+                if (locale != currentLocale) {
+                    currentLocale = locale
+                    tts?.language = locale
+                }
             }
 
             val params = Bundle().apply {
@@ -146,7 +148,10 @@ class TtsManager(context: Context) {
 
     fun setVoiceName(name: String) {
         val voice = tts?.voices?.find { it.name == name }
-        if (voice != null) tts?.voice = voice
+        if (voice != null) {
+            tts?.voice = voice
+            hasCustomVoice = true
+        }
     }
 
     fun shutdown() {

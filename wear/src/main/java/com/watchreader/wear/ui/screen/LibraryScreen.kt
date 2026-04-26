@@ -3,6 +3,7 @@ package com.watchreader.wear.ui.screen
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
@@ -33,8 +34,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.ScalingLazyColumn
@@ -44,14 +43,13 @@ import androidx.wear.compose.material.rememberScalingLazyListState
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.ui.WearActivity
 import com.watchreader.wear.ui.theme.DimText
-import com.watchreader.wear.ui.theme.WarmAmber
-import com.watchreader.wear.ui.theme.WarmWhite
 import com.watchreader.wear.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 
-// Clean neutral chip colors — no warm/red tones
-private val ChipBg = Color(0xFF262626)
-private val ChipContentColor = Color(0xFFE0E0E0)
+private val ItemBg = Color(0xFF1E1E1E)
+private val ItemText = Color(0xFFD8D8D8)
+private val SubText = Color(0xFF888888)
+private val TitleColor = Color(0xFF9CB8A0)
 
 @Composable
 fun LibraryScreen(
@@ -83,21 +81,22 @@ fun LibraryScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No books", fontSize = 16.sp, color = WarmWhite)
+                        Text("No books", fontSize = 16.sp, color = ItemText)
                         Spacer(Modifier.height(4.dp))
-                        Text("Add from phone", fontSize = 12.sp, color = DimText)
+                        Text("Add from phone", fontSize = 12.sp, color = SubText)
                     }
                 }
             } else {
                 ScalingLazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
+                    autoCentering = null,
                 ) {
                     item {
                         Text(
                             text = "Library",
                             fontSize = 14.sp,
-                            color = WarmAmber,
+                            color = TitleColor,
                             modifier = Modifier.padding(bottom = 4.dp),
                         )
                     }
@@ -105,10 +104,13 @@ fun LibraryScreen(
                         val progress = if (book.totalChars > 0) {
                             book.readOffsetChars.toFloat() / book.totalChars
                         } else 0f
-                        SwipeToDeleteChip(
+                        SwipeToDeleteItem(
                             title = book.title.replace(".txt", "").replace(".epub", ""),
                             subtitle = if (progress > 0f) "${(progress * 100).toInt()}%" else "New",
-                            onClick = { onBookClick(book.id) },
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                onBookClick(book.id)
+                            },
                             onDelete = {
                                 vm.deleteBook(book.id)
                                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -116,12 +118,17 @@ fun LibraryScreen(
                         )
                     }
                     item {
-                        Chip(
-                            onClick = onSettings,
-                            label = { Text("Settings") },
-                            colors = ChipDefaults.chipColors(backgroundColor = ChipBg, contentColor = ChipContentColor),
-                            modifier = Modifier.fillMaxWidth(0.82f),
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.82f)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(ItemBg)
+                                .clickable(onClick = onSettings)
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text("Settings", color = ItemText, fontSize = 14.sp)
+                        }
                     }
                 }
             }
@@ -130,7 +137,7 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun SwipeToDeleteChip(
+private fun SwipeToDeleteItem(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
@@ -144,39 +151,33 @@ private fun SwipeToDeleteChip(
             .fillMaxWidth(0.82f)
             .clip(RoundedCornerShape(24.dp)),
     ) {
-        // Delete background (neutral dark red, only visible on swipe)
+        // Delete background
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(Color(0xFF5C3A3A)),
+                .background(Color(0xFF3A3A3A)),
             contentAlignment = Alignment.CenterEnd,
         ) {
             Text(
                 "\u2715",
-                color = Color(0xFFCCA0A0),
+                color = Color(0xFFAAAAAA),
                 fontSize = 14.sp,
                 modifier = Modifier.padding(end = 18.dp),
             )
         }
 
-        Chip(
-            onClick = onClick,
-            label = {
-                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            },
-            secondaryLabel = {
-                Text(subtitle, fontSize = 10.sp, color = DimText)
-            },
-            colors = ChipDefaults.chipColors(backgroundColor = ChipBg, contentColor = ChipContentColor),
+        // Foreground item
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .graphicsLayer { translationX = animatedOffset }
+                .clip(RoundedCornerShape(24.dp))
+                .background(ItemBg)
+                .clickable(onClick = onClick)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            if (offsetX < -size.width * 0.35f) {
-                                onDelete()
-                            }
+                            if (offsetX < -size.width * 0.35f) onDelete()
                             offsetX = 0f
                         },
                         onHorizontalDrag = { _, dragAmount ->
@@ -185,7 +186,19 @@ private fun SwipeToDeleteChip(
                             }
                         },
                     )
-                },
-        )
+                }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Column {
+                Text(
+                    title,
+                    color = ItemText,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(subtitle, fontSize = 10.sp, color = SubText)
+            }
+        }
     }
 }

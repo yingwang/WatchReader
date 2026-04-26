@@ -78,22 +78,20 @@ fun SettingsScreen() {
         var tts: TextToSpeech? = null
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                val allVoices = tts?.voices
-                    ?.filter { !it.isNetworkConnectionRequired && it.quality >= 200 }
-                    ?.sortedByDescending { it.quality }
-                    ?: emptyList()
-                // Pick diverse voices: try to get different locales and genders
-                val picked = mutableListOf<String>()
-                val seenLocales = mutableSetOf<String>()
-                for (v in allVoices) {
-                    val key = v.locale.language
-                    if (seenLocales.size < 3 || key in seenLocales) {
-                        picked.add(v.name)
-                        seenLocales.add(key)
+                // Only pick voices that support Chinese or English
+                val wantedLangs = setOf("zh", "en")
+                voiceList = tts?.voices
+                    ?.filter { v ->
+                        !v.isNetworkConnectionRequired &&
+                            v.locale.language in wantedLangs
                     }
-                    if (picked.size >= 6) break
-                }
-                voiceList = picked
+                    ?.sortedWith(
+                        compareBy<android.speech.tts.Voice> { if (it.locale.language == "zh") 0 else 1 }
+                            .thenByDescending { it.quality }
+                    )
+                    ?.map { it.name }
+                    ?.take(8)
+                    ?: emptyList()
                     ?: emptyList()
             }
         }
