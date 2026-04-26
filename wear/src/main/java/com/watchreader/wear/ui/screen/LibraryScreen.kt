@@ -49,8 +49,9 @@ import com.watchreader.wear.ui.theme.WarmWhite
 import com.watchreader.wear.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 
-// Clean neutral chip color
-private val ChipBg = Color(0xFF2A2926)
+// Clean neutral chip colors — no warm/red tones
+private val ChipBg = Color(0xFF262626)
+private val ChipContentColor = Color(0xFFE0E0E0)
 
 @Composable
 fun LibraryScreen(
@@ -105,7 +106,7 @@ fun LibraryScreen(
                             book.readOffsetChars.toFloat() / book.totalChars
                         } else 0f
                         SwipeToDeleteChip(
-                            title = book.title,
+                            title = book.title.replace(".txt", "").replace(".epub", ""),
                             subtitle = if (progress > 0f) "${(progress * 100).toInt()}%" else "New",
                             onClick = { onBookClick(book.id) },
                             onDelete = {
@@ -118,7 +119,7 @@ fun LibraryScreen(
                         Chip(
                             onClick = onSettings,
                             label = { Text("Settings") },
-                            colors = ChipDefaults.chipColors(backgroundColor = ChipBg),
+                            colors = ChipDefaults.chipColors(backgroundColor = ChipBg, contentColor = ChipContentColor),
                             modifier = Modifier.fillMaxWidth(0.82f),
                         )
                     }
@@ -166,7 +167,7 @@ private fun SwipeToDeleteChip(
             secondaryLabel = {
                 Text(subtitle, fontSize = 10.sp, color = DimText)
             },
-            colors = ChipDefaults.chipColors(backgroundColor = ChipBg),
+            colors = ChipDefaults.chipColors(backgroundColor = ChipBg, contentColor = ChipContentColor),
             modifier = Modifier
                 .fillMaxWidth()
                 .graphicsLayer { translationX = animatedOffset }

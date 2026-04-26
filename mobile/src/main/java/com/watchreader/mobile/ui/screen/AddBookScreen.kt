@@ -106,11 +106,11 @@ fun AddBookScreen(
 
             // File picker
             OutlinedButton(
-                onClick = { filePicker.launch(arrayOf("text/plain")) },
+                onClick = { filePicker.launch(arrayOf("text/plain", "application/epub+zip")) },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
                 Text(
-                    if (selectedUri != null) selectedFileName else "Select .txt file",
+                    if (selectedUri != null) selectedFileName else "Select .txt or .epub",
                     fontSize = 16.sp,
                 )
             }

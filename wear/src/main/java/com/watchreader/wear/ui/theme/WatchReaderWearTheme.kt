@@ -17,15 +17,15 @@ val SepiaText = Color(0xFF433422)
 val SepiaAccent = Color(0xFF8B7355)
 
 private val WatchReaderColors = Colors(
-    primary = WarmAmber,
-    primaryVariant = Color(0xFFBE9B6E),
+    primary = Color(0xFFB0B0B0),
+    primaryVariant = Color(0xFF707070),
     secondary = GreenAccent,
     background = WarmBlack,
-    surface = Color(0xFF1E1C18),
+    surface = Color(0xFF1E1E1E),
     onPrimary = Color(0xFF1A1A1A),
     onSecondary = Color.Black,
-    onBackground = WarmWhite,
-    onSurface = WarmWhite,
+    onBackground = Color(0xFFE0E0E0),
+    onSurface = Color(0xFFE0E0E0),
     error = Color(0xFFEF5350),
     onError = Color.White,
 )

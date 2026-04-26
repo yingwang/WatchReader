@@ -121,7 +121,8 @@ fun ReaderScreen(
     }
 
     val pageText = pages.getOrNull(currentPage) ?: ""
-    val annotatedText = buildHighlightedText(pageText, sentenceIndex)
+    val activeHighlight = if (ttsState == TtsState.PLAYING) sentenceIndex else -1
+    val annotatedText = buildHighlightedText(pageText, activeHighlight)
 
     Box(
         modifier = Modifier

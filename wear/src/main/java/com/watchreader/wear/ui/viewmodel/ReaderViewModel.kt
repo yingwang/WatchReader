@@ -42,8 +42,13 @@ class ReaderViewModel(
             val wearBook = WearBookRepository.getById(bookId) ?: return@launch
             _book.value = wearBook
             val text = WearBookRepository.loadText(wearBook)
-            _fullText.value = text
-            paginate(text)
+            // Normalize line endings and collapse blank lines
+            val cleaned = text
+                .replace("\r", "")
+                .replace(Regex("([ \\t]*\\n){3,}"), "\n\n")
+                .trim()
+            _fullText.value = cleaned
+            paginate(cleaned)
 
             // Restore reading position
             if (wearBook.readOffsetChars > 0) {

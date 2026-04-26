@@ -78,11 +78,22 @@ fun SettingsScreen() {
         var tts: TextToSpeech? = null
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                voiceList = tts?.voices
-                    ?.filter { !it.isNetworkConnectionRequired && it.quality >= 300 }
-                    ?.map { it.name }
-                    ?.sorted()
-                    ?.take(5)
+                val allVoices = tts?.voices
+                    ?.filter { !it.isNetworkConnectionRequired && it.quality >= 200 }
+                    ?.sortedByDescending { it.quality }
+                    ?: emptyList()
+                // Pick diverse voices: try to get different locales and genders
+                val picked = mutableListOf<String>()
+                val seenLocales = mutableSetOf<String>()
+                for (v in allVoices) {
+                    val key = v.locale.language
+                    if (seenLocales.size < 3 || key in seenLocales) {
+                        picked.add(v.name)
+                        seenLocales.add(key)
+                    }
+                    if (picked.size >= 6) break
+                }
+                voiceList = picked
                     ?: emptyList()
             }
         }

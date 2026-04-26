@@ -9,6 +9,7 @@ import com.watchreader.mobile.data.model.SyncStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.watchreader.mobile.util.EpubParser
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -31,8 +32,16 @@ object BookRepository {
         val id = UUID.randomUUID().toString()
         val destFile = File(booksDir, "$id.txt")
         withContext(Dispatchers.IO) {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                destFile.outputStream().use { output -> input.copyTo(output) }
+            val mimeType = context.contentResolver.getType(uri)
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw Exception("Cannot open file")
+            if (mimeType == "application/epub+zip") {
+                val text = EpubParser.parse(input)
+                destFile.writeText(text)
+            } else {
+                input.use { inp ->
+                    destFile.outputStream().use { output -> inp.copyTo(output) }
+                }
             }
         }
         val book = Book(
