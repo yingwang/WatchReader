@@ -32,7 +32,7 @@ class ReaderViewModel(
     private val _currentPage = MutableStateFlow(0)
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
 
-    private val _charsPerPage = MutableStateFlow(120)
+    private val _charsPerPage = MutableStateFlow(60)
 
     val ttsState: StateFlow<TtsState> = ttsManager.state
     val currentSentenceIndex: StateFlow<Int> = ttsManager.currentSentenceIndex

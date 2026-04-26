@@ -39,8 +39,13 @@ class TtsManager(context: Context) {
     init {
         tts = TextToSpeech(context) { status ->
             isReady = status == TextToSpeech.SUCCESS
-            _state.value = if (isReady) TtsState.IDLE else TtsState.IDLE
+            _state.value = TtsState.IDLE
             tts?.setSpeechRate(speechRate)
+
+            // Load saved voice preference
+            val savedVoice = context.getSharedPreferences("watchreader_settings", android.content.Context.MODE_PRIVATE)
+                .getString("tts_voice", null)
+            if (savedVoice != null) setVoiceName(savedVoice)
 
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String) {
@@ -129,6 +134,19 @@ class TtsManager(context: Context) {
         _state.value = TtsState.IDLE
         _currentSentenceIndex.value = -1
         sentences = emptyList()
+    }
+
+    fun getVoiceNames(): List<String> {
+        return tts?.voices
+            ?.filter { !it.isNetworkConnectionRequired }
+            ?.map { it.name }
+            ?.sorted()
+            ?: emptyList()
+    }
+
+    fun setVoiceName(name: String) {
+        val voice = tts?.voices?.find { it.name == name }
+        if (voice != null) tts?.voice = voice
     }
 
     fun shutdown() {

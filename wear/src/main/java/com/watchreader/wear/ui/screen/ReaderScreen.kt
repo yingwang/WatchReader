@@ -13,45 +13,37 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import android.util.Log
-import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.Text
 import com.watchreader.wear.tts.SentenceParser
 import com.watchreader.wear.tts.TtsState
+import com.watchreader.wear.ui.WearActivity
 import com.watchreader.wear.ui.theme.DimText
 import com.watchreader.wear.ui.theme.GreenAccent
 import com.watchreader.wear.ui.theme.WarmBlack
@@ -75,12 +67,20 @@ fun ReaderScreen(
     val context = LocalContext.current
 
     var showToolbar by remember { mutableStateOf(false) }
-    var rotaryDelta by remember { mutableFloatStateOf(0f) }
-    val focusRequester = remember { FocusRequester() }
+    val fontSize = remember { loadFontSize(context) }
+    val fontFamily = remember {
+        when (loadFontFamily(context)) {
+            "serif" -> FontFamily.Serif
+            "mono" -> FontFamily.Monospace
+            else -> FontFamily.SansSerif
+        }
+    }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-
-    Log.d("WatchReader", "ReaderScreen: pages=${pages.size}, currentPage=$currentPage")
+    // Calculate chars per page based on font size
+    LaunchedEffect(fontSize) {
+        val cpp = (90 - (fontSize - 12) * 3.5).toInt().coerceIn(35, 90)
+        vm.setCharsPerPage(cpp)
+    }
 
     // Keep screen on during TTS
     DisposableEffect(ttsState) {
@@ -90,8 +90,25 @@ fun ReaderScreen(
         } else {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    // Rotary crown via Activity-level override
+    val activity = context as? WearActivity
+    LaunchedEffect(Unit) {
+        var lastFlip = 0L
+        activity?.rotaryEvents?.collect { delta ->
+            val now = System.currentTimeMillis()
+            if (now - lastFlip > 250) {
+                if (delta < 0f) {
+                    vm.nextPage()
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                } else if (delta > 0f) {
+                    vm.prevPage()
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                }
+                lastFlip = now
+            }
         }
     }
 
@@ -104,39 +121,18 @@ fun ReaderScreen(
     }
 
     val pageText = pages.getOrNull(currentPage) ?: ""
-    val progress = vm.getProgress()
-
-    // Build highlighted text
     val annotatedText = buildHighlightedText(pageText, sentenceIndex)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(WarmBlack)
-            .onRotaryScrollEvent { event ->
-                rotaryDelta += event.verticalScrollPixels
-                Log.d("WatchReader", "Rotary: delta=$rotaryDelta")
-                if (rotaryDelta > 50f) {
-                    vm.nextPage()
-                    rotaryDelta = 0f
-                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                } else if (rotaryDelta < -50f) {
-                    vm.prevPage()
-                    rotaryDelta = 0f
-                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                }
-                true
-            }
-            .focusRequester(focusRequester)
-            .focusable()
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { offset ->
                         val width = size.width
-                        Log.d("WatchReader", "Tap: x=${offset.x}, width=$width")
                         when {
                             offset.x < width / 3f -> {
-                                Log.d("WatchReader", "Tap: prevPage")
                                 vm.prevPage()
                                 view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             }
@@ -144,65 +140,38 @@ fun ReaderScreen(
                                 vm.nextPage()
                                 view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             }
-                            else -> {
-                                showToolbar = !showToolbar
-                            }
+                            else -> showToolbar = !showToolbar
                         }
                     },
-                    onLongPress = { offset ->
-                        val width = size.width
-                        if (offset.x > width / 3f && offset.x < width * 2f / 3f) {
-                            vm.toggleTts()
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        }
+                    onLongPress = { _ ->
+                        showToolbar = true
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     },
                 )
             },
     ) {
-        // Main text content
-        Column(
+        // Main text - centered for round screen
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 36.dp),
-            verticalArrangement = Arrangement.Center,
+                .padding(horizontal = 28.dp, vertical = 34.dp),
+            contentAlignment = Alignment.Center,
         ) {
             androidx.compose.foundation.text.BasicText(
                 text = annotatedText,
                 style = androidx.compose.ui.text.TextStyle(
                     color = WarmWhite,
-                    fontSize = 16.sp,
-                    lineHeight = 24.sp,
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.5f).sp,
+                    fontFamily = fontFamily,
                     textAlign = TextAlign.Start,
                 ),
-                modifier = Modifier.weight(1f),
-            )
-
-            // Bottom: progress line + percentage
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(DimText.copy(alpha = 0.3f)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(2.dp)
-                        .background(DimText),
-                )
-            }
-            Text(
-                text = "${(progress * 100).toInt()}%",
-                color = DimText,
-                fontSize = 10.sp,
+                overflow = TextOverflow.Clip,
                 modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
             )
         }
 
-        // TTS playing indicator
+        // TTS indicator
         if (ttsState == TtsState.PLAYING) {
             Text(
                 text = "\uD83D\uDD0A",
@@ -213,7 +182,7 @@ fun ReaderScreen(
             )
         }
 
-        // Toolbar overlay (Kindle style)
+        // Toolbar overlay
         AnimatedVisibility(
             visible = showToolbar,
             enter = fadeIn(),
@@ -230,15 +199,11 @@ fun ReaderScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // TTS control
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
                     ) {
-                        val ttsIcon = when (ttsState) {
-                            TtsState.PLAYING -> "⏸"
-                            else -> "▶"
-                        }
+                        val ttsIcon = if (ttsState == TtsState.PLAYING) "\u23F8" else "\u25B6"
                         Text(
                             text = ttsIcon,
                             fontSize = 24.sp,
@@ -253,24 +218,11 @@ fun ReaderScreen(
                                 },
                         )
                     }
-
-                    // Page info
                     Text(
                         text = "${currentPage + 1} / ${pages.size}",
                         color = DimText,
                         fontSize = 12.sp,
                     )
-
-                    // Speed
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Speed: ${vm.ttsManager.speechRate}x",
-                            color = WarmWhite,
-                            fontSize = 12.sp,
-                        )
-                    }
                 }
             }
         }
@@ -282,26 +234,21 @@ private fun buildHighlightedText(
     pageText: String,
     sentenceIndex: Int,
 ): AnnotatedString {
-    if (sentenceIndex < 0) {
-        return AnnotatedString(pageText)
-    }
+    if (sentenceIndex < 0) return AnnotatedString(pageText)
     val sentences = SentenceParser.splitWithRanges(pageText)
-    val highlightRange = sentences.getOrNull(sentenceIndex)?.second
-
+    val range = sentences.getOrNull(sentenceIndex)?.second
     return buildAnnotatedString {
         append(pageText)
-        if (highlightRange != null && highlightRange.first < pageText.length) {
-            val end = highlightRange.last.coerceAtMost(pageText.length - 1) + 1
+        if (range != null && range.first < pageText.length) {
             addStyle(
                 SpanStyle(background = GreenAccent.copy(alpha = 0.3f)),
-                start = highlightRange.first,
-                end = end,
+                start = range.first,
+                end = (range.last + 1).coerceAtMost(pageText.length),
             )
         }
     }
 }
 
-// Factory for ViewModel with bookId parameter
 class ReaderViewModelFactory(
     private val application: android.app.Application,
     private val bookId: String,
