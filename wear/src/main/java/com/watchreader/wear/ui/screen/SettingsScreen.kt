@@ -56,8 +56,9 @@ fun loadTtsVoice(context: Context): String =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_TTS_VOICE, "") ?: ""
 
 private val FONT_OPTIONS = listOf(
-    "sans" to "Sans",
-    "serif" to "Serif",
+    "sans" to "黑体",
+    "serif" to "宋体",
+    "kai" to "楷体",
 )
 
 @Composable
@@ -151,7 +152,7 @@ fun SettingsScreen() {
 
                 // Font family
                 item {
-                    val displayName = FONT_OPTIONS.find { it.first == fontFamily }?.second ?: "Sans-serif"
+                    val displayName = FONT_OPTIONS.find { it.first == fontFamily }?.second ?: "黑体"
                     Text(
                         text = "Typeface: $displayName  \u25B6",
                         color = WarmWhite,

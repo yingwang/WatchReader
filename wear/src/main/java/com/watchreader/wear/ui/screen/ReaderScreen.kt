@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,7 +72,7 @@ fun ReaderScreen(
     val fontFamily = remember {
         when (loadFontFamily(context)) {
             "serif" -> FontFamily.Serif
-            "mono" -> FontFamily.Monospace
+            "kai" -> FontFamily(Font(com.watchreader.wear.R.font.lxgw_wenkai))
             else -> FontFamily.SansSerif
         }
     }

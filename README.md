@@ -17,7 +17,7 @@ A minimalist e-book reader for Wear OS. Send books from your phone and read them
 - **Rotary crown** — Turn the crown to flip pages (reader) or scroll (library/settings)
 - **Tap navigation** — Tap left/right thirds to go back/forward, center to toggle toolbar
 - **Swipe to delete** — Swipe left on a book to remove it
-- **Customizable** — Font size, typeface (Sans/Serif), TTS voice & speed
+- **Customizable** — Font size, typeface (黑体 / 宋体 / 楷体 with bundled LXGW WenKai), TTS voice & speed
 
 ## Architecture
 
@@ -48,3 +48,7 @@ adb install wear/build/outputs/apk/debug/wear-debug.apk
 
 - Wear OS 3+ (API 30+)
 - Phone app requires Google Play Services for Wearable Data Layer
+
+## Bundled Fonts
+
+楷体 typeface uses [LXGW WenKai](https://github.com/lxgw/LxgwWenKai-Lite) Lite Regular, subsetted to GB2312 + ASCII (~3.5MB). Licensed under [SIL Open Font License 1.1](licenses/LXGWWenKai-OFL.txt).
