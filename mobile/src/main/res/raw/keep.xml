@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Play services reads this array by name, so nothing in the code references it and the resource
+  shrinker drops it from release builds. Without it the app never advertises itself on the Data
+  Layer and the phone and watch cannot find each other.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@array/android_wear_capabilities" />

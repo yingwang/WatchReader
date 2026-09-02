@@ -1,6 +1,7 @@
 package com.watchreader.mobile.ui.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +71,7 @@ private val coverColors = listOf(
 @Composable
 fun BookListScreen(
     onAddBook: () -> Unit,
+    onOpenBook: (String) -> Unit,
     vm: BookListViewModel = viewModel(),
 ) {
     val books by vm.books.collectAsState()
@@ -156,7 +161,7 @@ fun BookListScreen(
                     items(books, key = { it.id }) { book ->
                         BookCover(
                             book = book,
-                            onClick = { vm.sendToWatch(book) },
+                            onClick = { onOpenBook(book.id) },
                             onLongClick = { deleteTarget = book },
                         )
                     }
@@ -197,6 +202,7 @@ private fun BookCover(
             .clip(RoundedCornerShape(8.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
+        val art = rememberCoverArt(book.coverPath)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -204,17 +210,26 @@ private fun BookCover(
                 .background(bgColor, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = book.title,
-                color = Color.White.copy(alpha = 0.92f),
-                fontSize = 20.sp,
-                lineHeight = 26.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(12.dp),
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (art != null) {
+                Image(
+                    bitmap = art,
+                    contentDescription = book.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
+                )
+            } else {
+                Text(
+                    text = book.title,
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontSize = 20.sp,
+                    lineHeight = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(12.dp),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Column(
             modifier = Modifier
@@ -249,4 +264,11 @@ private fun statusText(book: Book): String = when (book.syncStatus) {
         if (book.readProgress > 0f) stringResource(R.string.status_sent_progress, (book.readProgress * 100).toInt())
         else stringResource(R.string.status_sent)
     SyncStatus.FAILED -> stringResource(R.string.status_failed)
+}
+
+/** Cover art from an epub, decoded once per file. Books without one keep the coloured block. */
+@Composable
+private fun rememberCoverArt(path: String?): ImageBitmap? = androidx.compose.runtime.remember(path) {
+    if (path == null) return@remember null
+    runCatching { android.graphics.BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
 }

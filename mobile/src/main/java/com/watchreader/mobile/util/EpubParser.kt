@@ -10,7 +10,7 @@ import java.util.zip.ZipInputStream
  * a real reader would: percent-decoded and normalised against the OPF's directory.
  */
 object EpubParser {
-    class Epub(val title: String, val text: String)
+    class Epub(val title: String, val text: String, val cover: ByteArray?)
 
     fun looksLikeEpub(bytes: ByteArray): Boolean =
         bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
@@ -36,16 +36,26 @@ object EpubParser {
         val title = Regex("""<dc:title[^>]*>(.*?)</dc:title>""", RegexOption.DOT_MATCHES_ALL)
             .find(opfContent)?.groupValues?.get(1)?.let { decodeEntities(it).trim() } ?: ""
 
-        // manifest: id -> resolved zip path (only documents that can hold text)
+        // manifest: id -> resolved zip path, split by what the entry can hold
         val manifest = HashMap<String, String>()
+        val images = LinkedHashMap<String, String>()
+        var declaredCoverId: String? = null
         Regex("""<item\b[^>]*?/?>""").findAll(opfContent).forEach { m ->
             val tag = m.value
             val id = attr(tag, "id") ?: return@forEach
             val href = attr(tag, "href") ?: return@forEach
             val mediaType = attr(tag, "media-type") ?: ""
-            if (mediaType.contains("html") || mediaType.contains("xml")) {
-                manifest[id] = resolve(opfDir, href)
+            when {
+                mediaType.contains("html") || mediaType.contains("xml") -> manifest[id] = resolve(opfDir, href)
+                mediaType.startsWith("image/") -> {
+                    images[id] = resolve(opfDir, href)
+                    if (attr(tag, "properties")?.contains("cover-image") == true) declaredCoverId = id
+                }
             }
+        }
+        if (declaredCoverId == null) {
+            declaredCoverId = Regex("""<meta\b[^>]*name="cover"[^>]*>""").find(opfContent)
+                ?.let { attr(it.value, "content") }
         }
 
         val spine = Regex("""<itemref\b[^>]*?/?>""").findAll(opfContent)
@@ -61,7 +71,11 @@ object EpubParser {
                 result.append(text).append("\n\n")
             }
         }
-        return Epub(title, result.toString().trim())
+        val coverPath = images[declaredCoverId]
+            ?: images.entries.firstOrNull { (id, path) ->
+                id.contains("cover", true) || path.substringAfterLast('/').contains("cover", true)
+            }?.value
+        return Epub(title, result.toString().trim(), coverPath?.let { entries[it] })
     }
 
     private fun attr(tag: String, name: String): String? =

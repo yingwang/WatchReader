@@ -20,7 +20,7 @@ object DataLayerPaths {
     /** Watch -> phone message, payload is the id of a book the user deleted on the watch. */
     const val BOOK_REMOVED_PATH = "/book_removed"
 
-    /** Watch -> phone message, payload is a [ReadingProgress] JSON. */
+    /** Either side -> the other, payload is a [ReadingProgress] JSON. The later reading wins. */
     const val PROGRESS_PATH = "/progress"
 
     /** Capabilities advertised by each side, used to find nodes that actually run the app. */

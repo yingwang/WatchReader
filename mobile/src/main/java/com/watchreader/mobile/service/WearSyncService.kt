@@ -45,7 +45,7 @@ class WearSyncService : WearableListenerService() {
                     Log.w(TAG, "Bad progress from watch: $payload")
                     return
                 }
-                scope.launch { BookRepository.updateProgress(progress.bookId, progress.percentage) }
+                scope.launch { BookRepository.applyProgress(progress) }
             }
         }
     }

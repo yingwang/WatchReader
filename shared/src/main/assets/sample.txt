@@ -1,14 +1,20 @@
 Start here
 
-This short guide comes with the app. It explains how to read on the watch, and it doubles as something to try every control on. When you are done with it, swipe left to delete it; nothing else is affected.
+This short guide comes with the app, on the phone and on the watch. It explains both, and it doubles as something to try every control on. When you are done with it, delete it and nothing else is affected.
 
-Turning pages
+Reading on the phone
 
-Turn the crown away from you to go forward and back towards you to go back. If you would rather not use the crown, tap the right third of the screen to go forward and the left third to go back. Your place is kept, so the book opens where you left it, and the phone shows the same percentage.
+Tap a book in the library and it opens here. Scroll as you would read anything else. Your place is kept, so the book opens where you left it.
 
-The toolbar
+The button in the top right of the reading screen sends the book to your watch. A book only needs sending once; after that the watch has its own copy and reads it without the phone nearby.
 
-Tap the middle of the screen and a toolbar appears. The button at the top starts and pauses reading aloud. Below it is a jump bar: each press of plus or minus moves five percent, which is the quickest way back to the beginning. Tap the middle again and the toolbar folds away. It also hides on its own after a few seconds.
+Reading on the watch
+
+Tap the right half of the screen to go forward and the left half to go back. The crown does the same thing: turn it away from you to go forward, towards you to go back, one page for each notch.
+
+Press and hold anywhere and a toolbar appears. It folds away on its own after a few seconds, or when you press and hold again.
+
+Your place travels with you. Read a few pages on the watch and the phone opens at the same spot, and the other way round, so you can put the phone down and carry on from your wrist.
 
 Reading aloud
 
@@ -16,13 +22,15 @@ Press the triangle in the toolbar and the watch reads the book to you with the s
 
 You never have to choose a voice. Each sentence is spoken in the language it is written in, so a book in English and a book in Chinese both read correctly, and a book that mixes the two switches as it goes. The bottom of the settings screen tells you which languages this particular watch can speak. If one is missing, install its voice in the watch's own system settings.
 
+Under the triangle is a jump bar: each press of plus or minus moves five percent, which is the quickest way back to the beginning.
+
 Settings
 
-Open Settings from the library to change the text size, the typeface, the page colour and the reading speed. Changing the text size re-flows the pages against the real screen, so nothing is ever cut off at the round edge.
+Open Settings from the watch's library to change the text size, the typeface, the page colour and the reading speed. Changing the text size re-flows the pages against the real screen, so nothing is ever cut off at the round edge.
 
 Adding books
 
-The watch does not download books itself. Open WatchReader on the phone, press the plus button, and pick a .txt or .epub file or paste a link. You can also share a file to WatchReader from any other app. Once a book is in the list, tap its cover and it goes to the watch.
+The watch does not download books itself. Open WatchReader on the phone, press the plus button, and pick a .txt or .epub file or paste a link. You can also share a file to WatchReader from any other app.
 
 Below is a passage in the public domain, so you have real typesetting to look at and a few paragraphs to hear read aloud.
 

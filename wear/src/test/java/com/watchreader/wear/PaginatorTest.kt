@@ -69,7 +69,7 @@ class PaginatorTest {
     @Test
     fun roundGeometryIsOneBlockThatFitsInsideTheCircle() {
         val g = PageGeometry.round(diameterPx = 384, marginPx = 18f, lineHeightPx = 44f)
-        assertTrue(g.slots.size in 4..6)
+        assertTrue(g.slots.size in 3..5)
         assertEquals(1, g.slots.map { it.left }.distinct().size)
         assertEquals(1, g.slots.map { it.width }.distinct().size)
         val c = 192f

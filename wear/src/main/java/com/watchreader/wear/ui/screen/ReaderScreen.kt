@@ -32,6 +32,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -81,6 +82,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlin.math.roundToInt
 
+/** One page per crown notch; the raw stream is far finer than that. */
+private const val CROWN_PIXELS_PER_PAGE = 120f
+
 @Composable
 fun ReaderScreen(
     bookId: String,
@@ -114,6 +118,7 @@ fun ReaderScreen(
     val isRound = LocalConfiguration.current.isScreenRound
 
     var showToolbar by remember { mutableStateOf(false) }
+    var crownTravel by remember { mutableFloatStateOf(0f) }
     val focusRequester = remember { FocusRequester() }
     val measurer = rememberTextMeasurer()
 
@@ -155,21 +160,28 @@ fun ReaderScreen(
             .fillMaxSize()
             .background(colors.background)
             .onRotaryScrollEvent { event ->
-                if (event.verticalScrollPixels > 0f) vm.nextPage() else vm.prevPage()
-                tick()
+                // The crown reports a stream of small deltas; one page per notch, not per event.
+                crownTravel += event.verticalScrollPixels
+                while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
+                    crownTravel -= CROWN_PIXELS_PER_PAGE
+                    vm.nextPage()
+                    tick()
+                }
+                while (crownTravel <= -CROWN_PIXELS_PER_PAGE) {
+                    crownTravel += CROWN_PIXELS_PER_PAGE
+                    vm.prevPage()
+                    tick()
+                }
                 true
             }
             .focusRequester(focusRequester)
             .focusable()
             .pointerInput(Unit) {
                 detectTapGestures(
+                    // Nothing but a page turn on a plain tap: the toolbar was too easy to hit.
                     onTap = { offset ->
-                        val width = size.width
-                        when {
-                            offset.x < width / 3f -> { vm.prevPage(); tick() }
-                            offset.x > width * 2f / 3f -> { vm.nextPage(); tick() }
-                            else -> showToolbar = !showToolbar
-                        }
+                        if (offset.x < size.width / 2f) vm.prevPage() else vm.nextPage()
+                        tick()
                     },
                     onLongPress = {
                         showToolbar = true

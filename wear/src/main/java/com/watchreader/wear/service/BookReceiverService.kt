@@ -9,6 +9,7 @@ import com.google.android.gms.wearable.WearableListenerService
 import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
+import com.watchreader.shared.ReadingProgress
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
 import kotlinx.coroutines.runBlocking
@@ -31,6 +32,15 @@ class BookReceiverService : WearableListenerService() {
                 if (bookId.isBlank()) return
                 TtsService.stopIfPlaying(this, bookId)
                 runBlocking { WearBookRepository.delete(bookId, tellPhone = false) }
+            }
+            DataLayerPaths.PROGRESS_PATH -> {
+                val progress = runCatching {
+                    ReadingProgress.fromJson(String(messageEvent.data, Charsets.UTF_8))
+                }.getOrElse {
+                    Log.w(TAG, "Bad progress from the phone")
+                    return
+                }
+                runBlocking { WearBookRepository.applyProgressFromPhone(progress) }
             }
         }
     }

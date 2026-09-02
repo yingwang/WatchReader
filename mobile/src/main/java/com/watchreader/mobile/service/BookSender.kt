@@ -13,6 +13,7 @@ import com.watchreader.mobile.data.model.Book
 import com.watchreader.shared.BookMetadata
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
+import com.watchreader.shared.ReadingProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -94,6 +95,20 @@ class BookSender(private val context: Context) {
                 .sendMessage(nodeId, DataLayerPaths.DELETE_BOOK_PATH, bookId.toByteArray(Charsets.UTF_8))
                 .await()
         }.onFailure { Log.w(TAG, "Could not tell the watch to delete $bookId", it) }
+    }
+
+    /** Tells the watch where the reader on the phone got to. Silent when no watch is around. */
+    suspend fun sendProgress(progress: ReadingProgress) {
+        val watch = findWatch() as? WatchLookup.Ready ?: return
+        runCatching {
+            Wearable.getMessageClient(context)
+                .sendMessage(
+                    watch.nodeId,
+                    DataLayerPaths.PROGRESS_PATH,
+                    progress.toJson().toByteArray(Charsets.UTF_8),
+                )
+                .await()
+        }.onFailure { Log.w(TAG, "Could not send progress to the watch", it) }
     }
 
     /** Opens this app's Play listing on the watch so the user can install it there. */

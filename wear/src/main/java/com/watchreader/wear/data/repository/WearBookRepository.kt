@@ -81,6 +81,11 @@ object WearBookRepository {
         dao.updateProgress(id, offset, System.currentTimeMillis())
     }
 
+    /** Progress read on the phone. The later of the two readings wins (see the DAO's guard). */
+    suspend fun applyProgressFromPhone(progress: ReadingProgress) {
+        dao.updateProgress(progress.bookId, progress.charOffset.coerceAtLeast(0), progress.lastReadEpochMs)
+    }
+
     /** Best effort; the phone shows the percentage on the book's cover. */
     suspend fun sendProgressToPhone(book: WearBook, offset: Int) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
@@ -111,6 +116,6 @@ object WearBookRepository {
     private const val SAMPLE_ID = "sample"
     private const val SAMPLE_ASSET = "sample.txt"
     /** Bumped whenever the bundled guide is rewritten. */
-    private const val SAMPLE_VERSION = 2
+    private const val SAMPLE_VERSION = 3
     private const val KEY_SAMPLE_VERSION = "sample_version"
 }

@@ -9,7 +9,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.watchreader.mobile.data.model.Book
 
-@Database(entities = [Book::class], version = 2, exportSchema = false)
+@Database(entities = [Book::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
@@ -24,13 +24,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE book ADD COLUMN readOffsetChars INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book ADD COLUMN lastReadEpochMs INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE book ADD COLUMN coverPath TEXT")
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "watchreader.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
         }
     }

@@ -7,7 +7,7 @@
     <string name="list_empty_title">No books yet</string>
     <string name="list_empty_hint">Tap + to add a .txt or .epub, or share one to WatchReader from any app.</string>
     <string name="list_add">Add book</string>
-    <string name="list_tap_hint">Tap a book to send it to your watch</string>
+    <string name="list_tap_hint">Tap a book to read it here, or open it and send it to your watch</string>
 
     <string name="status_not_sent">Not on watch</string>
     <string name="status_sending">Sending…</string>
@@ -29,6 +29,9 @@
 
     <string name="add_title">Add book</string>
     <string name="add_back">Back</string>
+    <string name="reader_send">Send to watch</string>
+    <string name="reader_on_watch">Already on your watch</string>
+    <string name="reader_missing">This book is no longer on the phone</string>
     <string name="add_pick_file">Choose a .txt or .epub</string>
     <string name="add_or">or</string>
     <string name="add_url_label">Link to a .txt or .epub</string>

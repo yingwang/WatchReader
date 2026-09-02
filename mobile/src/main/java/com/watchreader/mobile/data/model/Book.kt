@@ -14,4 +14,7 @@ data class Book(
     val lastSyncEpochMs: Long = 0,
     val readProgress: Float = 0f,
     val totalChars: Int = 0,
+    val readOffsetChars: Int = 0,
+    val lastReadEpochMs: Long = 0,
+    val coverPath: String? = null,
 )

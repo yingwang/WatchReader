@@ -21,6 +21,9 @@ interface WearBookDao {
     @Query("DELETE FROM wear_book WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("UPDATE wear_book SET readOffsetChars = :offset, lastReadEpochMs = :epochMs WHERE id = :id")
+    @Query(
+        "UPDATE wear_book SET readOffsetChars = :offset, lastReadEpochMs = :epochMs " +
+            "WHERE id = :id AND :epochMs >= lastReadEpochMs",
+    )
     suspend fun updateProgress(id: String, offset: Int, epochMs: Long)
 }

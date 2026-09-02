@@ -11,4 +11,4 @@ plugins {
 // from this base with a different last digit (see each module's build file).
 extra["verMajor"] = 1
 extra["verMinor"] = 0
-extra["verPatch"] = 1
+extra["verPatch"] = 3

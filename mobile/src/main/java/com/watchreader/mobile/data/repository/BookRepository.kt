@@ -6,7 +6,9 @@ import com.watchreader.mobile.data.db.AppDatabase
 import com.watchreader.mobile.data.db.BookDao
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
+import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.util.EpubParser
+import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.TextNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -94,6 +96,7 @@ object BookRepository {
     suspend fun delete(id: String) {
         val book = dao.getById(id) ?: return
         File(book.filePath).delete()
+        book.coverPath?.let { File(it).delete() }
         dao.deleteById(id)
     }
 
@@ -101,13 +104,68 @@ object BookRepository {
         dao.updateSyncStatus(id, status, System.currentTimeMillis())
     }
 
-    suspend fun updateProgress(id: String, progress: Float) {
-        dao.updateProgress(id, progress.coerceIn(0f, 1f))
+    /** Applies progress from either side; the older of two readings loses (see the DAO's guard). */
+    suspend fun applyProgress(progress: ReadingProgress) {
+        dao.updateProgress(
+            progress.bookId,
+            progress.charOffset.coerceAtLeast(0),
+            progress.percentage.coerceIn(0f, 1f),
+            progress.lastReadEpochMs,
+        )
+    }
+
+    /** Records where the reader on the phone got to, and tells the watch about it. */
+    suspend fun saveProgress(context: Context, book: Book, offset: Int) {
+        val total = book.totalChars.takeIf { it > 0 } ?: return
+        val progress = ReadingProgress(
+            bookId = book.id,
+            charOffset = offset.coerceIn(0, total),
+            percentage = (offset.toFloat() / total).coerceIn(0f, 1f),
+            lastReadEpochMs = System.currentTimeMillis(),
+        )
+        applyProgress(progress)
+        BookSender(context).sendProgress(progress)
+    }
+
+    /**
+     * Puts the bundled guide in an empty library on first run. A reader who deletes it is not
+     * given it back; a rewritten guide reaches everyone who still has the old one.
+     */
+    suspend fun seedSampleIfNeeded(context: Context) = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences("watchreader", Context.MODE_PRIVATE)
+        val seeded = prefs.getInt(KEY_SAMPLE_VERSION, 0)
+        if (seeded >= SAMPLE_VERSION) return@withContext
+        if (seeded > 0 && dao.getById(SAMPLE_ID) == null) {
+            prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
+            return@withContext
+        }
+        val text = runCatching {
+            context.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
+        }.getOrElse { return@withContext }
+        val file = File(booksDir, "$SAMPLE_ID.txt")
+        file.writeText(text, Charsets.UTF_8)
+        val existing = dao.getById(SAMPLE_ID)
+        dao.upsert(
+            Book(
+                id = SAMPLE_ID,
+                title = text.lineSequence().first().trim().ifBlank { "Start here" },
+                filePath = file.absolutePath,
+                sizeBytes = file.length(),
+                addedEpochMs = existing?.addedEpochMs ?: System.currentTimeMillis(),
+                syncStatus = existing?.syncStatus ?: SyncStatus.NOT_SENT,
+                totalChars = text.length,
+            ),
+        )
+        prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
+    }
+
+    suspend fun loadText(book: Book): String = withContext(Dispatchers.IO) {
+        File(book.filePath).readText(Charsets.UTF_8)
     }
 
     // ---- internals ----
 
-    private class Imported(val title: String, val text: String)
+    private class Imported(val title: String, val text: String, val cover: ByteArray?)
 
     private fun importBytes(
         bytes: ByteArray,
@@ -121,18 +179,22 @@ object BookRepository {
         return if (isEpub) {
             val epub = EpubParser.parse(bytes.inputStream())
             if (epub.text.isBlank()) throw ImportException("No readable text found in this epub")
-            Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, epub.text)
+            Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, epub.text, epub.cover)
         } else {
             val decoded = TextNormalizer.decode(bytes, declaredCharset)
             if (decoded.text.isBlank()) throw ImportException("No readable text found in this file")
-            Imported(title.ifBlank { fallbackTitle }, decoded.text)
+            Imported(title.ifBlank { fallbackTitle }, decoded.text, cover = null)
         }
     }
 
     private suspend fun store(imported: Imported): Book {
         val id = UUID.randomUUID().toString()
         val destFile = File(booksDir, "$id.txt")
-        withContext(Dispatchers.IO) { destFile.writeText(imported.text, Charsets.UTF_8) }
+        val coverFile = imported.cover?.let { File(booksDir, "$id.cover") }
+        withContext(Dispatchers.IO) {
+            destFile.writeText(imported.text, Charsets.UTF_8)
+            if (coverFile != null) coverFile.writeBytes(imported.cover)
+        }
         val book = Book(
             id = id,
             title = imported.title.trim().ifBlank { "Untitled" },
@@ -140,6 +202,7 @@ object BookRepository {
             sizeBytes = destFile.length(),
             addedEpochMs = System.currentTimeMillis(),
             totalChars = imported.text.length,
+            coverPath = coverFile?.absolutePath,
         )
         dao.upsert(book)
         return book
@@ -163,4 +226,10 @@ object BookRepository {
         val head = String(bytes, 0, minOf(bytes.size, 512), Charsets.ISO_8859_1).lowercase()
         return head.contains("<html") || head.contains("<!doctype html")
     }
+
+    private const val SAMPLE_ID = "sample"
+    private const val SAMPLE_ASSET = "sample.txt"
+    /** Bumped whenever the bundled guide is rewritten. */
+    private const val SAMPLE_VERSION = 1
+    private const val KEY_SAMPLE_VERSION = "sample_version"
 }
