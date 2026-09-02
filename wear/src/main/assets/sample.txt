@@ -1,0 +1,57 @@
+WatchReader 使用说明 · How to read on your watch
+
+这本小书是随应用附带的示例。它讲清楚手表上怎么读，也顺带演示中英文朗读的切换。读完之后向左划一下就能把它删掉，删了不影响别的书。
+
+一、翻页
+
+转动表冠往下翻，往回转就退回上一页。不想转表冠的话，点屏幕右半边往后翻，点左半边往回翻。读到哪一页手表都记得，下次打开还在原处，手机上也看得到进度。
+
+二、工具栏
+
+点屏幕正中间会出来一条工具栏。上面是朗读的开始与暂停，下面是一条跳转条，加号减号各按一下就走百分之五，想从头再读一遍从这里回到零最省事。再点一次屏幕中间，工具栏就收起来。
+
+三、朗读
+
+工具栏上的三角形是朗读。按下去之后手表用系统的语音引擎把书念出来，念到哪一句，那一句就亮着。息屏之后不会停，退出应用也不会停，通知栏里有暂停和停止。想停下来，按工具栏上的方块，或者在通知里停。
+
+朗读的语言不用选。每一句是什么语言，就用什么语言念，中英文混排的书也能一路念下去。设置页最底下会告诉你这块表上有哪几种语音；如果缺一种，去手表的系统设置里把对应的语音装上就好。
+
+四、设置
+
+从书目页面进设置，可以改字号、字体（黑体、宋体、楷体）、深色或米色的页面底色，还有朗读语速。字号一改，分页会按新的字号重新排，不会把字挤到圆屏边上被裁掉。
+
+五、加新书
+
+手表本身不下载书。在手机上打开 WatchReader，点右下角的加号，选一个 txt 或者 epub 文件，或者贴一个链接；也可以在任何应用里把文件分享到 WatchReader。加好之后点一下那本书的封面，它就传到手表上来了。
+
+下面两段是公版的文字，留着让你看看真正的排版，也让朗读有中英文两段可念。
+
+桃花源记
+
+晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。渔人甚异之。复前行，欲穷其林。
+
+林尽水源，便得一山。山有小口，仿佛若有光。便舍船，从口入。初极狭，才通人。复行数十步，豁然开朗。土地平旷，屋舍俨然，有良田美池桑竹之属。阡陌交通，鸡犬相闻。其中往来种作，男女衣着，悉如外人。黄发垂髫，并怡然自乐。
+
+见渔人，乃大惊，问所从来。具答之。便要还家，设酒杀鸡作食。村中闻有此人，咸来问讯。自云先世避秦时乱，率妻子邑人来此绝境，不复出焉，遂与外人间隔。问今是何世，乃不知有汉，无论魏晋。此人一一为具言所闻，皆叹惋。
+
+Pride and Prejudice, the first chapter
+
+It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.
+
+However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered as the rightful property of some one or other of their daughters.
+
+"My dear Mr. Bennet," said his lady to him one day, "have you heard that Netherfield Park is let at last?"
+
+Mr. Bennet replied that he had not.
+
+"But it is," returned she; "for Mrs. Long has just been here, and she told me all about it."
+
+Mr. Bennet made no answer.
+
+"Do you not want to know who has taken it?" cried his wife impatiently.
+
+"You want to tell me, and I have no objection to hearing it."
+
+This was invitation enough.
+
+读到这里，示例就结束了。向左划一下删掉它，然后去手机上加一本真正想读的书。

@@ -33,10 +33,9 @@
     <string name="settings_theme_sepia">Sepia</string>
     <string name="settings_keep_screen_on">Keep screen on while reading</string>
     <string name="settings_speech_rate">Speed %1$sx</string>
-    <string name="settings_voice">Voice</string>
-    <string name="settings_voice_auto">Follow text</string>
-    <string name="settings_voice_zh">中文 Chinese</string>
-    <string name="settings_voice_en">English</string>
+    <string name="settings_voices_have">Reads aloud in %1$s</string>
+    <string name="settings_voices_missing">No voice for %1$s on this watch</string>
+    <string name="settings_voices_none">No speech engine on this watch</string>
     <string name="settings_version">v%1$s</string>
 
     <string name="tts_channel_name">Read aloud</string>
@@ -47,4 +46,5 @@
     <string name="tts_action_resume">Resume</string>
     <string name="tts_action_stop">Stop</string>
     <string name="tts_no_engine">No text-to-speech engine on this watch</string>
+    <string name="sample_title">Start here</string>
 </resources>

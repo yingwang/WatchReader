@@ -33,10 +33,9 @@
     <string name="settings_theme_sepia">米色</string>
     <string name="settings_keep_screen_on">阅读时保持亮屏</string>
     <string name="settings_speech_rate">语速 %1$s 倍</string>
-    <string name="settings_voice">朗读声音</string>
-    <string name="settings_voice_auto">跟随文字</string>
-    <string name="settings_voice_zh">中文</string>
-    <string name="settings_voice_en">英文</string>
+    <string name="settings_voices_have">可朗读 %1$s</string>
+    <string name="settings_voices_missing">这块表上没有 %1$s 的语音</string>
+    <string name="settings_voices_none">这块表上没有语音引擎</string>
     <string name="settings_version">v%1$s</string>
 
     <string name="tts_channel_name">朗读</string>
@@ -47,4 +46,5 @@
     <string name="tts_action_resume">继续</string>
     <string name="tts_action_stop">停止</string>
     <string name="tts_no_engine">这块手表上没有语音引擎</string>
+    <string name="sample_title">使用说明</string>
 </resources>

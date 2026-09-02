@@ -1,6 +1,5 @@
 package com.watchreader.wear.ui.screen
 
-import android.speech.tts.TextToSpeech
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
@@ -33,6 +33,7 @@ import com.watchreader.wear.BuildConfig
 import com.watchreader.wear.R
 import com.watchreader.wear.settings.ReaderPrefs
 import com.watchreader.wear.settings.ReaderTheme
+import com.watchreader.wear.tts.TtsLanguages
 import com.watchreader.wear.ui.theme.DimText
 import com.watchreader.wear.ui.theme.WarmAmber
 import com.watchreader.wear.ui.theme.WarmWhite
@@ -51,21 +52,12 @@ fun SettingsScreen() {
     var fontFamily by remember { mutableStateOf(prefs.fontFamily) }
     var theme by remember { mutableStateOf(prefs.theme) }
     var keepScreenOn by remember { mutableStateOf(prefs.keepScreenOn) }
-    var ttsVoice by remember { mutableStateOf(prefs.ttsVoice) }
-    // (language code, engine voice name): the best offline voice per language on this watch
-    var voiceOptions by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    // Which of the two reading languages this watch can actually speak, or null until asked.
+    var voices by remember { mutableStateOf<TtsLanguages.Availability?>(null) }
 
     DisposableEffect(Unit) {
-        var tts: TextToSpeech? = null
-        tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                val offline = tts?.voices?.filter { !it.isNetworkConnectionRequired } ?: emptyList()
-                voiceOptions = listOf("zh", "en").mapNotNull { lang ->
-                    offline.filter { it.locale.language == lang }.maxByOrNull { it.quality }?.let { lang to it.name }
-                }
-            }
-        }
-        onDispose { tts?.shutdown() }
+        val engine = TtsLanguages.probe(context) { voices = it }
+        onDispose { engine.shutdown() }
     }
 
     fun tick() = view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -154,17 +146,37 @@ fun SettingsScreen() {
                 )
             }
 
-            if (voiceOptions.isNotEmpty()) {
+            voices?.let { v ->
                 item {
-                    // choices: follow the text, then one voice per installed language
-                    val choices = listOf("" to R.string.settings_voice_auto) + voiceOptions.map { (lang, name) ->
-                        name to if (lang == "zh") R.string.settings_voice_zh else R.string.settings_voice_en
-                    }
-                    val idx = choices.indexOfFirst { it.first == ttsVoice }.coerceAtLeast(0)
-                    CycleRow(stringResource(R.string.settings_voice), stringResource(choices[idx].second)) {
-                        ttsVoice = choices[(idx + 1) % choices.size].first
-                        prefs.ttsVoice = ttsVoice
-                        tick()
+                    // The voice is never chosen by hand: each sentence is spoken in its own
+                    // language. All this line does is say whether the watch has that voice.
+                    Text(
+                        text = if (v.installed.isEmpty()) {
+                            stringResource(R.string.settings_voices_none)
+                        } else {
+                            stringResource(
+                                R.string.settings_voices_have,
+                                v.installed.joinToString("  ") { TtsLanguages.label(it) },
+                            )
+                        },
+                        color = WarmWhite,
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(0.9f).padding(top = 10.dp),
+                    )
+                }
+                if (v.missing.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(
+                                R.string.settings_voices_missing,
+                                v.missing.joinToString("  ") { TtsLanguages.label(it) },
+                            ),
+                            color = DimText,
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(0.9f).padding(top = 2.dp),
+                        )
                     }
                 }
             }

@@ -48,7 +48,6 @@ class TtsService : Service() {
     private var nextToQueue = 0
     private var current = -1
     private var currentLocale: Locale? = null
-    private var fixedVoice = false
     private var sentencesSinceSave = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -119,15 +118,7 @@ class TtsService : Service() {
     private fun applyPrefs() {
         val prefs = ReaderPrefs(this)
         tts?.setSpeechRate(prefs.speechRate)
-        fixedVoice = false
         currentLocale = null
-        val voiceName = prefs.ttsVoice
-        if (voiceName.isNotEmpty()) {
-            tts?.voices?.firstOrNull { it.name == voiceName }?.let { v ->
-                tts?.voice = v
-                fixedVoice = true
-            }
-        }
     }
 
     /** Keeps the engine fed a batch at a time; a whole novel queued at once makes some engines stall. */
@@ -136,11 +127,13 @@ class TtsService : Service() {
         val end = minOf(sentences.size, nextToQueue + BATCH)
         for (i in nextToQueue until end) {
             val (sentence, _) = sentences[i]
-            if (!fixedVoice) {
-                val locale = LanguageDetector.detect(sentence)
-                if (locale != currentLocale) {
+            // Every sentence is spoken in the language it is written in; there is nothing to
+            // choose. A watch without that voice keeps the one it has rather than falling silent.
+            val locale = LanguageDetector.detect(sentence)
+            if (locale != currentLocale) {
+                val result = engine.setLanguage(locale)
+                if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
                     currentLocale = locale
-                    engine.language = locale
                 }
             }
             val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "s$i") }

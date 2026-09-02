@@ -19,7 +19,7 @@ val localProps = Properties().apply {
 
 android {
     namespace = "com.watchreader.wear"
-    compileSdk = 35
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -38,7 +38,7 @@ android {
     defaultConfig {
         applicationId = "com.watchreader"
         minSdk = 30
-        targetSdk = 35
+        targetSdk = 36
         // Watch bundles end in 2, phone bundles in 1, so the two never collide on Play.
         versionCode = verBase * 10 + 2
         versionName = "$verMajor.$verMinor.$verPatch"

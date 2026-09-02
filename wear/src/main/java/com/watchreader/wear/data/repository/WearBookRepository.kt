@@ -8,6 +8,7 @@ import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.wear.data.db.WearBookDao
 import com.watchreader.wear.data.db.WearDatabase
+import com.watchreader.wear.R
 import com.watchreader.wear.data.model.WearBook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,32 @@ object WearBookRepository {
     }
 
     fun getBooksDir(): File = booksDir
+
+    /**
+     * Puts the bundled guide in the library the first time the app runs, so a new watch has
+     * something to open and something to read aloud before any book has been sent from the phone.
+     * Deleting it is final: the flag stays set, so it does not come back.
+     */
+    suspend fun seedSampleIfNeeded() = withContext(Dispatchers.IO) {
+        val prefs = appContext.getSharedPreferences("watchreader_seed", Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_SAMPLE_SEEDED, false)) return@withContext
+        runCatching {
+            val text = appContext.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
+            val file = File(booksDir, "$SAMPLE_ID.txt")
+            file.writeText(text, Charsets.UTF_8)
+            dao.upsert(
+                WearBook(
+                    id = SAMPLE_ID,
+                    title = appContext.getString(R.string.sample_title),
+                    filePath = file.absolutePath,
+                    sizeBytes = file.length(),
+                    addedEpochMs = System.currentTimeMillis(),
+                    totalChars = text.length,
+                )
+            )
+        }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }
+        prefs.edit().putBoolean(KEY_SAMPLE_SEEDED, true).apply()
+    }
 
     fun observeAll(): Flow<List<WearBook>> = dao.observeAll()
 
@@ -74,4 +101,8 @@ object WearBookRepository {
             Wearable.getMessageClient(appContext).sendMessage(node.id, path, payload).await()
         }.onFailure { Log.w(TAG, "Could not reach the phone for $path", it) }
     }
+
+    private const val SAMPLE_ID = "sample"
+    private const val SAMPLE_ASSET = "sample.txt"
+    private const val KEY_SAMPLE_SEEDED = "sample_seeded"
 }

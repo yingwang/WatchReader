@@ -19,7 +19,7 @@ val localProps = Properties().apply {
 
 android {
     namespace = "com.watchreader.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -35,7 +35,7 @@ android {
         // The phone side only needs Play services and Compose; older phones are common as
         // hand-me-downs next to a new watch.
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = verBase * 10 + 1
         versionName = "$verMajor.$verMinor.$verPatch"
     }

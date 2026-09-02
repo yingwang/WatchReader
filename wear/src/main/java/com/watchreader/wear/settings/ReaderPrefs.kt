@@ -31,11 +31,6 @@ class ReaderPrefs(context: Context) {
         get() = prefs.getFloat(KEY_SPEECH_RATE, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_SPEECH_RATE, value.coerceIn(0.5f, 2.0f)).apply()
 
-    /** Engine voice name, or empty for "follow the language of the text". */
-    var ttsVoice: String
-        get() = prefs.getString(KEY_TTS_VOICE, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_TTS_VOICE, value).apply()
-
     companion object {
         const val MIN_FONT = 12
         const val MAX_FONT = 22
@@ -45,6 +40,5 @@ class ReaderPrefs(context: Context) {
         private const val KEY_THEME = "theme"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_SPEECH_RATE = "speech_rate"
-        private const val KEY_TTS_VOICE = "tts_voice"
     }
 }
