@@ -39,6 +39,6 @@
 
     <string name="err_add_failed">Could not add the book</string>
     <string name="err_download_failed">Download failed</string>
-    <string name="err_no_network">No network connection</string>
+    <string name="err_no_network">Could not reach that address. Check the link and your connection.</string>
     <string name="err_timeout">The server took too long to answer</string>
 </resources>

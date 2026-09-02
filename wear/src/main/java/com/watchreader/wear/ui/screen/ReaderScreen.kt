@@ -266,7 +266,7 @@ fun ReaderScreen(
                         fraction = s.fraction,
                         ttsHere = ttsHere,
                         ttsState = ttsState,
-                        background = colors.background.copy(alpha = 0.9f),
+                        background = colors.background,
                         textColor = colors.text,
                         dimColor = colors.dim,
                         onPlayPause = {
@@ -320,7 +320,7 @@ private fun Toolbar(
                     color = textColor,
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(textColor.copy(alpha = 0.12f))
+                        .background(textColor.copy(alpha = 0.22f))
                         .clickable(onClick = onPlayPause)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                 )
@@ -331,7 +331,7 @@ private fun Toolbar(
                         color = textColor,
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(textColor.copy(alpha = 0.12f))
+                            .background(textColor.copy(alpha = 0.22f))
                             .clickable(onClick = onStop)
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                     )
@@ -339,8 +339,8 @@ private fun Toolbar(
             }
             Text(
                 text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (fraction * 100).roundToInt()),
-                color = dimColor,
-                fontSize = 11.sp,
+                color = textColor,
+                fontSize = 12.sp,
             )
             InlineSlider(
                 value = (fraction * 20).roundToInt().toFloat(),

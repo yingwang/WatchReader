@@ -39,6 +39,6 @@
 
     <string name="err_add_failed">添加失败</string>
     <string name="err_download_failed">下载失败</string>
-    <string name="err_no_network">没有网络连接</string>
+    <string name="err_no_network">连不上这个地址，请检查链接与网络。</string>
     <string name="err_timeout">服务器响应超时</string>
 </resources>
