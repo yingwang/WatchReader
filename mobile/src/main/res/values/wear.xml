@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Advertised on the Data Layer so the watch can find the phone app. -->
+    <string-array name="android_wear_capabilities" translatable="false">
+        <item>watchreader_phone</item>
+    </string-array>
+</resources>

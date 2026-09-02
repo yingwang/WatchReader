@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.wear.compose.material.Colors
 import androidx.wear.compose.material.MaterialTheme
+import com.watchreader.wear.settings.ReaderTheme
 
 val WarmAmber = Color(0xFFE0C097)
 val GreenAccent = Color(0xFF81C784)
@@ -11,17 +12,24 @@ val WarmBlack = Color(0xFF121210)
 val WarmWhite = Color(0xFFE8E0D4)
 val DimText = Color(0xFF8A8278)
 
-// Sepia theme colors
-val SepiaBg = Color(0xFFF5E6C8)
-val SepiaText = Color(0xFF433422)
-val SepiaAccent = Color(0xFF8B7355)
+val SepiaBg = Color(0xFFF1E4C8)
+val SepiaText = Color(0xFF3B2E1E)
+val SepiaDim = Color(0xFF8B7355)
+
+/** Colours of the reading page for a [ReaderTheme]. */
+class PageColors(val background: Color, val text: Color, val dim: Color, val highlight: Color)
+
+fun pageColors(theme: ReaderTheme): PageColors = when (theme) {
+    ReaderTheme.DARK -> PageColors(WarmBlack, WarmWhite, DimText, GreenAccent.copy(alpha = 0.3f))
+    ReaderTheme.SEPIA -> PageColors(SepiaBg, SepiaText, SepiaDim, Color(0xFFC9A86A).copy(alpha = 0.45f))
+}
 
 private val WatchReaderColors = Colors(
     primary = GreenAccent,
     primaryVariant = Color(0xFF5A8A5C),
-    secondary = GreenAccent,
+    secondary = WarmAmber,
     background = WarmBlack,
-    surface = Color(0xFF1A1A1A),
+    surface = Color(0xFF1E1E1E),
     onPrimary = Color.Black,
     onSecondary = Color.Black,
     onBackground = Color(0xFFDDDDDD),

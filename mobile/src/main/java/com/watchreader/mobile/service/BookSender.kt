@@ -1,11 +1,17 @@
 package com.watchreader.mobile.service
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.ChannelClient
+import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.shared.BookMetadata
+import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -14,73 +20,93 @@ import java.io.File
 
 private const val TAG = "WatchReader"
 
+/** Which watch, if any, can take a book right now. */
+sealed class WatchLookup {
+    /** A reachable watch that runs WatchReader. */
+    data class Ready(val nodeId: String, val name: String) : WatchLookup()
+
+    /** A watch is paired and reachable but has no WatchReader on it. */
+    data class WithoutApp(val nodeId: String, val name: String) : WatchLookup()
+
+    /** No watch reachable at all. */
+    object None : WatchLookup()
+}
+
 class BookSender(private val context: Context) {
 
-    suspend fun findWatchNodeId(): String? {
-        val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-        Log.d(TAG, "Connected nodes: ${nodes.map { "${it.displayName}(${it.id})" }}")
-        return nodes.firstOrNull()?.id
+    /**
+     * Prefers a node advertising the watch app's capability; a plain "first connected node"
+     * would happily pick a second watch, or a node that never installed the app.
+     */
+    suspend fun findWatch(): WatchLookup {
+        val capable = runCatching {
+            Wearable.getCapabilityClient(context)
+                .getCapability(DataLayerPaths.WEAR_CAPABILITY, CapabilityClient.FILTER_REACHABLE)
+                .await().nodes
+        }.getOrElse { emptySet() }
+        pick(capable)?.let { return WatchLookup.Ready(it.id, it.displayName) }
+
+        val connected = runCatching {
+            Wearable.getNodeClient(context).connectedNodes.await()
+        }.getOrElse { emptyList() }
+        pick(connected.toSet())?.let { return WatchLookup.WithoutApp(it.id, it.displayName) }
+        return WatchLookup.None
     }
 
+    private fun pick(nodes: Set<Node>): Node? = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull()
+
+    /**
+     * Streams the book over one channel: metadata header, newline, UTF-8 text. Returns once the
+     * bytes are handed to the Data Layer; the watch confirms storage with a BOOK_RECEIVED message.
+     */
     suspend fun sendBook(book: Book, nodeId: String): Boolean = withContext(Dispatchers.IO) {
-        val messageClient = Wearable.getMessageClient(context)
         val channelClient = Wearable.getChannelClient(context)
-
-        // Step 1: Send metadata
-        val meta = BookMetadata(
-            id = book.id,
-            title = book.title,
-            sizeBytes = book.sizeBytes,
-            addedEpochMs = book.addedEpochMs,
-        )
-        Log.d(TAG, "Step 1: Sending metadata for '${book.title}'")
-        messageClient.sendMessage(
-            nodeId,
-            DataLayerPaths.BOOK_METADATA_PATH,
-            meta.toJson().toByteArray(),
-        ).await()
-        Log.d(TAG, "Step 1: Metadata sent")
-
-        // Small delay to let the watch service wake up and process metadata
-        kotlinx.coroutines.delay(500)
-
-        // Step 2: Stream file via ChannelClient
         var channel: ChannelClient.Channel? = null
         try {
-            Log.d(TAG, "Step 2: Opening channel to $nodeId")
-            channel = channelClient.openChannel(nodeId, DataLayerPaths.BOOK_ASSET_PATH).await()
-            Log.d(TAG, "Step 2: Channel opened, getting output stream")
-            val outputStream = channelClient.getOutputStream(channel).await()
+            channel = channelClient.openChannel(nodeId, DataLayerPaths.bookChannelPath(book.id)).await()
+            val output = channelClient.getOutputStream(channel).await()
             val file = File(book.filePath)
-            Log.d(TAG, "Step 2: Streaming ${file.length()} bytes")
-            file.inputStream().use { input ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var total = 0L
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    total += bytesRead
-                }
-                Log.d(TAG, "Step 2: Streamed $total bytes")
+            val meta = BookMetadata(
+                id = book.id,
+                title = book.title,
+                sizeBytes = file.length(),
+                addedEpochMs = book.addedEpochMs,
+                totalChars = book.totalChars,
+            )
+            output.use { out ->
+                BookTransfer.writeHeader(out, meta)
+                file.inputStream().use { input -> input.copyTo(out, bufferSize = 16 * 1024) }
+                out.flush()
             }
-            outputStream.close()
-            Log.d(TAG, "Step 2: Done, closing channel")
+            Log.d(TAG, "Streamed '${book.title}' (${file.length()} bytes) to $nodeId")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Step 2: Channel error", e)
+            Log.e(TAG, "Sending '${book.title}' failed", e)
             false
         } finally {
-            channel?.let {
-                try { channelClient.close(it).await() } catch (_: Exception) {}
-            }
+            channel?.let { runCatching { channelClient.close(it).await() } }
         }
     }
 
     suspend fun deleteBookOnWatch(bookId: String, nodeId: String) {
-        Wearable.getMessageClient(context).sendMessage(
-            nodeId,
-            DataLayerPaths.DELETE_BOOK_PATH,
-            bookId.toByteArray(),
-        ).await()
+        runCatching {
+            Wearable.getMessageClient(context)
+                .sendMessage(nodeId, DataLayerPaths.DELETE_BOOK_PATH, bookId.toByteArray(Charsets.UTF_8))
+                .await()
+        }.onFailure { Log.w(TAG, "Could not tell the watch to delete $bookId", it) }
+    }
+
+    /** Opens this app's Play listing on the watch so the user can install it there. */
+    suspend fun openPlayStoreOnWatch(nodeId: String): Boolean = withContext(Dispatchers.IO) {
+        val intent = Intent(Intent.ACTION_VIEW)
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .setData(Uri.parse("market://details?id=${context.packageName}"))
+        runCatching {
+            RemoteActivityHelper(context).startRemoteActivity(intent, nodeId).get()
+            true
+        }.getOrElse {
+            Log.w(TAG, "Could not open Play on the watch", it)
+            false
+        }
     }
 }

@@ -8,3 +8,11 @@
 /captures
 .externalNativeBuild
 .cxx
+*.keystore
+*.jks
+/releases
+/.voice-*.wav
+/.shots
+/.emulator*.log
+/.sample-book.txt
+/REVIEW-*.md

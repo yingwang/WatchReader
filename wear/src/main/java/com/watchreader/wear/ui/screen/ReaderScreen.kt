@@ -1,16 +1,23 @@
 package com.watchreader.wear.ui.screen
 
+import android.Manifest
 import android.app.Activity
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,202 +35,256 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.wear.compose.material.InlineSlider
+import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.Text
-import com.watchreader.wear.tts.SentenceParser
+import com.watchreader.wear.R
+import com.watchreader.wear.reader.LineMeasurer
+import com.watchreader.wear.reader.PageGeometry
+import com.watchreader.wear.reader.Paginator
+import com.watchreader.wear.service.TtsService
+import com.watchreader.wear.settings.ReaderPrefs
+import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
-import com.watchreader.wear.ui.WearActivity
-import com.watchreader.wear.ui.theme.DimText
-import com.watchreader.wear.ui.theme.GreenAccent
-import com.watchreader.wear.ui.theme.WarmBlack
-import com.watchreader.wear.ui.theme.WarmWhite
+import com.watchreader.wear.ui.theme.pageColors
+import com.watchreader.wear.ui.viewmodel.ReaderUiState
 import com.watchreader.wear.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
+import kotlin.math.roundToInt
 
 @Composable
 fun ReaderScreen(
     bookId: String,
     vm: ReaderViewModel = viewModel(
         key = bookId,
-        factory = ReaderViewModelFactory(LocalContext.current.applicationContext as android.app.Application, bookId),
+        factory = ReaderViewModel.Factory(LocalContext.current.applicationContext as android.app.Application, bookId),
     ),
 ) {
-    val pages by vm.pages.collectAsState()
-    val currentPage by vm.currentPage.collectAsState()
-    val ttsState by vm.ttsState.collectAsState()
-    val sentenceIndex by vm.currentSentenceIndex.collectAsState()
-    val view = LocalView.current
     val context = LocalContext.current
-
-    var showToolbar by remember { mutableStateOf(false) }
-    val fontSize = remember { loadFontSize(context) }
+    val view = LocalView.current
+    val density = LocalDensity.current
+    val prefs = remember { ReaderPrefs(context) }
+    val colors = remember { pageColors(prefs.theme) }
+    val fontSize = remember { prefs.fontSize }
     val fontFamily = remember {
-        when (loadFontFamily(context)) {
+        when (prefs.fontFamily) {
             "serif" -> FontFamily.Serif
-            "kai" -> FontFamily(Font(com.watchreader.wear.R.font.lxgw_wenkai))
+            "kai" -> FontFamily(Font(R.font.lxgw_wenkai))
             else -> FontFamily.SansSerif
         }
     }
-
-    // Calculate chars per page based on font size
-    LaunchedEffect(fontSize) {
-        val cpp = (90 - (fontSize - 12) * 3.5).toInt().coerceIn(35, 90)
-        vm.setCharsPerPage(cpp)
+    val textStyle = remember(fontSize, fontFamily) {
+        TextStyle(
+            color = colors.text,
+            fontSize = fontSize.sp,
+            lineHeight = (fontSize * 1.4f).sp,
+            fontFamily = fontFamily,
+            textAlign = TextAlign.Start,
+        )
     }
 
-    // Keep screen on during TTS
-    DisposableEffect(ttsState) {
+    val state by vm.state.collectAsState()
+    val ttsState by TtsPlayback.state.collectAsState()
+    val ttsBook by TtsPlayback.bookId.collectAsState()
+    val spoken by TtsPlayback.sentence.collectAsState()
+    val ttsHere = ttsBook == bookId && ttsState != TtsState.IDLE
+    val isRound = LocalConfiguration.current.isScreenRound
+
+    var showToolbar by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val measurer = rememberTextMeasurer()
+
+    // Keep the screen on while this page is up, if the user wants that.
+    DisposableEffect(Unit) {
         val window = (context as? Activity)?.window
-        if (ttsState == TtsState.PLAYING) {
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        if (prefs.keepScreenOn) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    // Rotary crown via Activity-level override
-    val activity = context as? WearActivity
-    LaunchedEffect(Unit) {
-        var lastFlip = 0L
-        activity?.rotaryEvents?.collect { delta ->
-            val now = System.currentTimeMillis()
-            if (now - lastFlip > 250) {
-                if (delta < 0f) {
-                    vm.nextPage()
-                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                } else if (delta > 0f) {
-                    vm.prevPage()
-                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                }
-                lastFlip = now
-            }
-        }
+    // Follow the voice: turn the page when the spoken sentence leaves it.
+    LaunchedEffect(bookId) {
+        combine(TtsPlayback.bookId, TtsPlayback.sentence) { id, range -> if (id == bookId) range else null }
+            .collect { range -> if (range != null) vm.followSpoken(range.first) }
     }
 
-    // Auto-hide toolbar
     LaunchedEffect(showToolbar) {
         if (showToolbar) {
-            delay(4000)
+            delay(5000)
             showToolbar = false
         }
     }
 
-    val pageText = pages.getOrNull(currentPage) ?: ""
-    val activeHighlight = if (ttsState == TtsState.PLAYING) sentenceIndex else -1
-    val annotatedText = buildHighlightedText(pageText, activeHighlight)
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun startReadingAloud(offset: Int) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        vm.saveProgress(toPhone = false)
+        TtsService.play(context, bookId, offset)
+    }
 
-    Box(
+    fun tick() = view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(WarmBlack)
+            .background(colors.background)
+            .onRotaryScrollEvent { event ->
+                if (event.verticalScrollPixels > 0f) vm.nextPage() else vm.prevPage()
+                tick()
+                true
+            }
+            .focusRequester(focusRequester)
+            .focusable()
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { offset ->
                         val width = size.width
                         when {
-                            offset.x < width / 3f -> {
-                                vm.prevPage()
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                            }
-                            offset.x > width * 2f / 3f -> {
-                                vm.nextPage()
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                            }
+                            offset.x < width / 3f -> { vm.prevPage(); tick() }
+                            offset.x > width * 2f / 3f -> { vm.nextPage(); tick() }
                             else -> showToolbar = !showToolbar
                         }
                     },
-                    onLongPress = { _ ->
+                    onLongPress = {
                         showToolbar = true
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     },
                 )
             },
     ) {
-        // Main text - centered for round screen
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 28.dp, vertical = 34.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            androidx.compose.foundation.text.BasicText(
-                text = annotatedText,
-                style = androidx.compose.ui.text.TextStyle(
-                    color = WarmWhite,
-                    fontSize = fontSize.sp,
-                    lineHeight = (fontSize * 1.5f).sp,
-                    fontFamily = fontFamily,
-                    textAlign = TextAlign.Start,
-                ),
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-        // TTS indicator
-        if (ttsState == TtsState.PLAYING) {
-            Text(
-                text = "\uD83D\uDD0A",
+        // Lines follow the circle on a round screen; a square screen gets a plain column.
+        val screenWpx = with(density) { maxWidth.roundToPx() }
+        val screenHpx = with(density) { maxHeight.roundToPx() }
+        val lineHeightPx = with(density) { (fontSize * 1.4f).sp.toPx() }
+        val fontPx = with(density) { fontSize.sp.toPx() }
+        val geometry = remember(screenWpx, screenHpx, lineHeightPx, isRound) {
+            if (isRound) {
+                PageGeometry.circle(minOf(screenWpx, screenHpx), marginPx = with(density) { 9.dp.toPx() }, lineHeightPx = lineHeightPx, minWidthPx = fontPx * 6f)
+            } else {
+                PageGeometry.rect(screenWpx, screenHpx, marginPx = with(density) { 12.dp.toPx() }, lineHeightPx = lineHeightPx)
+            }
+        }
+        val lineMeasurer = remember(measurer, textStyle) {
+            LineMeasurer { text, start, end, widthPx ->
+                val result = measurer.measure(
+                    text = AnnotatedString(text.substring(start, end)),
+                    style = textStyle,
+                    overflow = TextOverflow.Clip,
+                    maxLines = 1,
+                    constraints = Constraints(maxWidth = widthPx),
+                )
+                result.getLineEnd(0, visibleEnd = false)
+            }
+        }
+        LaunchedEffect(geometry, lineMeasurer) { vm.attachLayout(geometry, lineMeasurer) }
+
+        when (val s = state) {
+            ReaderUiState.Loading -> Text(
+                stringResource(R.string.reader_loading),
+                color = colors.dim,
                 fontSize = 12.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 12.dp, end = 16.dp),
+                modifier = Modifier.align(Alignment.Center),
             )
-        }
-
-        // Toolbar overlay
-        AnimatedVisibility(
-            visible = showToolbar,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(WarmBlack.copy(alpha = 0.85f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        val ttsIcon = if (ttsState == TtsState.PLAYING) "\u23F8" else "\u25B6"
-                        Text(
-                            text = ttsIcon,
-                            fontSize = 24.sp,
-                            color = WarmWhite,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(GreenAccent.copy(alpha = 0.3f))
-                                .padding(12.dp)
-                                .clickable {
-                                    vm.toggleTts()
-                                    showToolbar = false
-                                },
+            ReaderUiState.Missing -> Text(
+                stringResource(R.string.reader_missing),
+                color = colors.dim,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+            )
+            is ReaderUiState.Ready -> {
+                val highlight = if (ttsHere && ttsState == TtsState.PLAYING) spoken else null
+                val page = s.page
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    for (line in page.lines) {
+                        val slot = geometry.slots.getOrNull(line.slot) ?: continue
+                        val lineText = lineString(page, line, vmText = null) ?: continue
+                        val layout = measurer.measure(
+                            text = highlighted(lineText, line.start, highlight, colors.highlight),
+                            style = textStyle,
+                            overflow = TextOverflow.Clip,
+                            maxLines = 1,
+                            constraints = Constraints(maxWidth = slot.width),
                         )
+                        drawText(layout, topLeft = androidx.compose.ui.geometry.Offset(slot.left, slot.top))
                     }
+                }
+
+                // small percent at the bottom edge, inside the round bezel
+                Text(
+                    text = stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
+                    color = colors.dim,
+                    fontSize = 9.sp,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                )
+                if (ttsHere && ttsState == TtsState.PLAYING) {
                     Text(
-                        text = "${currentPage + 1} / ${pages.size}",
-                        color = DimText,
-                        fontSize = 12.sp,
+                        text = "♪",
+                        color = colors.dim,
+                        fontSize = 10.sp,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = showToolbar,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Toolbar(
+                        fraction = s.fraction,
+                        ttsHere = ttsHere,
+                        ttsState = ttsState,
+                        background = colors.background.copy(alpha = 0.9f),
+                        textColor = colors.text,
+                        dimColor = colors.dim,
+                        onPlayPause = {
+                            when {
+                                ttsHere && ttsState == TtsState.PLAYING -> TtsService.pause(context)
+                                ttsHere && ttsState == TtsState.PAUSED -> TtsService.resume(context)
+                                else -> startReadingAloud(page.start)
+                            }
+                            showToolbar = false
+                        },
+                        onStop = {
+                            TtsService.stop(context)
+                            showToolbar = false
+                        },
+                        onJump = { f ->
+                            vm.jumpToFraction(f)
+                            tick()
+                        },
                     )
                 }
             }
@@ -232,31 +293,85 @@ fun ReaderScreen(
 }
 
 @Composable
-private fun buildHighlightedText(
-    pageText: String,
-    sentenceIndex: Int,
-): AnnotatedString {
-    if (sentenceIndex < 0) return AnnotatedString(pageText)
-    val sentences = SentenceParser.splitWithRanges(pageText)
-    val range = sentences.getOrNull(sentenceIndex)?.second
-    return buildAnnotatedString {
-        append(pageText)
-        if (range != null && range.first < pageText.length) {
-            addStyle(
-                SpanStyle(background = GreenAccent.copy(alpha = 0.3f)),
-                start = range.first,
-                end = (range.last + 1).coerceAtMost(pageText.length),
+private fun Toolbar(
+    fraction: Float,
+    ttsHere: Boolean,
+    ttsState: TtsState,
+    background: androidx.compose.ui.graphics.Color,
+    textColor: androidx.compose.ui.graphics.Color,
+    dimColor: androidx.compose.ui.graphics.Color,
+    onPlayPause: () -> Unit,
+    onStop: () -> Unit,
+    onJump: (Float) -> Unit,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                val playing = ttsHere && ttsState == TtsState.PLAYING
+                Text(
+                    text = if (playing) "⏸" else "▶",
+                    fontSize = 22.sp,
+                    color = textColor,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(textColor.copy(alpha = 0.12f))
+                        .clickable(onClick = onPlayPause)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+                if (ttsHere) {
+                    Text(
+                        text = "■",
+                        fontSize = 18.sp,
+                        color = textColor,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(textColor.copy(alpha = 0.12f))
+                            .clickable(onClick = onStop)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (fraction * 100).roundToInt()),
+                color = dimColor,
+                fontSize = 11.sp,
+            )
+            InlineSlider(
+                value = (fraction * 20).roundToInt().toFloat(),
+                onValueChange = { onJump(it / 20f) },
+                valueRange = 0f..20f,
+                steps = 19,
+                increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
+                decreaseIcon = { Text("–", color = textColor, fontSize = 16.sp) },
+                colors = InlineSliderDefaults.colors(),
+                modifier = Modifier.fillMaxWidth(0.8f),
             )
         }
     }
 }
 
-class ReaderViewModelFactory(
-    private val application: android.app.Application,
-    private val bookId: String,
-) : androidx.lifecycle.ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-        return ReaderViewModel(application, bookId) as T
+/** The characters of one line; the page carries them so the screen never holds the whole book. */
+private fun lineString(page: Paginator.Page, line: Paginator.Line, vmText: String?): String? =
+    page.text(line)
+
+private fun highlighted(
+    lineText: String,
+    lineStart: Int,
+    spoken: IntRange?,
+    color: androidx.compose.ui.graphics.Color,
+): AnnotatedString {
+    if (spoken == null) return AnnotatedString(lineText)
+    val start = (spoken.first - lineStart).coerceIn(0, lineText.length)
+    val end = (spoken.last + 1 - lineStart).coerceIn(0, lineText.length)
+    if (end <= start) return AnnotatedString(lineText)
+    return buildAnnotatedString {
+        append(lineText)
+        addStyle(SpanStyle(background = color), start, end)
     }
 }

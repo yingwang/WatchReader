@@ -1,0 +1,27 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew test assembleDebug --no-daemon
+      # A throwaway key so the release build (R8, resource shrinking, signing step) is exercised;
+      # the real upload key never leaves the developer's machine.
+      - name: Release build with a CI-only key
+        run: |
+          keytool -genkeypair -keystore watchreader-release.keystore -alias watchreader -keyalg RSA -keysize 2048 -validity 1 -storepass ci-only-pass -keypass ci-only-pass -dname "CN=ci" >/dev/null
+          printf 'RELEASE_STORE_FILE=watchreader-release.keystore\nRELEASE_STORE_PASSWORD=ci-only-pass\nRELEASE_KEY_ALIAS=watchreader\nRELEASE_KEY_PASSWORD=ci-only-pass\n' > local.properties
+          ./gradlew :wear:assembleRelease :mobile:assembleRelease --no-daemon

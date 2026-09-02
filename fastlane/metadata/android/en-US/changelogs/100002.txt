@@ -1,0 +1,1 @@
+First release on Google Play: measured pagination for round screens, read-aloud that keeps going with the screen off, .epub and Chinese encodings handled on the phone, share-to-WatchReader, dark and sepia pages.

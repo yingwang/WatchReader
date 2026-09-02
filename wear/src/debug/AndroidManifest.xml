@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Debug builds only: lets an emulator without a paired phone receive a book from adb. -->
+        <receiver
+            android:name=".debug.DebugImportReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.watchreader.debug.IMPORT" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

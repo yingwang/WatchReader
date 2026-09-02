@@ -1,0 +1,16 @@
+WatchReader turns a Wear OS watch into a small, quiet e-book reader.
+
+Add a .txt or .epub on the phone, tap it, and it is on the watch a moment later. Pages are laid out for the round screen with a real measurement of your font and size, so nothing is cut off at the edges. Turn the crown or tap the sides to flip pages; your place is kept and shown on the phone as well.
+
+Long-press a page to have the watch read the book aloud. Reading continues with the screen off and after you leave the app, with a pause and stop control in the notification. Chinese and English text are detected sentence by sentence and spoken with the matching voice.
+
+Features
+• .txt and .epub, in UTF-8, GBK or GB18030 - encoding is detected on the phone
+• Pagination measured against the actual screen, with breaks at sentences and paragraphs
+• Rotary crown and tap navigation, jump to any percentage
+• Read aloud as a background service, with sentence highlighting
+• Three typefaces (sans, serif and the bundled 楷体 LXGW WenKai), dark or sepia page
+• Share a file to WatchReader from any app, or paste a link
+• No account, no ads, no analytics; books never leave your devices
+
+Requires a phone running the companion app and a watch on Wear OS 3 or later.

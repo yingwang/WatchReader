@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Advertised on the Data Layer so the phone only sends books to a watch that runs the app. -->
+    <string-array name="android_wear_capabilities" translatable="false">
+        <item>watchreader_wear</item>
+    </string-array>
+</resources>

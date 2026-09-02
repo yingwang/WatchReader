@@ -1,4 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">WatchReader</string>
+
+    <string name="library_title">Library</string>
+    <string name="library_empty">No books</string>
+    <string name="library_empty_hint">Add from the phone app</string>
+    <string name="library_new">New</string>
+    <string name="library_progress">%1$d%%</string>
+    <string name="library_listening">Reading aloud</string>
+    <string name="library_settings">Settings</string>
+    <string name="library_delete_title">Delete %1$s?</string>
+    <string name="library_delete_yes">Delete</string>
+    <string name="library_delete_no">Keep</string>
+
+    <string name="reader_loading">Opening…</string>
+    <string name="reader_missing">This book is no longer on the watch</string>
+    <string name="reader_percent">%1$d%%</string>
+    <string name="reader_play">Read aloud</string>
+    <string name="reader_pause">Pause</string>
+    <string name="reader_stop">Stop reading aloud</string>
+    <string name="reader_jump">Go to</string>
+    <string name="reader_end">The end</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_font_size">Font %1$dsp</string>
+    <string name="settings_typeface">Typeface</string>
+    <string name="settings_typeface_sans">黑体 Sans</string>
+    <string name="settings_typeface_serif">宋体 Serif</string>
+    <string name="settings_typeface_kai">楷体 Kai</string>
+    <string name="settings_theme">Page</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_sepia">Sepia</string>
+    <string name="settings_keep_screen_on">Keep screen on while reading</string>
+    <string name="settings_speech_rate">Speed %1$sx</string>
+    <string name="settings_voice">Voice</string>
+    <string name="settings_voice_auto">Follow text</string>
+    <string name="settings_voice_zh">中文 Chinese</string>
+    <string name="settings_voice_en">English</string>
+    <string name="settings_version">v%1$s</string>
+
+    <string name="tts_channel_name">Read aloud</string>
+    <string name="tts_loading">Opening book…</string>
+    <string name="tts_reading_aloud">Reading aloud</string>
+    <string name="tts_paused">Paused</string>
+    <string name="tts_action_pause">Pause</string>
+    <string name="tts_action_resume">Resume</string>
+    <string name="tts_action_stop">Stop</string>
+    <string name="tts_no_engine">No text-to-speech engine on this watch</string>
 </resources>

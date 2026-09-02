@@ -1,6 +1,7 @@
 package com.watchreader.mobile.ui.screen
 
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -9,10 +10,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -32,9 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.watchreader.mobile.R
+import com.watchreader.mobile.ui.SharedIntent
 import com.watchreader.mobile.ui.viewmodel.AddBookViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,43 +62,40 @@ fun AddBookScreen(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedFileName by remember { mutableStateOf("") }
 
-    val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            selectedUri = uri
-            // Extract filename from URI
-            val cursor = context.contentResolver.query(uri, null, null, null, null)
-            cursor?.use {
-                if (it.moveToFirst()) {
-                    val nameIndex = it.getColumnIndex("_display_name")
-                    if (nameIndex >= 0) {
-                        selectedFileName = it.getString(nameIndex)
-                        if (title.isBlank()) {
-                            title = selectedFileName.substringBeforeLast(".")
-                        }
-                    }
-                }
-            }
-        }
+    fun take(uri: Uri) {
+        selectedUri = uri
+        selectedFileName = displayName(context, uri)
+        vm.clearError()
+    }
+
+    // A file shared from another app lands here already selected.
+    LaunchedEffect(Unit) {
+        SharedIntent.consume()?.let { take(it) }
+    }
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) take(uri)
     }
 
     LaunchedEffect(done) {
         if (done) onBack()
     }
 
+    val fallbackTitle = selectedFileName.substringBeforeLast(".").ifBlank { selectedFileName }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add Book") },
+                title = { Text(stringResource(R.string.add_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text("<", fontSize = 20.sp)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
                 ),
             )
         },
@@ -99,80 +105,87 @@ fun AddBookScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(16.dp))
 
-            // File picker
             OutlinedButton(
-                onClick = { filePicker.launch(arrayOf("text/plain", "application/epub+zip")) },
+                onClick = {
+                    filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream"))
+                },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
                 Text(
-                    if (selectedUri != null) selectedFileName else "Select .txt or .epub",
+                    if (selectedUri != null) selectedFileName else stringResource(R.string.add_pick_file),
                     fontSize = 16.sp,
                 )
             }
 
             Spacer(Modifier.height(24.dp))
-
-            // Divider
             HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f))
             Text(
-                "or",
+                stringResource(R.string.add_or),
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 modifier = Modifier.padding(vertical = 12.dp),
             )
 
-            // URL input
             OutlinedTextField(
                 value = url,
-                onValueChange = { url = it },
-                label = { Text("URL") },
-                placeholder = { Text("https://...") },
+                onValueChange = { url = it; vm.clearError() },
+                label = { Text(stringResource(R.string.add_url_label)) },
+                placeholder = { Text(stringResource(R.string.add_url_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                enabled = selectedUri == null,
             )
 
             Spacer(Modifier.height(16.dp))
 
-            // Title input
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("Title (optional)") },
+                label = { Text(stringResource(R.string.add_book_title_label)) },
+                placeholder = { if (fallbackTitle.isNotBlank()) Text(fallbackTitle) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
 
             Spacer(Modifier.height(24.dp))
 
-            // Error
             if (error != null) {
                 Text(error!!, color = Color(0xFFEF5350), modifier = Modifier.padding(bottom = 12.dp))
             }
 
-            // Submit
             if (isLoading) {
                 CircularProgressIndicator()
             } else {
+                val fromUrl = selectedUri == null && url.isNotBlank()
                 Button(
                     onClick = {
-                        when {
-                            selectedUri != null -> vm.addFromUri(
-                                selectedUri!!,
-                                title.ifBlank { selectedFileName.substringBeforeLast(".") },
-                            )
-                            url.isNotBlank() -> vm.addFromUrl(url, title)
-                        }
+                        val uri = selectedUri
+                        if (uri != null) vm.addFromUri(uri, title, fallbackTitle)
+                        else if (url.isNotBlank()) vm.addFromUrl(url, title)
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     enabled = selectedUri != null || url.isNotBlank(),
                 ) {
-                    Text(if (url.isNotBlank() && selectedUri == null) "Download & Add" else "Add Book")
+                    Text(stringResource(if (fromUrl) R.string.add_submit_download else R.string.add_submit))
                 }
             }
+            Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+private fun displayName(context: android.content.Context, uri: Uri): String {
+    val fromProvider = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
+    return fromProvider?.takeIf { it.isNotBlank() }
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+        ?: "book"
 }

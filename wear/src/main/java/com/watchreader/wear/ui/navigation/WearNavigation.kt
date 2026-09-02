@@ -1,16 +1,26 @@
 package com.watchreader.wear.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import com.watchreader.wear.ui.WearActivity
 import com.watchreader.wear.ui.screen.LibraryScreen
 import com.watchreader.wear.ui.screen.ReaderScreen
 import com.watchreader.wear.ui.screen.SettingsScreen
 
 @Composable
-fun WearNavigation() {
+fun WearNavigation(openRequest: WearActivity.OpenRequest?) {
     val navController = rememberSwipeDismissableNavController()
+
+    LaunchedEffect(openRequest?.serial) {
+        val id = openRequest?.bookId ?: return@LaunchedEffect
+        navController.navigate("reader/$id") {
+            popUpTo("library")
+            launchSingleTop = true
+        }
+    }
 
     SwipeDismissableNavHost(
         navController = navController,
@@ -18,12 +28,8 @@ fun WearNavigation() {
     ) {
         composable("library") {
             LibraryScreen(
-                onBookClick = { bookId ->
-                    navController.navigate("reader/$bookId")
-                },
-                onSettings = {
-                    navController.navigate("settings")
-                },
+                onBookClick = { bookId -> navController.navigate("reader/$bookId") },
+                onSettings = { navController.navigate("settings") },
             )
         }
         composable("reader/{bookId}") { backStackEntry ->

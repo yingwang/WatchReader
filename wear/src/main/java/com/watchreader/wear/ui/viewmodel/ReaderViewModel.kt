@@ -2,192 +2,176 @@ package com.watchreader.wear.ui.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
-import com.watchreader.wear.tts.SentenceParser
-import com.watchreader.wear.tts.TtsManager
-import com.watchreader.wear.tts.TtsState
+import com.watchreader.wear.reader.LineMeasurer
+import com.watchreader.wear.reader.PageGeometry
+import com.watchreader.wear.reader.Paginator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+sealed class ReaderUiState {
+    object Loading : ReaderUiState()
+    object Missing : ReaderUiState()
+    data class Ready(
+        val title: String,
+        val page: Paginator.Page,
+        val totalChars: Int,
+    ) : ReaderUiState() {
+        val fraction: Float get() = if (totalChars == 0) 0f else page.end.toFloat() / totalChars
+        val atEnd: Boolean get() = page.end >= totalChars
+    }
+}
+
+/**
+ * Owns the book text and the current page. Pages are laid out by a [Paginator] against the
+ * geometry and measurer the screen supplies (it knows the font and the screen shape); until they
+ * arrive the state stays Loading.
+ */
 class ReaderViewModel(
     application: Application,
     private val bookId: String,
 ) : AndroidViewModel(application) {
 
-    val ttsManager = TtsManager(application)
+    private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
+    val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
-    private val _book = MutableStateFlow<WearBook?>(null)
-    val book: StateFlow<WearBook?> = _book.asStateFlow()
-
-    private val _fullText = MutableStateFlow("")
-    val fullText: StateFlow<String> = _fullText.asStateFlow()
-
-    private val _pages = MutableStateFlow<List<String>>(emptyList())
-    val pages: StateFlow<List<String>> = _pages.asStateFlow()
-
-    private val _currentPage = MutableStateFlow(0)
-    val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
-
-    private val _charsPerPage = MutableStateFlow(60)
-
-    val ttsState: StateFlow<TtsState> = ttsManager.state
-    val currentSentenceIndex: StateFlow<Int> = ttsManager.currentSentenceIndex
+    private var book: WearBook? = null
+    private var text: String = ""
+    private var loaded = false
+    private var layout: Pair<PageGeometry, LineMeasurer>? = null
+    private var paginator: Paginator? = null
+    private var page: Paginator.Page? = null
+    private var restoreOffset = 0
+    private var flipsSinceSync = 0
 
     init {
         viewModelScope.launch {
-            val wearBook = WearBookRepository.getById(bookId) ?: return@launch
-            _book.value = wearBook
-            val text = WearBookRepository.loadText(wearBook)
-            // Normalize line endings and collapse blank lines
-            val cleaned = text
-                .replace("\r", "")
-                .replace(Regex("([ \\t]*\\n){3,}"), "\n\n")
-                .trim()
-            _fullText.value = cleaned
-            paginate(cleaned)
-
-            // Restore reading position
-            if (wearBook.readOffsetChars > 0) {
-                val pageIndex = findPageForOffset(wearBook.readOffsetChars)
-                _currentPage.value = pageIndex
+            val found = WearBookRepository.getById(bookId)
+            if (found == null) {
+                _state.value = ReaderUiState.Missing
+                return@launch
             }
-        }
-
-        // Auto-advance page when TTS finishes a page
-        viewModelScope.launch {
-            ttsManager.onPageDone.collect {
-                if (_currentPage.value < _pages.value.size - 1) {
-                    nextPage()
-                    startTtsForCurrentPage()
-                } else {
-                    ttsManager.stop()
-                }
+            book = found
+            text = runCatching { WearBookRepository.loadText(found) }.getOrElse {
+                _state.value = ReaderUiState.Missing
+                return@launch
             }
+            restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            loaded = true
+            rebuild()
         }
     }
 
-    private fun paginate(text: String) {
-        val cpp = _charsPerPage.value
-        val pageList = mutableListOf<String>()
-        var pos = 0
-        while (pos < text.length) {
-            // Skip leading whitespace/newlines between pages
-            while (pos < text.length && text[pos].isWhitespace()) pos++
-            if (pos >= text.length) break
-            val end = findPageBreak(text, pos, cpp)
-            val page = text.substring(pos, end).trimEnd()
-            if (page.isNotEmpty()) {
-                pageList.add(page)
-            }
-            pos = end
-        }
-        _pages.value = pageList
+    /** Called by the screen whenever the font, the screen shape or the measurer changes. */
+    fun attachLayout(geometry: PageGeometry, measurer: LineMeasurer) {
+        layout = geometry to measurer
+        if (loaded) rebuild()
     }
 
-    private fun findPageBreak(text: String, start: Int, maxChars: Int): Int {
-        val end = (start + maxChars).coerceAtMost(text.length)
-        if (end >= text.length) return text.length
-
-        // Try to break at paragraph (only search between start and end)
-        for (i in end - 1 downTo start + maxChars / 2) {
-            if (i + 1 < text.length && text[i] == '\n' && text[i + 1] == '\n') {
-                return i + 2
-            }
-        }
-
-        // Try to break at sentence
-        val sentenceEnds = listOf('。', '！', '？', '.', '!', '?', '\n')
-        for (i in end - 1 downTo start + maxChars / 2) {
-            if (text[i] in sentenceEnds) return i + 1
-        }
-
-        // Try to break at comma or space
-        val softBreaks = listOf('，', '、', ',', ' ', '；', ';')
-        for (i in end - 1 downTo start + maxChars / 2) {
-            if (text[i] in softBreaks) return i + 1
-        }
-
-        // Hard break
-        return end
-    }
-
-    private fun findPageForOffset(charOffset: Int): Int {
-        var accumulated = 0
-        for ((i, page) in _pages.value.withIndex()) {
-            accumulated += page.length
-            if (accumulated >= charOffset) return i
-        }
-        return 0
-    }
-
-    private fun currentCharOffset(): Int {
-        var offset = 0
-        for (i in 0 until _currentPage.value.coerceAtMost(_pages.value.size)) {
-            offset += _pages.value[i].length
-        }
-        return offset
+    private fun rebuild() {
+        val (geometry, measurer) = layout ?: return
+        val p = Paginator(text, geometry, measurer)
+        paginator = p
+        val start = page?.start ?: restoreOffset
+        page = if (start >= text.length && text.isNotEmpty()) p.pageEndingAt(text.length) else p.pageFrom(start)
+        publish()
     }
 
     fun nextPage() {
-        val next = (_currentPage.value + 1).coerceAtMost(_pages.value.size - 1)
-        if (next != _currentPage.value) {
-            _currentPage.value = next
-            saveProgress()
-        }
+        val p = paginator ?: return
+        val current = page ?: return
+        if (current.end >= p.length) return
+        page = p.pageFrom(current.end)
+        publish()
+        flipped()
     }
 
     fun prevPage() {
-        val prev = (_currentPage.value - 1).coerceAtLeast(0)
-        if (prev != _currentPage.value) {
-            _currentPage.value = prev
-            saveProgress()
+        val p = paginator ?: return
+        val current = page ?: return
+        if (current.start <= 0) return
+        page = p.pageEndingAt(current.start)
+        publish()
+        flipped()
+    }
+
+    fun jumpToFraction(fraction: Float) {
+        val p = paginator ?: return
+        if (!loaded) return
+        val offset = (fraction.coerceIn(0f, 1f) * p.length).toInt()
+        page = if (fraction >= 1f) p.pageEndingAt(p.length) else p.pageFrom(p.paragraphStart(offset))
+        publish()
+        saveProgress(toPhone = true)
+    }
+
+    /** Keeps the page under the sentence being read aloud. */
+    fun followSpoken(offset: Int) {
+        val p = paginator ?: return
+        val current = page ?: return
+        if (offset in current.start until current.end) return
+        page = if (offset >= current.end) {
+            val next = p.pageFrom(current.end)
+            if (offset in next.start until next.end) next else p.pageFrom(offset)
+        } else {
+            p.pageFrom(offset)
         }
+        publish()
     }
 
-    fun toggleTts() {
-        when (ttsManager.state.value) {
-            TtsState.IDLE -> startTtsForCurrentPage()
-            TtsState.PLAYING -> ttsManager.togglePlayPause()
-            TtsState.PAUSED -> ttsManager.togglePlayPause()
-            TtsState.LOADING -> {}
-        }
+    private fun publish() {
+        val b = book ?: return
+        val current = page ?: return
+        _state.value = ReaderUiState.Ready(title = b.title, page = current, totalChars = text.length)
     }
 
-    private fun startTtsForCurrentPage() {
-        val pageText = _pages.value.getOrNull(_currentPage.value) ?: return
-        val sentences = SentenceParser.splitWithRanges(pageText)
-        ttsManager.speakPage(sentences)
+    private fun flipped() {
+        flipsSinceSync++
+        val toPhone = flipsSinceSync >= SYNC_EVERY_FLIPS
+        if (toPhone) flipsSinceSync = 0
+        saveProgress(toPhone)
     }
 
-    fun setCharsPerPage(cpp: Int) {
-        _charsPerPage.value = cpp
-        val text = _fullText.value
-        if (text.isNotEmpty()) {
-            val currentOffset = currentCharOffset()
-            paginate(text)
-            _currentPage.value = findPageForOffset(currentOffset)
-        }
-    }
-
-    fun getProgress(): Float {
-        val total = _pages.value.size
-        if (total == 0) return 0f
-        return (_currentPage.value + 1).toFloat() / total
-    }
-
-    private fun saveProgress() {
+    fun saveProgress(toPhone: Boolean) {
+        val b = book ?: return
+        val offset = page?.start ?: return
         viewModelScope.launch {
-            WearBookRepository.updateProgress(bookId, currentCharOffset())
+            withContext(NonCancellable + Dispatchers.IO) {
+                WearBookRepository.updateProgress(b.id, offset)
+                if (toPhone) WearBookRepository.sendProgressToPhone(b, offset)
+            }
         }
     }
 
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     override fun onCleared() {
+        // viewModelScope is gone by now; hand the last save to a scope that outlives us.
+        val b = book
+        val offset = page?.start
+        if (b != null && offset != null) {
+            GlobalScope.launch(Dispatchers.IO) {
+                WearBookRepository.updateProgress(b.id, offset)
+                WearBookRepository.sendProgressToPhone(b, offset)
+            }
+        }
         super.onCleared()
-        saveProgress()
-        ttsManager.shutdown()
+    }
+
+    private companion object {
+        const val SYNC_EVERY_FLIPS = 8
+    }
+
+    class Factory(private val application: Application, private val bookId: String) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = ReaderViewModel(application, bookId) as T
     }
 }

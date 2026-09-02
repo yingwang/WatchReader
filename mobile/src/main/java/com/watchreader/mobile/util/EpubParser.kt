@@ -1,93 +1,125 @@
 package com.watchreader.mobile.util
 
 import java.io.InputStream
+import java.net.URLDecoder
 import java.util.zip.ZipInputStream
 
+/**
+ * A small EPUB 2/3 reader: container.xml -> OPF -> spine order -> XHTML -> plain text.
+ * It is deliberately regex based (no XML parser on the hot path) but it does resolve hrefs the way
+ * a real reader would: percent-decoded and normalised against the OPF's directory.
+ */
 object EpubParser {
+    class Epub(val title: String, val text: String)
 
-    fun parse(inputStream: InputStream): String {
-        val entries = mutableMapOf<String, ByteArray>()
+    fun looksLikeEpub(bytes: ByteArray): Boolean =
+        bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
+
+    fun parse(inputStream: InputStream): Epub {
+        val entries = HashMap<String, ByteArray>()
         ZipInputStream(inputStream).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
-                if (!entry.isDirectory) {
-                    entries[entry.name] = zip.readBytes()
-                }
+                if (!entry.isDirectory) entries[entry.name] = zip.readBytes()
                 entry = zip.nextEntry
             }
         }
 
-        // Find OPF path from container.xml
         val container = entries["META-INF/container.xml"]?.toString(Charsets.UTF_8)
             ?: throw IllegalArgumentException("Not a valid EPUB file")
-        val opfPath = Regex("""full-path="([^"]+)""").find(container)?.groupValues?.get(1)
+        val opfPath = Regex("""full-path="([^"]+)"""").find(container)?.groupValues?.get(1)
             ?: throw IllegalArgumentException("Cannot find OPF in EPUB")
-
         val opfContent = entries[opfPath]?.toString(Charsets.UTF_8)
             ?: throw IllegalArgumentException("Cannot read OPF")
         val opfDir = opfPath.substringBeforeLast("/", "")
 
-        // Parse manifest: id -> href
-        val manifest = mutableMapOf<String, String>()
-        Regex("""<item[^>]*?/?>""").findAll(opfContent).forEach { m ->
+        val title = Regex("""<dc:title[^>]*>(.*?)</dc:title>""", RegexOption.DOT_MATCHES_ALL)
+            .find(opfContent)?.groupValues?.get(1)?.let { decodeEntities(it).trim() } ?: ""
+
+        // manifest: id -> resolved zip path (only documents that can hold text)
+        val manifest = HashMap<String, String>()
+        Regex("""<item\b[^>]*?/?>""").findAll(opfContent).forEach { m ->
             val tag = m.value
-            val id = Regex("""id="([^"]*)""").find(tag)?.groupValues?.get(1) ?: return@forEach
-            val href = Regex("""href="([^"]*)""").find(tag)?.groupValues?.get(1) ?: return@forEach
-            val mediaType = Regex("""media-type="([^"]*)""").find(tag)?.groupValues?.get(1) ?: ""
+            val id = attr(tag, "id") ?: return@forEach
+            val href = attr(tag, "href") ?: return@forEach
+            val mediaType = attr(tag, "media-type") ?: ""
             if (mediaType.contains("html") || mediaType.contains("xml")) {
-                manifest[id] = href
+                manifest[id] = resolve(opfDir, href)
             }
         }
 
-        // Parse spine: ordered list of idref
-        val spine = mutableListOf<String>()
-        Regex("""<itemref[^>]*?/?>""").findAll(opfContent).forEach { m ->
-            val idref = Regex("""idref="([^"]*)""").find(m.value)?.groupValues?.get(1) ?: return@forEach
-            spine.add(idref)
-        }
+        val spine = Regex("""<itemref\b[^>]*?/?>""").findAll(opfContent)
+            .mapNotNull { attr(it.value, "idref") }
+            .toList()
 
-        // Read chapters in spine order, convert HTML to text
         val result = StringBuilder()
         for (idref in spine) {
-            val href = manifest[idref] ?: continue
-            val path = if (opfDir.isNotEmpty()) "$opfDir/$href" else href
+            val path = manifest[idref] ?: continue
             val html = entries[path]?.toString(Charsets.UTF_8) ?: continue
             val text = htmlToText(html)
             if (text.isNotBlank()) {
-                result.appendLine(text)
-                result.appendLine()
+                result.append(text).append("\n\n")
             }
         }
-        return result.toString().trim()
+        return Epub(title, result.toString().trim())
     }
 
-    private fun htmlToText(html: String): String {
+    private fun attr(tag: String, name: String): String? =
+        Regex("""\b$name\s*=\s*"([^"]*)"""").find(tag)?.groupValues?.get(1)
+            ?: Regex("""\b$name\s*=\s*'([^']*)'""").find(tag)?.groupValues?.get(1)
+
+    /** Joins an OPF-relative href to the OPF directory, decoding %20 and collapsing "../". */
+    internal fun resolve(opfDir: String, href: String): String {
+        val decoded = runCatching { URLDecoder.decode(href.substringBefore('#'), "UTF-8") }.getOrDefault(href)
+        val raw = if (opfDir.isEmpty()) decoded else "$opfDir/$decoded"
+        val parts = ArrayList<String>()
+        for (part in raw.split('/')) {
+            when (part) {
+                "", "." -> {}
+                ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.size - 1)
+                else -> parts.add(part)
+            }
+        }
+        return parts.joinToString("/")
+    }
+
+    internal fun htmlToText(html: String): String {
         var s = html
-        // Remove style/script blocks
-        s = s.replace(Regex("<(style|script)[^>]*>.*?</(style|script)>", RegexOption.DOT_MATCHES_ALL), "")
-        // Block elements → newlines
+        s = s.replace(Regex("<(style|script|head)[^>]*>.*?</(style|script|head)>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+        s = s.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
         s = s.replace(Regex("<br[^>]*/?>", RegexOption.IGNORE_CASE), "\n")
-        s = s.replace(Regex("</(p|div|h[1-6]|li|tr|blockquote)>", RegexOption.IGNORE_CASE), "\n")
-        s = s.replace(Regex("<(p|div|h[1-6])[^>]*>", RegexOption.IGNORE_CASE), "\n")
-        // Strip remaining tags
+        s = s.replace(Regex("</(p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|dd|dt|pre|table)>", RegexOption.IGNORE_CASE), "\n")
+        // Opening block tags add nothing: one newline per closed block keeps paragraphs on
+        // consecutive lines, which is what a watch-sized page wants; an empty <p></p> still
+        // survives as a blank line for scene breaks.
+        s = s.replace(Regex("<hr\\b[^>]*/?>", RegexOption.IGNORE_CASE), "\n\n")
         s = s.replace(Regex("<[^>]+>"), "")
-        // Decode HTML entities
-        s = s.replace("&nbsp;", " ").replace("&amp;", "&")
-            .replace("&lt;", "<").replace("&gt;", ">")
-            .replace("&quot;", "\"").replace("&#39;", "'")
-            .replace("&mdash;", "\u2014").replace("&ndash;", "\u2013")
-            .replace("&hellip;", "\u2026").replace("&lsquo;", "\u2018")
-            .replace("&rsquo;", "\u2019").replace("&ldquo;", "\u201C")
-            .replace("&rdquo;", "\u201D")
-        s = s.replace(Regex("&#(\\d+);")) {
-            runCatching { it.groupValues[1].toInt().toChar().toString() }.getOrDefault("")
-        }
-        s = s.replace(Regex("&#x([0-9a-fA-F]+);")) {
-            runCatching { it.groupValues[1].toInt(16).toChar().toString() }.getOrDefault("")
-        }
-        // Clean whitespace
+        s = decodeEntities(s)
+        s = s.replace(' ', ' ')
         s = s.replace(Regex("[ \\t]+"), " ")
+        s = s.replace(Regex(" *\\n *"), "\n")
         s = s.replace(Regex("\\n{3,}"), "\n\n")
         return s.trim()
     }
+
+    private val namedEntities = mapOf(
+        "nbsp" to " ", "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'",
+        "mdash" to "—", "ndash" to "–", "hellip" to "…", "lsquo" to "‘",
+        "rsquo" to "’", "ldquo" to "“", "rdquo" to "”", "copy" to "©",
+        "reg" to "®", "trade" to "™", "middot" to "·", "laquo" to "«",
+        "raquo" to "»", "shy" to "", "ensp" to " ", "emsp" to " ", "thinsp" to " ",
+    )
+
+    internal fun decodeEntities(input: String): String =
+        Regex("&(#x[0-9a-fA-F]+|#\\d+|[a-zA-Z]+);").replace(input) { m ->
+            val body = m.groupValues[1]
+            when {
+                body.startsWith("#x") -> codePoint(body.substring(2).toIntOrNull(16))
+                body.startsWith("#") -> codePoint(body.substring(1).toIntOrNull())
+                else -> namedEntities[body] ?: m.value
+            }
+        }
+
+    private fun codePoint(cp: Int?): String =
+        if (cp == null || cp <= 0 || cp > 0x10FFFF) "" else String(Character.toChars(cp))
 }

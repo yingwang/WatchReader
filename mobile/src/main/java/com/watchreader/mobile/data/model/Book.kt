@@ -13,4 +13,5 @@ data class Book(
     val syncStatus: SyncStatus = SyncStatus.NOT_SENT,
     val lastSyncEpochMs: Long = 0,
     val readProgress: Float = 0f,
+    val totalChars: Int = 0,
 )
