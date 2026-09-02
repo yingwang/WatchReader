@@ -1,5 +1,6 @@
 package com.watchreader.mobile.util
 
+import com.watchreader.shared.Chapter
 import java.io.InputStream
 import java.net.URLDecoder
 import java.util.zip.ZipInputStream
@@ -10,7 +11,7 @@ import java.util.zip.ZipInputStream
  * a real reader would: percent-decoded and normalised against the OPF's directory.
  */
 object EpubParser {
-    class Epub(val title: String, val text: String, val cover: ByteArray?)
+    class Epub(val title: String, val text: String, val cover: ByteArray?, val chapters: List<Chapter>)
 
     fun looksLikeEpub(bytes: ByteArray): Boolean =
         bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
@@ -63,19 +64,66 @@ object EpubParser {
             .toList()
 
         val result = StringBuilder()
+        val chapters = ArrayList<Chapter>()
+        val docStart = HashMap<String, Int>()
         for (idref in spine) {
             val path = manifest[idref] ?: continue
             val html = entries[path]?.toString(Charsets.UTF_8) ?: continue
             val text = htmlToText(html)
             if (text.isNotBlank()) {
+                docStart[path] = result.length
+                // One spine document is one chapter; its own heading names it, else its first line.
+                val heading = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+                    .find(html)?.groupValues?.get(1)?.let { htmlToText(it) }?.trim()
+                val name = heading?.takeIf { it.isNotBlank() }
+                    ?: text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+                if (name.isNotBlank()) chapters.add(Chapter(name.take(80), result.length))
                 result.append(text).append("\n\n")
             }
         }
+        // The book's own table of contents beats guessing from headings, when it has one.
+        val navPath = Regex("""<item\\b[^>]*?/?>""").findAll(opfContent)
+            .mapNotNull { tag ->
+                val href = attr(tag.value, "href") ?: return@mapNotNull null
+                val type = attr(tag.value, "media-type") ?: ""
+                when {
+                    attr(tag.value, "properties")?.contains("nav") == true -> resolve(opfDir, href)
+                    type == "application/x-dtbncx+xml" -> resolve(opfDir, href)
+                    else -> null
+                }
+            }.firstOrNull()
+        val declared = navPath?.let { entries[it] }?.toString(Charsets.UTF_8)?.let { nav ->
+            tocEntries(nav, opfDir).mapNotNull { (name, target) ->
+                docStart[target]?.let { Chapter(name, it) }
+            }
+        }.orEmpty()
+        if (declared.size >= 2) {
+            chapters.clear()
+            chapters.addAll(declared)
+        }
+
         val coverPath = images[declaredCoverId]
             ?: images.entries.firstOrNull { (id, path) ->
                 id.contains("cover", true) || path.substringAfterLast('/').contains("cover", true)
             }?.value
-        return Epub(title, result.toString().trim(), coverPath?.let { entries[it] })
+        return Epub(title, result.toString().trim(), coverPath?.let { entries[it] }, chapters)
+    }
+
+    /** Titles and targets from an EPUB 3 nav document or an EPUB 2 NCX, in reading order. */
+    private fun tocEntries(nav: String, opfDir: String): List<Pair<String, String>> {
+        val ncx = Regex("""<navPoint\\b.*?</navPoint>""", RegexOption.DOT_MATCHES_ALL).findAll(nav).mapNotNull { point ->
+            val label = Regex("""<text[^>]*>(.*?)</text>""", RegexOption.DOT_MATCHES_ALL)
+                .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
+            val src = Regex("""<content[^>]*\\bsrc="([^"]+)""" + "\"")
+                .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
+            decodeEntities(label).trim().take(80) to resolve(opfDir, src)
+        }.toList()
+        if (ncx.isNotEmpty()) return ncx
+        return Regex("""<a\\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(nav)
+            .map { htmlToText(it.groupValues[2]).trim().take(80) to resolve(opfDir, it.groupValues[1]) }
+            .filter { it.first.isNotBlank() }
+            .toList()
     }
 
     private fun attr(tag: String, name: String): String? =
@@ -101,20 +149,25 @@ object EpubParser {
         var s = html
         s = s.replace(Regex("<(style|script|head)[^>]*>.*?</(style|script|head)>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         s = s.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
-        s = s.replace(Regex("<br[^>]*/?>", RegexOption.IGNORE_CASE), "\n")
-        s = s.replace(Regex("</(p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|dd|dt|pre|table)>", RegexOption.IGNORE_CASE), "\n")
-        // Opening block tags add nothing: one newline per closed block keeps paragraphs on
-        // consecutive lines, which is what a watch-sized page wants; an empty <p></p> still
-        // survives as a blank line for scene breaks.
-        s = s.replace(Regex("<hr\\b[^>]*/?>", RegexOption.IGNORE_CASE), "\n\n")
+        // Mark the breaks the markup asks for, so the ones the source file merely wrapped at can
+        // be flattened away: a paragraph should reach the reader as one long line, not as the
+        // typesetting of whoever produced the file.
+        s = s.replace(Regex("<br[^>]*/?>", RegexOption.IGNORE_CASE), BREAK)
+        s = s.replace(Regex("</(p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|dd|dt|pre|table)>", RegexOption.IGNORE_CASE), PARAGRAPH)
+        s = s.replace(Regex("<hr\\b[^>]*/?>", RegexOption.IGNORE_CASE), PARAGRAPH)
         s = s.replace(Regex("<[^>]+>"), "")
         s = decodeEntities(s)
-        s = s.replace(' ', ' ')
-        s = s.replace(Regex("[ \\t]+"), " ")
+        s = s.replace('\u00a0', ' ')
+        s = s.replace(Regex("\\s+"), " ")
+        s = s.replace(PARAGRAPH, "\n\n").replace(BREAK, "\n")
         s = s.replace(Regex(" *\\n *"), "\n")
         s = s.replace(Regex("\\n{3,}"), "\n\n")
         return s.trim()
     }
+
+    /** Stand in for the breaks the markup asked for while ordinary whitespace is collapsed. */
+    private const val BREAK = "\u0001"
+    private const val PARAGRAPH = "\u0002"
 
     private val namedEntities = mapOf(
         "nbsp" to " ", "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'",

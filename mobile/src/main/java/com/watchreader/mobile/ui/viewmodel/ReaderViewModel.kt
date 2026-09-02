@@ -7,89 +7,136 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.repository.BookRepository
+import com.watchreader.shared.BookToc
+import com.watchreader.shared.Chapter
+import com.watchreader.shared.reader.LineMeasurer
+import com.watchreader.shared.reader.PageGeometry
+import com.watchreader.shared.reader.Paginator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** One paragraph of the book, and where it starts in the text the watch also has. */
-class Paragraph(val start: Int, val text: String)
-
 sealed class ReaderUiState {
     object Loading : ReaderUiState()
     object Missing : ReaderUiState()
-    class Ready(val book: Book, val paragraphs: List<Paragraph>, val firstParagraph: Int) : ReaderUiState()
+    class Ready(
+        val page: Paginator.Page,
+        val totalChars: Int,
+        val chapters: List<Chapter>,
+    ) : ReaderUiState() {
+        val fraction: Float get() = if (totalChars == 0) 0f else page.end.toFloat() / totalChars
+    }
 }
 
+/**
+ * Owns the book text and the page in front of the reader. Pages are laid out by a [Paginator]
+ * against the geometry and measurer the screen supplies, so the same book re-flows when the
+ * phone is rotated.
+ */
 class ReaderViewModel(application: Application, private val bookId: String) : AndroidViewModel(application) {
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
     private var book: Book? = null
-    private var paragraphs: List<Paragraph> = emptyList()
+    private var text: String = ""
+    private var chapters: List<Chapter> = emptyList()
+    private var loaded = false
+    private var layout: Pair<PageGeometry, LineMeasurer>? = null
+    private var paginator: Paginator? = null
+    private var page: Paginator.Page? = null
+    private var restoreOffset = 0
 
     init {
         viewModelScope.launch {
-            val loaded = BookRepository.getById(bookId)
-            if (loaded == null) {
+            val found = BookRepository.getById(bookId)
+            if (found == null) {
                 _state.value = ReaderUiState.Missing
                 return@launch
             }
-            book = loaded
-            val text = runCatching { BookRepository.loadText(loaded) }.getOrElse {
+            book = found
+            text = runCatching { BookRepository.loadText(found) }.getOrElse {
                 _state.value = ReaderUiState.Missing
                 return@launch
             }
-            paragraphs = withContext(Dispatchers.Default) { split(text) }
-            _state.value = ReaderUiState.Ready(loaded, paragraphs, paragraphAt(loaded.readOffsetChars))
+            chapters = BookToc.fromJson(found.tocJson)
+            restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            loaded = true
+            rebuild()
         }
     }
 
-    /** Called as the reader scrolls; the watch hears about it too. */
-    fun saveProgress(firstVisibleParagraph: Int) {
-        val current = book ?: return
-        val offset = paragraphs.getOrNull(firstVisibleParagraph)?.start ?: return
-        if (offset == current.readOffsetChars) return
-        book = current.copy(readOffsetChars = offset)
-        viewModelScope.launch { BookRepository.saveProgress(getApplication(), current, offset) }
+    fun attachLayout(geometry: PageGeometry, measurer: LineMeasurer) {
+        layout = geometry to measurer
+        if (loaded) rebuild()
     }
 
-    private fun paragraphAt(offset: Int): Int {
-        if (offset <= 0) return 0
-        val index = paragraphs.indexOfLast { it.start <= offset }
-        return if (index < 0) 0 else index
+    private fun rebuild() {
+        val (geometry, measurer) = layout ?: return
+        val p = Paginator(text, geometry, measurer, paragraphGaps = true)
+        paginator = p
+        val start = page?.start ?: restoreOffset
+        page = if (start >= text.length && text.isNotEmpty()) p.pageEndingAt(text.length) else p.pageFrom(start)
+        publish()
     }
 
-    /** Blank lines separate paragraphs; a very long one is broken up so scrolling stays smooth. */
-    private fun split(text: String): List<Paragraph> {
-        val out = ArrayList<Paragraph>()
-        var start = 0
-        while (start < text.length) {
-            var end = text.indexOf('\n', start)
-            if (end < 0) end = text.length
-            var chunkStart = start
-            while (end - chunkStart > MAX_PARAGRAPH_CHARS) {
-                val cut = text.lastIndexOf(' ', chunkStart + MAX_PARAGRAPH_CHARS)
-                    .takeIf { it > chunkStart } ?: (chunkStart + MAX_PARAGRAPH_CHARS)
-                out.add(Paragraph(chunkStart, text.substring(chunkStart, cut).trim()))
-                chunkStart = cut
+    fun nextPage() {
+        val p = paginator ?: return
+        val current = page ?: return
+        if (current.end >= p.length) return
+        page = p.pageFrom(current.end)
+        publish()
+        saveProgress()
+    }
+
+    fun prevPage() {
+        val p = paginator ?: return
+        val current = page ?: return
+        if (current.start <= 0) return
+        page = p.pageEndingAt(current.start)
+        publish()
+        saveProgress()
+    }
+
+    fun jumpTo(offset: Int) {
+        val p = paginator ?: return
+        page = p.pageFrom(offset.coerceIn(0, p.length))
+        publish()
+        saveProgress()
+    }
+
+    private fun publish() {
+        val current = page ?: return
+        _state.value = ReaderUiState.Ready(current, text.length, chapters)
+    }
+
+    fun saveProgress() {
+        val b = book ?: return
+        val offset = page?.start ?: return
+        viewModelScope.launch {
+            withContext(NonCancellable + Dispatchers.IO) {
+                BookRepository.saveProgress(getApplication(), b, offset)
             }
-            val line = text.substring(chunkStart, end).trim()
-            if (line.isNotEmpty()) out.add(Paragraph(chunkStart, line))
-            start = end + 1
         }
-        return out
+    }
+
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    override fun onCleared() {
+        // viewModelScope is gone by now; hand the last save to a scope that outlives us.
+        val b = book
+        val offset = page?.start
+        if (b != null && offset != null) {
+            GlobalScope.launch(Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset) }
+        }
+        super.onCleared()
     }
 
     class Factory(private val application: Application, private val bookId: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ReaderViewModel(application, bookId) as T
-    }
-
-    private companion object {
-        const val MAX_PARAGRAPH_CHARS = 2000
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = ReaderViewModel(application, bookId) as T
     }
 }

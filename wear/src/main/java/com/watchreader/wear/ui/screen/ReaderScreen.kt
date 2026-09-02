@@ -67,10 +67,10 @@ import androidx.wear.compose.material.InlineSlider
 import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.Text
 import com.watchreader.wear.R
-import com.watchreader.wear.reader.LineMeasurer
-import com.watchreader.wear.reader.PageGeometry
+import com.watchreader.shared.reader.LineMeasurer
+import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.wear.reader.Typefaces
-import com.watchreader.wear.reader.Paginator
+import com.watchreader.shared.reader.Paginator
 import com.watchreader.wear.service.TtsService
 import com.watchreader.wear.settings.ReaderPrefs
 import com.watchreader.wear.tts.TtsPlayback

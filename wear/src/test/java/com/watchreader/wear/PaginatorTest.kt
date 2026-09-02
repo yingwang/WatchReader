@@ -1,8 +1,8 @@
 package com.watchreader.wear
 
-import com.watchreader.wear.reader.LineMeasurer
-import com.watchreader.wear.reader.PageGeometry
-import com.watchreader.wear.reader.Paginator
+import com.watchreader.shared.reader.LineMeasurer
+import com.watchreader.shared.reader.PageGeometry
+import com.watchreader.shared.reader.Paginator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -1,4 +1,4 @@
-package com.watchreader.wear.reader
+package com.watchreader.shared.reader
 
 /**
  * Answers "how many characters of text[start, end) fit on one line [widthPx] wide?", following the
@@ -16,7 +16,13 @@ fun interface LineMeasurer {
  * the saved offset becomes the start of the current page, and the previous page is found by
  * searching for the start that ends exactly there.
  */
-class Paginator(val text: String, val geometry: PageGeometry, private val measurer: LineMeasurer) {
+class Paginator(
+    val text: String,
+    val geometry: PageGeometry,
+    private val measurer: LineMeasurer,
+    /** A phone page has room to show the gap between paragraphs; a watch page does not. */
+    private val paragraphGaps: Boolean = false,
+) {
 
     /** One laid-out line: the characters [start, end) drawn in [slot]; [next] is where the following line begins. */
     class Line(val slot: Int, val start: Int, val end: Int, val next: Int)
@@ -33,7 +39,11 @@ class Paginator(val text: String, val geometry: PageGeometry, private val measur
         var pos = skipBlank(start)
         val lines = ArrayList<Line>(geometry.slots.size)
         for (slot in geometry.slots.indices) {
-            // paragraph gaps are not drawn as empty lines on a watch-sized page
+            if (paragraphGaps && lines.isNotEmpty() && pos < text.length && text[pos] == '\n') {
+                while (pos < text.length && text[pos] == '\n') pos++
+                lines.add(Line(slot, pos, pos, pos))
+                continue
+            }
             while (pos < text.length && text[pos] == '\n') pos++
             if (pos >= text.length) break
             val limit = minOf(text.length, pos + MAX_LINE_CHARS)

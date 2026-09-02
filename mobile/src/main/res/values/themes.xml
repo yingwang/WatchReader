@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.WatchReader" parent="android:Theme.Material.NoActionBar" />
+    <!-- The window background is what the system shows while the app starts and in recents, so it
+         has to be the app's own paper colour; the platform default is a lighter grey. -->
+    <style name="Theme.WatchReader" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/page_background</item>
+        <item name="android:navigationBarColor">@color/page_background</item>
+        <item name="android:statusBarColor">@color/page_background</item>
+    </style>
 </resources>

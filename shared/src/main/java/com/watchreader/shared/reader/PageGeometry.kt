@@ -1,4 +1,4 @@
-package com.watchreader.wear.reader
+package com.watchreader.shared.reader
 
 import kotlin.math.floor
 import kotlin.math.max

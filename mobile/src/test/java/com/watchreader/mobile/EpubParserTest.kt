@@ -39,7 +39,7 @@ class EpubParserTest {
         )
         val parsed = EpubParser.parse(bytes.inputStream())
         assertEquals("红楼梦 & 脂评", parsed.title)
-        assertEquals("第一回\n甄士隐梦幻识通灵—“贾雨村”\n\n第二回\n贾夫人仙逝扬州城", parsed.text)
+        assertEquals("第一回\n\n甄士隐梦幻识通灵—“贾雨村”\n\n第二回\n\n贾夫人仙逝扬州城", parsed.text)
     }
 
     @Test

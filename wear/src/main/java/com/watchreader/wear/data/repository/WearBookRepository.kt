@@ -116,6 +116,6 @@ object WearBookRepository {
     private const val SAMPLE_ID = "sample"
     private const val SAMPLE_ASSET = "sample.txt"
     /** Bumped whenever the bundled guide is rewritten. */
-    private const val SAMPLE_VERSION = 3
+    private const val SAMPLE_VERSION = 4
     private const val KEY_SAMPLE_VERSION = "sample_version"
 }

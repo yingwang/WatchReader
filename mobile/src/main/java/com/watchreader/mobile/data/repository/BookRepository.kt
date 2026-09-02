@@ -8,6 +8,8 @@ import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.util.EpubParser
+import com.watchreader.shared.BookToc
+import com.watchreader.shared.Chapter
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.TextNormalizer
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +65,9 @@ object BookRepository {
                 connectTimeout = 15_000
                 readTimeout = 30_000
                 instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "WatchReader")
+                // A bare product token is turned away by several book archives, Gutenberg included.
+                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("Accept", "*/*")
             }
         } catch (e: UnknownServiceException) {
             throw ImportException("Plain http:// links are blocked by Android; use https://")
@@ -154,6 +158,7 @@ object BookRepository {
                 addedEpochMs = existing?.addedEpochMs ?: System.currentTimeMillis(),
                 syncStatus = existing?.syncStatus ?: SyncStatus.NOT_SENT,
                 totalChars = text.length,
+                tocJson = BookToc.detect(text).takeIf { it.isNotEmpty() }?.let { BookToc.toJson(it) },
             ),
         )
         prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
@@ -165,7 +170,7 @@ object BookRepository {
 
     // ---- internals ----
 
-    private class Imported(val title: String, val text: String, val cover: ByteArray?)
+    private class Imported(val title: String, val text: String, val cover: ByteArray?, val chapters: List<Chapter>)
 
     private fun importBytes(
         bytes: ByteArray,
@@ -179,11 +184,11 @@ object BookRepository {
         return if (isEpub) {
             val epub = EpubParser.parse(bytes.inputStream())
             if (epub.text.isBlank()) throw ImportException("No readable text found in this epub")
-            Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, epub.text, epub.cover)
+            Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, epub.text, epub.cover, epub.chapters)
         } else {
             val decoded = TextNormalizer.decode(bytes, declaredCharset)
             if (decoded.text.isBlank()) throw ImportException("No readable text found in this file")
-            Imported(title.ifBlank { fallbackTitle }, decoded.text, cover = null)
+            Imported(title.ifBlank { fallbackTitle }, decoded.text, cover = null, chapters = BookToc.detect(decoded.text))
         }
     }
 
@@ -203,6 +208,7 @@ object BookRepository {
             addedEpochMs = System.currentTimeMillis(),
             totalChars = imported.text.length,
             coverPath = coverFile?.absolutePath,
+            tocJson = imported.chapters.takeIf { it.isNotEmpty() }?.let { BookToc.toJson(it) },
         )
         dao.upsert(book)
         return book
@@ -227,9 +233,11 @@ object BookRepository {
         return head.contains("<html") || head.contains("<!doctype html")
     }
 
+    private const val USER_AGENT = "WatchReader/1.0 (Android; +https://yingwang.github.io/watchreader/)"
+
     private const val SAMPLE_ID = "sample"
     private const val SAMPLE_ASSET = "sample.txt"
     /** Bumped whenever the bundled guide is rewritten. */
-    private const val SAMPLE_VERSION = 1
+    private const val SAMPLE_VERSION = 2
     private const val KEY_SAMPLE_VERSION = "sample_version"
 }

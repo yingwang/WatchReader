@@ -31,6 +31,8 @@
     <string name="add_back">Back</string>
     <string name="reader_send">Send to watch</string>
     <string name="reader_on_watch">Already on your watch</string>
+    <string name="reader_contents">Contents</string>
+    <string name="reader_percent">%1$d%%</string>
     <string name="reader_missing">This book is no longer on the phone</string>
     <string name="add_pick_file">Choose a .txt or .epub</string>
     <string name="add_or">or</string>

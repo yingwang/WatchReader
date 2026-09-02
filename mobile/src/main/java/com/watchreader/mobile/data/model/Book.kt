@@ -17,4 +17,5 @@ data class Book(
     val readOffsetChars: Int = 0,
     val lastReadEpochMs: Long = 0,
     val coverPath: String? = null,
+    val tocJson: String? = null,
 )

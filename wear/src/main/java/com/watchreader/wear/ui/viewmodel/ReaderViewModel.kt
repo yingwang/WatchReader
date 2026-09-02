@@ -7,9 +7,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
-import com.watchreader.wear.reader.LineMeasurer
-import com.watchreader.wear.reader.PageGeometry
-import com.watchreader.wear.reader.Paginator
+import com.watchreader.shared.reader.LineMeasurer
+import com.watchreader.shared.reader.PageGeometry
+import com.watchreader.shared.reader.Paginator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable

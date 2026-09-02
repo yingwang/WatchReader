@@ -4,9 +4,9 @@ This short guide comes with the app, on the phone and on the watch. It explains 
 
 Reading on the phone
 
-Tap a book in the library and it opens here. Scroll as you would read anything else. Your place is kept, so the book opens where you left it.
+Tap a book in the library and it opens here, laid out a page at a time. Tap the right half of the page to go forward and the left half to go back, the same way round as on the watch. Your place is kept, so the book opens where you left it.
 
-The button in the top right of the reading screen sends the book to your watch. A book only needs sending once; after that the watch has its own copy and reads it without the phone nearby.
+Two buttons sit in the top right. The list opens the book's contents, when the book has chapters to jump between; this guide's own sections are listed there. The other sends the book to your watch. A book only needs sending once; after that the watch has its own copy and reads it without the phone nearby.
 
 Reading on the watch
 
