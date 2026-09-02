@@ -67,19 +67,17 @@ class PaginatorTest {
     }
 
     @Test
-    fun circleGeometryIsSymmetricAndNarrowerAtTheEdges() {
-        val g = PageGeometry.circle(diameterPx = 384, marginPx = 18f, lineHeightPx = 44f, minWidthPx = 120f)
-        assertTrue(g.slots.size in 5..7)
-        val widths = g.slots.map { it.width }
-        assertEquals(widths, widths.reversed())
-        assertTrue(widths.first() < widths[widths.size / 2])
-        assertTrue(widths.all { it >= 120 })
-        // every slot lies inside the circle
+    fun roundGeometryIsOneBlockThatFitsInsideTheCircle() {
+        val g = PageGeometry.round(diameterPx = 384, marginPx = 18f, lineHeightPx = 44f)
+        assertTrue(g.slots.size in 4..6)
+        assertEquals(1, g.slots.map { it.left }.distinct().size)
+        assertEquals(1, g.slots.map { it.width }.distinct().size)
         val c = 192f
+        val r = c - 18f
         for (s in g.slots) {
             val edge = maxOf(kotlin.math.abs(s.top - c), kotlin.math.abs(s.top + 44f - c))
             val half = s.width / 2f
-            assertTrue(edge * edge + half * half <= (192f - 18f) * (192f - 18f) + 1f)
+            assertTrue(edge * edge + half * half <= r * r + 1f)
         }
     }
 }

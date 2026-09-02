@@ -44,5 +44,5 @@ object TtsLanguages {
         return engine
     }
 
-    fun label(locale: Locale): String = if (locale.language == "zh") "中文" else "English"
+    fun label(locale: Locale): String = if (locale.language == "zh") "Chinese" else "English"
 }

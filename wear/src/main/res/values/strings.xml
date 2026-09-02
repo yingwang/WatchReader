@@ -25,9 +25,6 @@
     <string name="settings_title">Settings</string>
     <string name="settings_font_size">Font %1$dsp</string>
     <string name="settings_typeface">Typeface</string>
-    <string name="settings_typeface_sans">黑体 Sans</string>
-    <string name="settings_typeface_serif">宋体 Serif</string>
-    <string name="settings_typeface_kai">楷体 Kai</string>
     <string name="settings_theme">Page</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_sepia">Sepia</string>

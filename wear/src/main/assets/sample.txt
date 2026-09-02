@@ -1,38 +1,30 @@
-WatchReader 使用说明 · How to read on your watch
+Start here
 
-这本小书是随应用附带的示例。它讲清楚手表上怎么读，也顺带演示中英文朗读的切换。读完之后向左划一下就能把它删掉，删了不影响别的书。
+This short guide comes with the app. It explains how to read on the watch, and it doubles as something to try every control on. When you are done with it, swipe left to delete it; nothing else is affected.
 
-一、翻页
+Turning pages
 
-转动表冠往下翻，往回转就退回上一页。不想转表冠的话，点屏幕右半边往后翻，点左半边往回翻。读到哪一页手表都记得，下次打开还在原处，手机上也看得到进度。
+Turn the crown away from you to go forward and back towards you to go back. If you would rather not use the crown, tap the right third of the screen to go forward and the left third to go back. Your place is kept, so the book opens where you left it, and the phone shows the same percentage.
 
-二、工具栏
+The toolbar
 
-点屏幕正中间会出来一条工具栏。上面是朗读的开始与暂停，下面是一条跳转条，加号减号各按一下就走百分之五，想从头再读一遍从这里回到零最省事。再点一次屏幕中间，工具栏就收起来。
+Tap the middle of the screen and a toolbar appears. The button at the top starts and pauses reading aloud. Below it is a jump bar: each press of plus or minus moves five percent, which is the quickest way back to the beginning. Tap the middle again and the toolbar folds away. It also hides on its own after a few seconds.
 
-三、朗读
+Reading aloud
 
-工具栏上的三角形是朗读。按下去之后手表用系统的语音引擎把书念出来，念到哪一句，那一句就亮着。息屏之后不会停，退出应用也不会停，通知栏里有暂停和停止。想停下来，按工具栏上的方块，或者在通知里停。
+Press the triangle in the toolbar and the watch reads the book to you with the system speech engine. The sentence being spoken is highlighted as it goes. Reading carries on when the screen turns off and when you leave the app, and the notification carries a pause and a stop. To stop, press the square in the toolbar or stop it from the notification.
 
-朗读的语言不用选。每一句是什么语言，就用什么语言念，中英文混排的书也能一路念下去。设置页最底下会告诉你这块表上有哪几种语音；如果缺一种，去手表的系统设置里把对应的语音装上就好。
+You never have to choose a voice. Each sentence is spoken in the language it is written in, so a book in English and a book in Chinese both read correctly, and a book that mixes the two switches as it goes. The bottom of the settings screen tells you which languages this particular watch can speak. If one is missing, install its voice in the watch's own system settings.
 
-四、设置
+Settings
 
-从书目页面进设置，可以改字号、字体（黑体、宋体、楷体）、深色或米色的页面底色，还有朗读语速。字号一改，分页会按新的字号重新排，不会把字挤到圆屏边上被裁掉。
+Open Settings from the library to change the text size, the typeface, the page colour and the reading speed. Changing the text size re-flows the pages against the real screen, so nothing is ever cut off at the round edge.
 
-五、加新书
+Adding books
 
-手表本身不下载书。在手机上打开 WatchReader，点右下角的加号，选一个 txt 或者 epub 文件，或者贴一个链接；也可以在任何应用里把文件分享到 WatchReader。加好之后点一下那本书的封面，它就传到手表上来了。
+The watch does not download books itself. Open WatchReader on the phone, press the plus button, and pick a .txt or .epub file or paste a link. You can also share a file to WatchReader from any other app. Once a book is in the list, tap its cover and it goes to the watch.
 
-下面两段是公版的文字，留着让你看看真正的排版，也让朗读有中英文两段可念。
-
-桃花源记
-
-晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。渔人甚异之。复前行，欲穷其林。
-
-林尽水源，便得一山。山有小口，仿佛若有光。便舍船，从口入。初极狭，才通人。复行数十步，豁然开朗。土地平旷，屋舍俨然，有良田美池桑竹之属。阡陌交通，鸡犬相闻。其中往来种作，男女衣着，悉如外人。黄发垂髫，并怡然自乐。
-
-见渔人，乃大惊，问所从来。具答之。便要还家，设酒杀鸡作食。村中闻有此人，咸来问讯。自云先世避秦时乱，率妻子邑人来此绝境，不复出焉，遂与外人间隔。问今是何世，乃不知有汉，无论魏晋。此人一一为具言所闻，皆叹惋。
+Below is a passage in the public domain, so you have real typesetting to look at and a few paragraphs to hear read aloud.
 
 Pride and Prejudice, the first chapter
 
@@ -54,4 +46,14 @@ Mr. Bennet made no answer.
 
 This was invitation enough.
 
-读到这里，示例就结束了。向左划一下删掉它，然后去手机上加一本真正想读的书。
+"Why, my dear, you must know, Mrs. Long says that Netherfield is taken by a young man of large fortune from the north of England; that he came down on Monday in a chaise and four to see the place, and was so much delighted with it that he agreed with Mr. Morris immediately; that he is to take possession before Michaelmas, and some of his servants are to be in the house by the end of next week."
+
+"What is his name?"
+
+"Bingley."
+
+"Is he married or single?"
+
+"Oh! single, my dear, to be sure! A single man of large fortune; four or five thousand a year. What a fine thing for our girls!"
+
+That is the end of the sample. Swipe left to delete it, then add a book you actually want to read.

@@ -34,27 +34,33 @@ object WearBookRepository {
     /**
      * Puts the bundled guide in the library the first time the app runs, so a new watch has
      * something to open and something to read aloud before any book has been sent from the phone.
-     * Deleting it is final: the flag stays set, so it does not come back.
+     *
+     * A later version of the app with a rewritten guide refreshes the copy on the watch, but only
+     * while the guide is still there: once the user has swiped it away it stays gone.
      */
     suspend fun seedSampleIfNeeded() = withContext(Dispatchers.IO) {
         val prefs = appContext.getSharedPreferences("watchreader_seed", Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_SAMPLE_SEEDED, false)) return@withContext
-        runCatching {
-            val text = appContext.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
-            val file = File(booksDir, "$SAMPLE_ID.txt")
-            file.writeText(text, Charsets.UTF_8)
-            dao.upsert(
-                WearBook(
-                    id = SAMPLE_ID,
-                    title = appContext.getString(R.string.sample_title),
-                    filePath = file.absolutePath,
-                    sizeBytes = file.length(),
-                    addedEpochMs = System.currentTimeMillis(),
-                    totalChars = text.length,
+        val seeded = prefs.getInt(KEY_SAMPLE_VERSION, 0)
+        if (seeded >= SAMPLE_VERSION) return@withContext
+        val deletedByUser = seeded > 0 && dao.getById(SAMPLE_ID) == null
+        if (!deletedByUser) {
+            runCatching {
+                val text = appContext.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
+                val file = File(booksDir, "$SAMPLE_ID.txt")
+                file.writeText(text, Charsets.UTF_8)
+                dao.upsert(
+                    WearBook(
+                        id = SAMPLE_ID,
+                        title = appContext.getString(R.string.sample_title),
+                        filePath = file.absolutePath,
+                        sizeBytes = file.length(),
+                        addedEpochMs = System.currentTimeMillis(),
+                        totalChars = text.length,
+                    )
                 )
-            )
-        }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }
-        prefs.edit().putBoolean(KEY_SAMPLE_SEEDED, true).apply()
+            }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }
+        }
+        prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
     }
 
     fun observeAll(): Flow<List<WearBook>> = dao.observeAll()
@@ -104,5 +110,7 @@ object WearBookRepository {
 
     private const val SAMPLE_ID = "sample"
     private const val SAMPLE_ASSET = "sample.txt"
-    private const val KEY_SAMPLE_SEEDED = "sample_seeded"
+    /** Bumped whenever the bundled guide is rewritten. */
+    private const val SAMPLE_VERSION = 2
+    private const val KEY_SAMPLE_VERSION = "sample_version"
 }

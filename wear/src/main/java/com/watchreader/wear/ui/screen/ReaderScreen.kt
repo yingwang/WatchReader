@@ -17,6 +17,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,6 +68,7 @@ import androidx.wear.compose.material.Text
 import com.watchreader.wear.R
 import com.watchreader.wear.reader.LineMeasurer
 import com.watchreader.wear.reader.PageGeometry
+import com.watchreader.wear.reader.Typefaces
 import com.watchreader.wear.reader.Paginator
 import com.watchreader.wear.service.TtsService
 import com.watchreader.wear.settings.ReaderPrefs
@@ -91,13 +95,7 @@ fun ReaderScreen(
     val prefs = remember { ReaderPrefs(context) }
     val colors = remember { pageColors(prefs.theme) }
     val fontSize = remember { prefs.fontSize }
-    val fontFamily = remember {
-        when (prefs.fontFamily) {
-            "serif" -> FontFamily.Serif
-            "kai" -> FontFamily(Font(R.font.lxgw_wenkai))
-            else -> FontFamily.SansSerif
-        }
-    }
+    val fontFamily = remember { Typefaces.familyFor(prefs.fontFamily) }
     val textStyle = remember(fontSize, fontFamily) {
         TextStyle(
             color = colors.text,
@@ -182,14 +180,13 @@ fun ReaderScreen(
     ) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-        // Lines follow the circle on a round screen; a square screen gets a plain column.
+        // One left-aligned block, inset from the bezel on a round screen.
         val screenWpx = with(density) { maxWidth.roundToPx() }
         val screenHpx = with(density) { maxHeight.roundToPx() }
         val lineHeightPx = with(density) { (fontSize * 1.4f).sp.toPx() }
-        val fontPx = with(density) { fontSize.sp.toPx() }
         val geometry = remember(screenWpx, screenHpx, lineHeightPx, isRound) {
             if (isRound) {
-                PageGeometry.circle(minOf(screenWpx, screenHpx), marginPx = with(density) { 9.dp.toPx() }, lineHeightPx = lineHeightPx, minWidthPx = fontPx * 6f)
+                PageGeometry.round(minOf(screenWpx, screenHpx), marginPx = with(density) { 9.dp.toPx() }, lineHeightPx = lineHeightPx)
             } else {
                 PageGeometry.rect(screenWpx, screenHpx, marginPx = with(density) { 12.dp.toPx() }, lineHeightPx = lineHeightPx)
             }
@@ -314,27 +311,13 @@ private fun Toolbar(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 val playing = ttsHere && ttsState == TtsState.PLAYING
-                Text(
-                    text = if (playing) "⏸" else "▶",
-                    fontSize = 22.sp,
+                TransportButton(
+                    shape = if (playing) Transport.PAUSE else Transport.PLAY,
                     color = textColor,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(textColor.copy(alpha = 0.22f))
-                        .clickable(onClick = onPlayPause)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    onClick = onPlayPause,
                 )
                 if (ttsHere) {
-                    Text(
-                        text = "■",
-                        fontSize = 18.sp,
-                        color = textColor,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(textColor.copy(alpha = 0.22f))
-                            .clickable(onClick = onStop)
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                    )
+                    TransportButton(shape = Transport.STOP, color = textColor, onClick = onStop)
                 }
             }
             Text(
@@ -352,6 +335,46 @@ private fun Toolbar(
                 colors = InlineSliderDefaults.colors(),
                 modifier = Modifier.fillMaxWidth(0.8f),
             )
+        }
+    }
+}
+
+private enum class Transport { PLAY, PAUSE, STOP }
+
+/**
+ * The transport controls are drawn rather than typed. The glyphs for pause and stop are emoji on
+ * some system fonts and plain marks on others, so a typed toolbar comes out in two different
+ * styles on the same watch.
+ */
+@Composable
+private fun TransportButton(shape: Transport, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Canvas(
+        modifier = Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.22f))
+            .clickable(onClick = onClick),
+    ) {
+        val w = size.width
+        val mark = w * 0.36f
+        val left = (w - mark) / 2f
+        val top = (size.height - mark) / 2f
+        when (shape) {
+            Transport.PLAY -> drawPath(
+                androidx.compose.ui.graphics.Path().apply {
+                    moveTo(left + mark * 0.08f, top)
+                    lineTo(left + mark * 1.02f, top + mark / 2f)
+                    lineTo(left + mark * 0.08f, top + mark)
+                    close()
+                },
+                color,
+            )
+            Transport.PAUSE -> {
+                val bar = mark * 0.32f
+                drawRect(color, topLeft = Offset(left, top), size = Size(bar, mark))
+                drawRect(color, topLeft = Offset(left + mark - bar, top), size = Size(bar, mark))
+            }
+            Transport.STOP -> drawRect(color, topLeft = Offset(left, top), size = Size(mark, mark))
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.watchreader.wear.reader
 
-import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -9,33 +8,26 @@ import kotlin.math.sqrt
 class LineSlot(val left: Float, val top: Float, val width: Int)
 
 /**
- * Where lines may go on the screen. On a round watch the lines follow the circle: the block of
- * lines is centred, and each line is as wide as the chord of the circle at its own edges, so the
- * top and bottom lines are shorter and no corner is ever clipped. A square screen gets a plain
- * column with a margin.
+ * Where lines may go on the screen. Lines sit in one left-aligned block, centred on the screen.
+ * On a round watch the block is the largest rectangle that fits inside the circle, which is a
+ * square: widening it past that costs more lines than it gains characters.
  */
 class PageGeometry(val slots: List<LineSlot>, val lineHeight: Float) {
 
     companion object {
-        fun circle(diameterPx: Int, marginPx: Float, lineHeightPx: Float, minWidthPx: Float): PageGeometry {
+        fun round(diameterPx: Int, marginPx: Float, lineHeightPx: Float): PageGeometry {
             val r = diameterPx / 2f - marginPx
-            val c = diameterPx / 2f
-            val maxLines = floor(2 * r / lineHeightPx).toInt()
-            // Fewer lines re-centre the block and widen the outer ones; take the most lines whose
-            // outer lines are still wide enough to read.
-            for (n in maxLines downTo 1) {
-                val top0 = c - n * lineHeightPx / 2f
-                val slots = (0 until n).map { i ->
-                    val top = top0 + i * lineHeightPx
-                    val bottom = top + lineHeightPx
-                    val edge = max(abs(top - c), abs(bottom - c))
-                    val half = sqrt(max(0f, r * r - edge * edge))
-                    LineSlot(left = c - half, top = top, width = (2 * half).toInt())
-                }
-                if (slots.all { it.width >= minWidthPx }) return PageGeometry(slots, lineHeightPx)
-            }
-            return PageGeometry(emptyList(), lineHeightPx)
+            val maxLines = floor(2 * r / lineHeightPx).toInt().coerceAtLeast(1)
+            // Taller blocks are narrower ones inside a circle; take the shape that fits the most text.
+            val n = (1..maxLines).maxByOrNull { it * blockWidth(r, it * lineHeightPx) } ?: 1
+            val width = blockWidth(r, n * lineHeightPx)
+            val left = diameterPx / 2f - width / 2f
+            val top0 = (diameterPx - n * lineHeightPx) / 2f
+            val slots = (0 until n).map { i -> LineSlot(left, top0 + i * lineHeightPx, width.toInt()) }
+            return PageGeometry(slots, lineHeightPx)
         }
+
+        private fun blockWidth(r: Float, height: Float): Float = 2 * sqrt(max(0f, r * r - height * height / 4))
 
         fun rect(widthPx: Int, heightPx: Int, marginPx: Float, lineHeightPx: Float): PageGeometry {
             val n = floor((heightPx - 2 * marginPx) / lineHeightPx).toInt().coerceAtLeast(1)

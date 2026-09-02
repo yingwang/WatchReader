@@ -32,13 +32,12 @@ import androidx.wear.compose.material.ToggleChipDefaults
 import com.watchreader.wear.BuildConfig
 import com.watchreader.wear.R
 import com.watchreader.wear.settings.ReaderPrefs
+import com.watchreader.wear.reader.Typefaces
 import com.watchreader.wear.settings.ReaderTheme
 import com.watchreader.wear.tts.TtsLanguages
 import com.watchreader.wear.ui.theme.DimText
 import com.watchreader.wear.ui.theme.WarmAmber
 import com.watchreader.wear.ui.theme.WarmWhite
-
-private val FONT_OPTIONS = listOf("sans" to R.string.settings_typeface_sans, "serif" to R.string.settings_typeface_serif, "kai" to R.string.settings_typeface_kai)
 
 @Composable
 fun SettingsScreen() {
@@ -89,10 +88,10 @@ fun SettingsScreen() {
             }
 
             item {
-                val label = stringResource(FONT_OPTIONS.first { it.first == fontFamily }.second)
-                CycleRow(stringResource(R.string.settings_typeface), label) {
-                    val idx = FONT_OPTIONS.indexOfFirst { it.first == fontFamily }
-                    fontFamily = FONT_OPTIONS[(idx + 1) % FONT_OPTIONS.size].first
+                CycleRow(stringResource(R.string.settings_typeface), Typefaces.labelFor(fontFamily)) {
+                    val faces = Typefaces.available()
+                    val idx = faces.indexOfFirst { it.key == fontFamily }
+                    fontFamily = faces[(idx + 1) % faces.size].key
                     prefs.fontFamily = fontFamily
                     tick()
                 }
