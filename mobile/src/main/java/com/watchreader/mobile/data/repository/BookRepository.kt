@@ -60,6 +60,9 @@ object BookRepository {
     /** Downloads a .txt or .epub from [url]; web pages are refused rather than saved as books. */
     suspend fun addFromUrl(url: String, title: String): Book = withContext(Dispatchers.IO) {
         val parsed = runCatching { URL(url.trim()) }.getOrElse { throw ImportException("That is not a valid URL") }
+        if (parsed.protocol != "http" && parsed.protocol != "https") {
+            throw ImportException("Only http:// and https:// links can be downloaded")
+        }
         val conn = try {
             (parsed.openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15_000
@@ -104,8 +107,9 @@ object BookRepository {
         dao.deleteById(id)
     }
 
-    suspend fun updateSyncStatus(id: String, status: SyncStatus) {
-        dao.updateSyncStatus(id, status, System.currentTimeMillis())
+    /** [message] is the watch's reason when a transfer failed; the library shows it under the cover. */
+    suspend fun updateSyncStatus(id: String, status: SyncStatus, message: String? = null) {
+        dao.updateSyncStatus(id, status, System.currentTimeMillis(), message?.takeIf { it.isNotBlank() })
     }
 
     /**
@@ -128,11 +132,19 @@ object BookRepository {
     }
 
     /**
-     * Records where the reader on the phone got to, and tells the watch about it. [atEpochMs] is
-     * when the page was turned; a save repeated later keeps that stamp, so both sides' guards
-     * still let a more recent reading from the other device win.
+     * Records where the reader on the phone got to and, when [toWatch] is set, tells the watch.
+     * [atEpochMs] is when the page was turned; a save repeated later keeps that stamp, so both
+     * sides' guards still let a more recent reading from the other device win. Telling the watch
+     * costs a capability lookup and wakes its listener, so the reader does it every few turns
+     * and on the way out rather than on every page.
      */
-    suspend fun saveProgress(context: Context, book: Book, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
+    suspend fun saveProgress(
+        context: Context,
+        book: Book,
+        offset: Int,
+        atEpochMs: Long = System.currentTimeMillis(),
+        toWatch: Boolean = true,
+    ) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
         val progress = ReadingProgress(
             bookId = book.id,
@@ -141,7 +153,7 @@ object BookRepository {
             lastReadEpochMs = atEpochMs,
         )
         applyProgress(progress)
-        BookSender(context).sendProgress(progress)
+        if (toWatch) BookSender(context).sendProgress(progress)
     }
 
     /**

@@ -77,8 +77,9 @@ object WearBookRepository {
         if (tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
     }
 
-    suspend fun updateProgress(id: String, offset: Int) {
-        dao.updateProgress(id, offset, System.currentTimeMillis())
+    /** [atEpochMs] is when the reading happened; a save repeated later keeps that stamp. */
+    suspend fun updateProgress(id: String, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
+        dao.updateProgress(id, offset, atEpochMs)
     }
 
     /** Progress read on the phone. The later of the two readings wins (see the DAO's guard). */
@@ -87,13 +88,13 @@ object WearBookRepository {
     }
 
     /** Best effort; the phone shows the percentage on the book's cover. */
-    suspend fun sendProgressToPhone(book: WearBook, offset: Int) {
+    suspend fun sendProgressToPhone(book: WearBook, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
         val progress = ReadingProgress(
             bookId = book.id,
             charOffset = offset,
             percentage = (offset.toFloat() / total).coerceIn(0f, 1f),
-            lastReadEpochMs = System.currentTimeMillis(),
+            lastReadEpochMs = atEpochMs,
         )
         sendToPhone(DataLayerPaths.PROGRESS_PATH, progress.toJson().toByteArray(Charsets.UTF_8))
     }

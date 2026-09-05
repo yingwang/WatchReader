@@ -22,10 +22,10 @@ interface BookDao {
     @Query("DELETE FROM book WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("UPDATE book SET syncStatus = :status, lastSyncEpochMs = :epochMs WHERE id = :id")
-    suspend fun updateSyncStatus(id: String, status: SyncStatus, epochMs: Long)
+    @Query("UPDATE book SET syncStatus = :status, lastSyncEpochMs = :epochMs, syncMessage = :message WHERE id = :id")
+    suspend fun updateSyncStatus(id: String, status: SyncStatus, epochMs: Long, message: String?)
 
-    @Query("UPDATE book SET syncStatus = :to, lastSyncEpochMs = :epochMs WHERE syncStatus = :from")
+    @Query("UPDATE book SET syncStatus = :to, lastSyncEpochMs = :epochMs, syncMessage = NULL WHERE syncStatus = :from")
     suspend fun replaceSyncStatus(from: SyncStatus, to: SyncStatus, epochMs: Long): Int
 
     @Query(

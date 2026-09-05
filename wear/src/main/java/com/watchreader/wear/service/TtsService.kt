@@ -49,10 +49,13 @@ class TtsService : Service() {
     private var text: String = ""
     private var sentences: List<Pair<String, IntRange>> = emptyList()
     private var nextToQueue = 0
-    private var current = -1
+    @Volatile private var current = -1
     private var currentLocale: Locale? = null
     private var sentencesSinceSave = 0
     private var finishedBook = false
+
+    /** Bumped by every play(); work left over from an earlier book checks it and stands down. */
+    @Volatile private var playSerial = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -95,15 +98,20 @@ class TtsService : Service() {
     }
 
     private fun play(bookId: String, offset: Int) {
+        val serial = ++playSerial
+        finishedBook = false
         TtsPlayback.set(TtsState.LOADING, bookId, null)
         scope.launch {
             val loaded = WearBookRepository.getById(bookId)
             if (loaded == null) {
-                finish()
+                if (serial == playSerial) finish()
                 return@launch
             }
+            val loadedText = WearBookRepository.loadText(loaded)
+            // another play() came in while this one was reading the file; that one owns the engine now
+            if (serial != playSerial) return@launch
             book = loaded
-            text = WearBookRepository.loadText(loaded)
+            text = loadedText
             sentences = SentenceParser.splitWithRanges(text, offset.coerceIn(0, text.length))
             if (sentences.isEmpty()) {
                 finish()
@@ -113,6 +121,7 @@ class TtsService : Service() {
             tts?.stop()
             nextToQueue = 0
             current = -1
+            sentencesSinceSave = 0
             goForeground(loaded.title, playing = true)
             TtsPlayback.set(TtsState.PLAYING, bookId, null)
             queueMore()
@@ -157,29 +166,53 @@ class TtsService : Service() {
                     sentencesSinceSave = 0
                     range?.let { saveProgress(it.first, toPhone = false) }
                 }
-                // top up when the queue is about to run dry
-                if (index >= nextToQueue - REFILL_AT && nextToQueue < sentences.size) queueMore()
+                topUp(index)
             }
         }
 
         override fun onDone(utteranceId: String) {
             val index = utteranceId.removePrefix("s").toIntOrNull() ?: return
-            if (index >= sentences.size - 1) {
-                finishedBook = true
-                scope.launch {
-                    saveProgress(text.length, toPhone = true)
-                    finish()
-                }
-            }
+            utteranceOver(index, failed = false)
         }
 
         @Deprecated("Deprecated in Java")
         override fun onError(utteranceId: String) {
             Log.w(TAG, "Utterance $utteranceId failed; skipping")
+            utteranceId.removePrefix("s").toIntOrNull()?.let { utteranceOver(it, failed = true) }
         }
 
         override fun onError(utteranceId: String, errorCode: Int) {
             Log.w(TAG, "Utterance $utteranceId failed with $errorCode; skipping")
+            utteranceId.removePrefix("s").toIntOrNull()?.let { utteranceOver(it, failed = true) }
+        }
+    }
+
+    /** Tops the queue up when it is about to run dry. */
+    private fun topUp(index: Int) {
+        if (index >= nextToQueue - REFILL_AT && nextToQueue < sentences.size) queueMore()
+    }
+
+    /**
+     * A sentence is over whether it was spoken or refused. A refused one never had its onStart, so
+     * the top-up happens here, or the queue would run dry after one bad batch and the service sit
+     * silent in PLAYING for good. A refused last sentence still ends the book, but at that
+     * sentence rather than at the end of the text, so an engine that fails on everything does not
+     * mark a book read. Anything left over from an earlier book is ignored.
+     */
+    private fun utteranceOver(index: Int, failed: Boolean) {
+        val serial = playSerial
+        scope.launch {
+            if (serial != playSerial) return@launch
+            if (failed) {
+                current = index
+                topUp(index)
+            }
+            if (index >= sentences.size - 1) {
+                val offset = if (failed) sentences.getOrNull(index)?.second?.first ?: text.length else text.length
+                if (!failed) finishedBook = true
+                saveProgress(offset, toPhone = true)
+                finish()
+            }
         }
     }
 

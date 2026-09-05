@@ -1,5 +1,7 @@
 package com.watchreader.mobile.ui.screen
 
+import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -37,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,6 +50,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +64,8 @@ import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
 import com.watchreader.mobile.ui.viewmodel.UiEvent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
 
 private val coverColors = listOf(
@@ -263,12 +269,50 @@ private fun statusText(book: Book): String = when (book.syncStatus) {
     SyncStatus.SENT ->
         if (book.readProgress > 0f) stringResource(R.string.status_sent_progress, (book.readProgress * 100).toInt())
         else stringResource(R.string.status_sent)
-    SyncStatus.FAILED -> stringResource(R.string.status_failed)
+    SyncStatus.FAILED -> book.syncMessage?.takeIf { it.isNotBlank() }
+        ?.let { stringResource(R.string.status_failed_reason, it) }
+        ?: stringResource(R.string.status_failed)
 }
 
-/** Cover art from an epub, decoded once per file. Books without one keep the coloured block. */
+/**
+ * Cover art from an epub, decoded off the main thread and no larger than the cell that shows it.
+ * A cover as it comes in an epub is often 1600 by 2400, fifteen megabytes once decoded; a grid of
+ * those decoded during composition stalled scrolling and could run the heap out. Books without a
+ * cover keep the coloured block.
+ */
 @Composable
-private fun rememberCoverArt(path: String?): ImageBitmap? = androidx.compose.runtime.remember(path) {
-    if (path == null) return@remember null
-    runCatching { android.graphics.BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+private fun rememberCoverArt(path: String?): ImageBitmap? {
+    if (path == null) return null
+    val targetWidth = with(LocalDensity.current) { COVER_DECODE_WIDTH.roundToPx() }
+    val art by produceState(initialValue = CoverArt.cached(path), path, targetWidth) {
+        value = CoverArt.load(path, targetWidth)
+    }
+    return art
+}
+
+/** Wider than any grid cell on a phone, so a cover is only ever scaled down from this. */
+private val COVER_DECODE_WIDTH = 240.dp
+
+private object CoverArt {
+    private val cache = object : LruCache<String, ImageBitmap>(32 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+    }
+
+    fun cached(path: String): ImageBitmap? = cache.get(path)
+
+    suspend fun load(path: String, targetWidth: Int): ImageBitmap? {
+        cache.get(path)?.let { return it }
+        val decoded = withContext(Dispatchers.IO) {
+            runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(path, bounds)
+                if (bounds.outWidth <= 0) return@runCatching null
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= targetWidth) sample *= 2
+                BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+            }.getOrNull()
+        }
+        if (decoded != null) cache.put(path, decoded)
+        return decoded
+    }
 }

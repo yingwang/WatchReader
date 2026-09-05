@@ -14,6 +14,7 @@
     <string name="status_sent">On watch</string>
     <string name="status_sent_progress">On watch · %1$d%%</string>
     <string name="status_failed">Failed · tap to retry</string>
+    <string name="status_failed_reason">Failed · %1$s</string>
 
     <string name="delete_title">Delete this book?</string>
     <string name="delete_body">It is removed from the phone and from the watch.</string>
@@ -30,7 +31,7 @@
     <string name="add_title">Add book</string>
     <string name="add_back">Back</string>
     <string name="reader_send">Send to watch</string>
-    <string name="reader_on_watch">Already on your watch</string>
+    <string name="reader_on_watch">On your watch · tap to send again</string>
     <string name="reader_contents">Contents</string>
     <string name="reader_percent">%1$d%%</string>
     <string name="reader_missing">This book is no longer on the phone</string>

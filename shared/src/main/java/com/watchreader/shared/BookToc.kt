@@ -43,10 +43,15 @@ object BookToc {
         val named = scan(text) { line, _, _ -> headings.any { it.matches(line) } }
         if (named.size >= 2) return named
         // A book that does not name its divisions still sets them apart: a short line of its own,
-        // blank above and below, ending in no full stop.
-        return scan(text) { line, before, after ->
+        // blank above and below, ending in no full stop, closing quote or bracket.
+        val guessed = scan(text) { line, before, after ->
             before.isEmpty() && after.isEmpty() && line.isNotEmpty() && line.last() !in SENTENCE_ENDS
         }
+        if (guessed.size < 2) return emptyList()
+        // Dialogue set one speech to a line looks just like a run of headings. No book has a
+        // chapter every couple of paragraphs, so a list that dense is noise and the book goes without.
+        val paragraphs = text.lineSequence().count { it.isNotBlank() }
+        return if (guessed.size * MIN_PARAGRAPHS_PER_CHAPTER > paragraphs) emptyList() else guessed
     }
 
     private inline fun scan(text: String, isHeading: (line: String, before: String, after: String) -> Boolean): List<Chapter> {
@@ -73,7 +78,15 @@ object BookToc {
         return found
     }
 
-    private val SENTENCE_ENDS = charArrayOf('.', ',', ';', ':', '!', '?', '\u3002', '\uFF0C', '\uFF1B', '\uFF1A', '\uFF01', '\uFF1F', '\u201D', '\u2019')
+    /** What a sentence, a speech or an aside ends in; a heading ends in none of these. */
+    private val SENTENCE_ENDS = charArrayOf(
+        '.', ',', ';', ':', '!', '?', '"', '\'', ')', ']', '\u2026', '\u00BB',
+        '\u3002', '\uFF0C', '\uFF1B', '\uFF1A', '\uFF01', '\uFF1F', '\uFF09', '\u3011', '\u300B',
+        '\u201D', '\u2019', '\u300D', '\u300F',
+    )
+
+    /** A guessed contents list denser than one entry per this many paragraphs is dialogue, not chapters. */
+    private const val MIN_PARAGRAPHS_PER_CHAPTER = 3
 
     /** Beyond this a contents list is noise, and the book is probably not chaptered at all. */
     private const val MAX_CHAPTERS = 500

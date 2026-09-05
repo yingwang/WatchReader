@@ -124,8 +124,9 @@ fun ReaderScreen(
                     val onWatch = book?.syncStatus == SyncStatus.SENT
                     IconButton(
                         onClick = { book?.let { listVm.sendToWatch(it) } },
-                        // A book the watch already has does not need sending again.
-                        enabled = book != null && book.syncStatus != SyncStatus.SENDING && !onWatch,
+                        // A book the watch already has can still be sent again: the phone hears
+                        // about a copy the watch deleted, not about one lost to a reinstall.
+                        enabled = book != null && book.syncStatus != SyncStatus.SENDING,
                     ) {
                         Icon(
                             if (onWatch) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,

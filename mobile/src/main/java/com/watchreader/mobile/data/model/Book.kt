@@ -18,4 +18,6 @@ data class Book(
     val lastReadEpochMs: Long = 0,
     val coverPath: String? = null,
     val tocJson: String? = null,
+    /** Why the last transfer failed, in the watch's words; null otherwise. */
+    val syncMessage: String? = null,
 )

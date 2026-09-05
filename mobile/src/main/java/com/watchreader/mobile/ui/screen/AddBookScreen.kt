@@ -32,7 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +49,8 @@ import com.watchreader.mobile.ui.viewmodel.AddBookViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddBookScreen(
+    /** Bumped by the activity for every file shared in; a new share is taken even while this screen is up. */
+    shareGeneration: Int,
     onBack: () -> Unit,
     vm: AddBookViewModel = viewModel(),
 ) {
@@ -57,10 +59,11 @@ fun AddBookScreen(
     val done by vm.done.collectAsState()
     val context = LocalContext.current
 
-    var url by remember { mutableStateOf("") }
-    var title by remember { mutableStateOf("") }
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedFileName by remember { mutableStateOf("") }
+    // Saved across rotation, so turning the phone does not throw away the file just chosen.
+    var url by rememberSaveable { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var selectedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var selectedFileName by rememberSaveable { mutableStateOf("") }
 
     fun take(uri: Uri) {
         selectedUri = uri
@@ -68,8 +71,9 @@ fun AddBookScreen(
         vm.clearError()
     }
 
-    // A file shared from another app lands here already selected.
-    LaunchedEffect(Unit) {
+    // A file shared from another app lands here already selected. Keyed on the share, so a second
+    // file shared while this screen is already open is taken as well instead of waiting in the wings.
+    LaunchedEffect(shareGeneration) {
         SharedIntent.consume()?.let { take(it) }
     }
 

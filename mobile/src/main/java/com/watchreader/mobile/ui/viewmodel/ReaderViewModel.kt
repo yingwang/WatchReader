@@ -53,6 +53,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
 
     /** The page the reader last turned to and when; a page merely left open is not a reading. */
     private var lastMove: Pair<Int, Long>? = null
+    private var flipsSinceSync = 0
 
     init {
         viewModelScope.launch {
@@ -93,7 +94,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (current.end >= p.length) return
         page = p.pageFrom(current.end)
         publish()
-        saveProgress()
+        flipped()
     }
 
     fun prevPage() {
@@ -102,14 +103,15 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (current.start <= 0) return
         page = p.pageEndingAt(current.start)
         publish()
-        saveProgress()
+        flipped()
     }
 
     fun jumpTo(offset: Int) {
         val p = paginator ?: return
         page = p.pageFrom(offset.coerceIn(0, p.length))
         publish()
-        saveProgress()
+        // a jump is a long way to move; the watch hears about it at once
+        saveProgress(toWatch = true)
     }
 
     private fun publish() {
@@ -117,14 +119,21 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         _state.value = ReaderUiState.Ready(current, text.length, chapters)
     }
 
-    fun saveProgress() {
+    /** Every turn is saved; the watch is told about one turn in [SYNC_EVERY_FLIPS] and the last one on exit. */
+    private fun flipped() {
+        flipsSinceSync++
+        saveProgress(toWatch = flipsSinceSync >= SYNC_EVERY_FLIPS)
+    }
+
+    fun saveProgress(toWatch: Boolean = true) {
         val b = book ?: return
         val offset = page?.start ?: return
         val at = System.currentTimeMillis()
         lastMove = offset to at
+        if (toWatch) flipsSinceSync = 0
         viewModelScope.launch {
             withContext(NonCancellable + Dispatchers.IO) {
-                BookRepository.saveProgress(getApplication(), b, offset, at)
+                BookRepository.saveProgress(getApplication(), b, offset, at, toWatch)
             }
         }
     }
@@ -141,6 +150,11 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
             GlobalScope.launch(Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset, at) }
         }
         super.onCleared()
+    }
+
+    private companion object {
+        /** A phone page holds several watch pages, so the watch hears from the phone more often than the reverse. */
+        const val SYNC_EVERY_FLIPS = 4
     }
 
     class Factory(private val application: Application, private val bookId: String) : ViewModelProvider.Factory {

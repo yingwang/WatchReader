@@ -12,10 +12,12 @@ import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -53,6 +55,10 @@ class ReaderViewModel(
     private var page: Paginator.Page? = null
     private var restoreOffset = 0
     private var flipsSinceSync = 0
+    private var syncJob: Job? = null
+
+    /** The page the reader last turned to and when; a page merely left open is not a reading. */
+    private var lastMove: Pair<Int, Long>? = null
 
     init {
         viewModelScope.launch {
@@ -111,7 +117,8 @@ class ReaderViewModel(
         val offset = (fraction.coerceIn(0f, 1f) * p.length).toInt()
         page = if (fraction >= 1f) p.pageEndingAt(p.length) else p.pageFrom(p.paragraphStart(offset))
         publish()
-        saveProgress(toPhone = true)
+        saveProgress(toPhone = false)
+        scheduleSync()
     }
 
     /** Keeps the page under the sentence being read aloud. */
@@ -144,23 +151,45 @@ class ReaderViewModel(
     fun saveProgress(toPhone: Boolean) {
         val b = book ?: return
         val offset = page?.start ?: return
+        val at = System.currentTimeMillis()
+        lastMove = offset to at
+        if (toPhone) {
+            flipsSinceSync = 0
+            syncJob?.cancel()
+        }
         viewModelScope.launch {
             withContext(NonCancellable + Dispatchers.IO) {
-                WearBookRepository.updateProgress(b.id, offset)
-                if (toPhone) WearBookRepository.sendProgressToPhone(b, offset)
+                WearBookRepository.updateProgress(b.id, offset, at)
+                if (toPhone) WearBookRepository.sendProgressToPhone(b, offset, at)
             }
+        }
+    }
+
+    /** The slider speaks once per notch; the phone is told once the hand has come to rest. */
+    private fun scheduleSync() {
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            delay(SYNC_DEBOUNCE_MS)
+            val b = book ?: return@launch
+            val (offset, at) = lastMove ?: return@launch
+            flipsSinceSync = 0
+            withContext(NonCancellable + Dispatchers.IO) { WearBookRepository.sendProgressToPhone(b, offset, at) }
         }
     }
 
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     override fun onCleared() {
-        // viewModelScope is gone by now; hand the last save to a scope that outlives us.
+        // viewModelScope is gone by now; hand the last save to a scope that outlives us. Only a
+        // page the reader actually turned to is saved, stamped with the time of that turn, so a
+        // reading the phone pushed while this screen was open is never overwritten by a page
+        // that was merely left open.
         val b = book
-        val offset = page?.start
-        if (b != null && offset != null) {
+        val move = lastMove
+        if (b != null && move != null) {
+            val (offset, at) = move
             GlobalScope.launch(Dispatchers.IO) {
-                WearBookRepository.updateProgress(b.id, offset)
-                WearBookRepository.sendProgressToPhone(b, offset)
+                WearBookRepository.updateProgress(b.id, offset, at)
+                WearBookRepository.sendProgressToPhone(b, offset, at)
             }
         }
         super.onCleared()
@@ -168,6 +197,7 @@ class ReaderViewModel(
 
     private companion object {
         const val SYNC_EVERY_FLIPS = 8
+        const val SYNC_DEBOUNCE_MS = 1500L
     }
 
     class Factory(private val application: Application, private val bookId: String) : ViewModelProvider.Factory {

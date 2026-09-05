@@ -36,7 +36,7 @@ fun MobileNavigation(shareGeneration: Int) {
             )
         }
         composable("add") {
-            AddBookScreen(onBack = { navController.popBackStack() })
+            AddBookScreen(shareGeneration = shareGeneration, onBack = { navController.popBackStack() })
         }
         composable(
             route = "read/{bookId}",
