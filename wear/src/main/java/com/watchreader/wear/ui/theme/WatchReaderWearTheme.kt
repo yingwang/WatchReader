@@ -16,6 +16,12 @@ val SepiaBg = Color(0xFFF1E4C8)
 val SepiaText = Color(0xFF3B2E1E)
 val SepiaDim = Color(0xFF8B7355)
 
+/** The rows of the library and settings lists share one look. */
+val ListRowBg = Color(0xFF1E1E1E)
+val ListRowText = Color(0xFFD8D8D8)
+val ListRowSub = Color(0xFF888888)
+val ListTitle = Color(0xFF9CB8A0)
+
 /** Colours of the reading page for a [ReaderTheme]. */
 class PageColors(val background: Color, val text: Color, val dim: Color, val highlight: Color)
 
@@ -29,7 +35,7 @@ private val WatchReaderColors = Colors(
     primaryVariant = Color(0xFF5A8A5C),
     secondary = WarmAmber,
     background = WarmBlack,
-    surface = Color(0xFF1E1E1E),
+    surface = ListRowBg,
     onPrimary = Color.Black,
     onSecondary = Color.Black,
     onBackground = Color(0xFFDDDDDD),

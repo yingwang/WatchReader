@@ -43,12 +43,11 @@ import com.watchreader.wear.R
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
+import com.watchreader.wear.ui.theme.ListRowBg
+import com.watchreader.wear.ui.theme.ListRowSub
+import com.watchreader.wear.ui.theme.ListRowText
+import com.watchreader.wear.ui.theme.ListTitle
 import com.watchreader.wear.ui.viewmodel.LibraryViewModel
-
-private val ItemBg = Color(0xFF1E1E1E)
-private val ItemText = Color(0xFFD8D8D8)
-private val SubText = Color(0xFF888888)
-private val TitleColor = Color(0xFF9CB8A0)
 
 @Composable
 fun LibraryScreen(
@@ -69,9 +68,9 @@ fun LibraryScreen(
         if (books.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(R.string.library_empty), fontSize = 16.sp, color = ItemText)
+                    Text(stringResource(R.string.library_empty), fontSize = 16.sp, color = ListRowText)
                     Spacer(Modifier.height(4.dp))
-                    Text(stringResource(R.string.library_empty_hint), fontSize = 12.sp, color = SubText)
+                    Text(stringResource(R.string.library_empty_hint), fontSize = 12.sp, color = ListRowSub)
                     Spacer(Modifier.height(14.dp))
                     SettingsRow(onSettings)
                 }
@@ -85,7 +84,7 @@ fun LibraryScreen(
                     Text(
                         text = stringResource(R.string.library_title),
                         fontSize = 14.sp,
-                        color = TitleColor,
+                        color = ListTitle,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
@@ -124,7 +123,7 @@ fun LibraryScreen(
             title = {
                 Text(
                     stringResource(R.string.library_delete_title, book.title),
-                    color = ItemText,
+                    color = ListRowText,
                     fontSize = 13.sp,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -162,13 +161,13 @@ private fun BookRow(
         modifier = Modifier
             .fillMaxWidth(0.84f)
             .clip(RoundedCornerShape(24.dp))
-            .background(ItemBg)
+            .background(ListRowBg)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Column {
-            Text(title, color = ItemText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, fontSize = 10.sp, color = SubText)
+            Text(title, color = ListRowText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, fontSize = 10.sp, color = ListRowSub)
         }
     }
 }
@@ -179,11 +178,11 @@ private fun SettingsRow(onSettings: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth(0.84f)
             .clip(RoundedCornerShape(24.dp))
-            .background(ItemBg)
+            .background(ListRowBg)
             .clickable(onClick = onSettings)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(stringResource(R.string.library_settings), color = ItemText, fontSize = 14.sp)
+        Text(stringResource(R.string.library_settings), color = ListRowText, fontSize = 14.sp)
     }
 }

@@ -23,13 +23,19 @@
     <string name="reader_end">The end</string>
 
     <string name="settings_title">Settings</string>
-    <string name="settings_font_size">Font %1$dsp</string>
+    <string name="settings_preview">Aa 春眠不觉晓，处处闻啼鸟。</string>
+    <string name="settings_font_size">Text size</string>
+    <string name="settings_font_size_value">%1$d</string>
     <string name="settings_typeface">Typeface</string>
+    <string name="settings_typeface_sample">春眠不觉晓</string>
     <string name="settings_theme">Page</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_sepia">Sepia</string>
-    <string name="settings_keep_screen_on">Keep screen on while reading</string>
-    <string name="settings_speech_rate">Speed %1$sx</string>
+    <string name="settings_keep_screen_on">Screen on</string>
+    <string name="settings_keep_screen_on_hint">While reading</string>
+    <string name="settings_section_speech">Read aloud</string>
+    <string name="settings_speech_rate">Speed</string>
+    <string name="settings_speech_rate_value">%1$s×</string>
     <string name="settings_voices_have">Reads aloud in %1$s</string>
     <string name="settings_voices_missing">No voice for %1$s on this watch</string>
     <string name="settings_voices_none">No speech engine on this watch</string>
