@@ -1,6 +1,7 @@
 package com.watchreader.mobile.util
 
 import com.watchreader.shared.Chapter
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.URLDecoder
 import java.util.zip.ZipInputStream
@@ -16,15 +17,27 @@ object EpubParser {
     fun looksLikeEpub(bytes: ByteArray): Boolean =
         bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
 
+    /**
+     * The most an EPUB may unpack to and still be held in memory. The 20 MB import cap is
+     * measured on the compressed file, which says nothing about what a ZIP expands to.
+     */
+    const val MAX_UNPACKED_BYTES = 20L * 1024 * 1024
+
+    /** Pictures only ever supply the cover, so past this much of them the rest stay in the file. */
+    const val MAX_IMAGE_BYTES = 8L * 1024 * 1024
+
+    /** Everything inflated, kept or not, stops here: past it the file is a bomb, not a book. */
+    const val MAX_INFLATED_BYTES = 8 * MAX_UNPACKED_BYTES
+
+    /** Never opened by a text reader; skipped rather than kept, so embedded fonts cost nothing. */
+    private val skippedExtensions = setOf(
+        "ttf", "otf", "woff", "woff2", "eot", "css", "js", "smil", "pls",
+        "mp3", "m4a", "aac", "ogg", "oga", "wav", "mp4", "m4v", "webm", "ogv", "mov",
+    )
+    private val imageExtensions = setOf("jpg", "jpeg", "png", "gif", "webp", "svg", "bmp")
+
     fun parse(inputStream: InputStream): Epub {
-        val entries = HashMap<String, ByteArray>()
-        ZipInputStream(inputStream).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                if (!entry.isDirectory) entries[entry.name] = zip.readBytes()
-                entry = zip.nextEntry
-            }
-        }
+        val entries = readEntries(inputStream)
 
         val container = entries["META-INF/container.xml"]?.toString(Charsets.UTF_8)
             ?: throw IllegalArgumentException("Not a valid EPUB file")
@@ -82,7 +95,7 @@ object EpubParser {
             }
         }
         // The book's own table of contents beats guessing from headings, when it has one.
-        val navPath = Regex("""<item\\b[^>]*?/?>""").findAll(opfContent)
+        val navPath = Regex("""<item\b[^>]*?/?>""").findAll(opfContent)
             .mapNotNull { tag ->
                 val href = attr(tag.value, "href") ?: return@mapNotNull null
                 val type = attr(tag.value, "media-type") ?: ""
@@ -109,17 +122,62 @@ object EpubParser {
         return Epub(title, result.toString().trim(), coverPath?.let { entries[it] }, chapters)
     }
 
+    /**
+     * Inflates the archive once, front to back, keeping only what the parser can use and only as
+     * much of it as the caps allow. A ZipInputStream learns an entry's size only by inflating it,
+     * so the caps are enforced while reading rather than checked up front.
+     */
+    private fun readEntries(inputStream: InputStream): Map<String, ByteArray> {
+        val entries = HashMap<String, ByteArray>()
+        val buffer = ByteArray(64 * 1024)
+        var inflated = 0L
+        var kept = 0L
+        var images = 0L
+        ZipInputStream(inputStream).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    val extension = entry.name.substringAfterLast('.', "").lowercase()
+                    val isImage = extension in imageExtensions
+                    var out: ByteArrayOutputStream? = if (extension in skippedExtensions) null else ByteArrayOutputStream()
+                    while (true) {
+                        val n = zip.read(buffer)
+                        if (n < 0) break
+                        inflated += n
+                        if (inflated > MAX_INFLATED_BYTES) throw IllegalArgumentException("This EPUB unpacks to more than 160 MB")
+                        if (out == null) continue
+                        if (isImage) {
+                            images += n
+                            if (images > MAX_IMAGE_BYTES) {
+                                // one picture too many: this one is dropped, the text carries on
+                                out = null
+                                continue
+                            }
+                        } else {
+                            kept += n
+                            if (kept > MAX_UNPACKED_BYTES) throw IllegalArgumentException("This EPUB unpacks to more than 20 MB")
+                        }
+                        out.write(buffer, 0, n)
+                    }
+                    if (out != null) entries[entry.name] = out.toByteArray()
+                }
+                entry = zip.nextEntry
+            }
+        }
+        return entries
+    }
+
     /** Titles and targets from an EPUB 3 nav document or an EPUB 2 NCX, in reading order. */
     private fun tocEntries(nav: String, opfDir: String): List<Pair<String, String>> {
-        val ncx = Regex("""<navPoint\\b.*?</navPoint>""", RegexOption.DOT_MATCHES_ALL).findAll(nav).mapNotNull { point ->
+        val ncx = Regex("""<navPoint\b.*?</navPoint>""", RegexOption.DOT_MATCHES_ALL).findAll(nav).mapNotNull { point ->
             val label = Regex("""<text[^>]*>(.*?)</text>""", RegexOption.DOT_MATCHES_ALL)
                 .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
-            val src = Regex("""<content[^>]*\\bsrc="([^"]+)""" + "\"")
+            val src = Regex("""<content[^>]*\bsrc="([^"]+)""" + "\"")
                 .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
             decodeEntities(label).trim().take(80) to resolve(opfDir, src)
         }.toList()
         if (ncx.isNotEmpty()) return ncx
-        return Regex("""<a\\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+        return Regex("""<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
             .findAll(nav)
             .map { htmlToText(it.groupValues[2]).trim().take(80) to resolve(opfDir, it.groupValues[1]) }
             .filter { it.first.isNotBlank() }

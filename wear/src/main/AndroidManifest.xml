@@ -8,6 +8,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Speech engines are discovered through this intent. Since Android 11 a package is only
+         visible when queried for, so without this the watch may report no engine at all. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".WatchReaderWearApp"
         android:allowBackup="true"
@@ -37,7 +45,10 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-                <data android:scheme="wear" android:host="*" android:pathPrefix="/delete_book" />
+                <data android:scheme="wear" />
+                <data android:host="*" />
+                <data android:pathPrefix="/delete_book" />
+                <data android:pathPrefix="/progress" />
             </intent-filter>
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />

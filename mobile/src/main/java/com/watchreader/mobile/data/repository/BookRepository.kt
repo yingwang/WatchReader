@@ -108,6 +108,15 @@ object BookRepository {
         dao.updateSyncStatus(id, status, System.currentTimeMillis())
     }
 
+    /**
+     * A book still marked SENDING when nothing is waiting for its receipt is stuck: the wait lives
+     * in the screen that started the send and dies with it, while the status lives in the
+     * database. Such books are marked failed so they can be sent again; a receipt that turns up
+     * late still flips them to SENT. Returns how many were recovered.
+     */
+    suspend fun recoverStaleTransfers(): Int =
+        dao.replaceSyncStatus(SyncStatus.SENDING, SyncStatus.FAILED, System.currentTimeMillis())
+
     /** Applies progress from either side; the older of two readings loses (see the DAO's guard). */
     suspend fun applyProgress(progress: ReadingProgress) {
         dao.updateProgress(
@@ -118,14 +127,18 @@ object BookRepository {
         )
     }
 
-    /** Records where the reader on the phone got to, and tells the watch about it. */
-    suspend fun saveProgress(context: Context, book: Book, offset: Int) {
+    /**
+     * Records where the reader on the phone got to, and tells the watch about it. [atEpochMs] is
+     * when the page was turned; a save repeated later keeps that stamp, so both sides' guards
+     * still let a more recent reading from the other device win.
+     */
+    suspend fun saveProgress(context: Context, book: Book, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
         val progress = ReadingProgress(
             bookId = book.id,
             charOffset = offset.coerceIn(0, total),
             percentage = (offset.toFloat() / total).coerceIn(0f, 1f),
-            lastReadEpochMs = System.currentTimeMillis(),
+            lastReadEpochMs = atEpochMs,
         )
         applyProgress(progress)
         BookSender(context).sendProgress(progress)

@@ -36,6 +36,12 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
 
     private val sender = BookSender(application)
 
+    init {
+        // A send waits for its receipt in this scope, so a book still SENDING when a new screen
+        // comes up has lost its waiter (the screen was left, or the process died); free it.
+        viewModelScope.launch { BookRepository.recoverStaleTransfers() }
+    }
+
     fun deleteBook(book: Book) {
         viewModelScope.launch {
             if (book.syncStatus == SyncStatus.SENT || book.syncStatus == SyncStatus.SENDING) {

@@ -25,6 +25,9 @@ interface BookDao {
     @Query("UPDATE book SET syncStatus = :status, lastSyncEpochMs = :epochMs WHERE id = :id")
     suspend fun updateSyncStatus(id: String, status: SyncStatus, epochMs: Long)
 
+    @Query("UPDATE book SET syncStatus = :to, lastSyncEpochMs = :epochMs WHERE syncStatus = :from")
+    suspend fun replaceSyncStatus(from: SyncStatus, to: SyncStatus, epochMs: Long): Int
+
     @Query(
         "UPDATE book SET readProgress = :progress, readOffsetChars = :offset, lastReadEpochMs = :epochMs " +
             "WHERE id = :id AND :epochMs >= lastReadEpochMs",

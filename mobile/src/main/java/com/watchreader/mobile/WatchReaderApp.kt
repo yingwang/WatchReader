@@ -12,6 +12,9 @@ class WatchReaderApp : Application() {
         super.onCreate()
         BookRepository.init(this)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            // Nothing survives a process restart to wait for a receipt, so whatever was mid-send
+            // when the process went is stuck until it is marked failed here.
+            BookRepository.recoverStaleTransfers()
             BookRepository.seedSampleIfNeeded(this@WatchReaderApp)
         }
     }

@@ -24,7 +24,10 @@ import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.ui.WearActivity
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -49,6 +52,7 @@ class TtsService : Service() {
     private var current = -1
     private var currentLocale: Locale? = null
     private var sentencesSinceSave = 0
+    private var finishedBook = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -161,6 +165,7 @@ class TtsService : Service() {
         override fun onDone(utteranceId: String) {
             val index = utteranceId.removePrefix("s").toIntOrNull() ?: return
             if (index >= sentences.size - 1) {
+                finishedBook = true
                 scope.launch {
                     saveProgress(text.length, toPhone = true)
                     finish()
@@ -208,11 +213,17 @@ class TtsService : Service() {
         if (toPhone) WearBookRepository.sendProgressToPhone(b, offset)
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     override fun onDestroy() {
         val b = book
-        val offset = sentences.getOrNull(current)?.second?.first
-        scope.launch {
-            if (b != null && offset != null) {
+        val offset = if (finishedBook) text.length else sentences.getOrNull(current)?.second?.first
+        // The service's own scope goes first, so no save from the listener lands after this one.
+        scope.cancel()
+        if (b != null && offset != null) {
+            // Nothing here may cancel the final reading: a scope tied to the service would, and
+            // blocking onDestroy() on a database write and a message to the phone would stall the
+            // main thread. It rides a job that outlives the service and finishes on its own.
+            GlobalScope.launch(Dispatchers.IO + NonCancellable) {
                 WearBookRepository.updateProgress(b.id, offset)
                 WearBookRepository.sendProgressToPhone(b, offset)
             }
@@ -221,7 +232,6 @@ class TtsService : Service() {
         tts?.shutdown()
         tts = null
         TtsPlayback.set(TtsState.IDLE, null, null)
-        scope.cancel()
         super.onDestroy()
     }
 

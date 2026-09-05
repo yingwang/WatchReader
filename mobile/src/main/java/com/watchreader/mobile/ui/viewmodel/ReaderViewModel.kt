@@ -51,6 +51,9 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private var page: Paginator.Page? = null
     private var restoreOffset = 0
 
+    /** The page the reader last turned to and when; a page merely left open is not a reading. */
+    private var lastMove: Pair<Int, Long>? = null
+
     init {
         viewModelScope.launch {
             val found = BookRepository.getById(bookId)
@@ -117,20 +120,25 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     fun saveProgress() {
         val b = book ?: return
         val offset = page?.start ?: return
+        val at = System.currentTimeMillis()
+        lastMove = offset to at
         viewModelScope.launch {
             withContext(NonCancellable + Dispatchers.IO) {
-                BookRepository.saveProgress(getApplication(), b, offset)
+                BookRepository.saveProgress(getApplication(), b, offset, at)
             }
         }
     }
 
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     override fun onCleared() {
-        // viewModelScope is gone by now; hand the last save to a scope that outlives us.
+        // viewModelScope is gone by now; hand the last save to a scope that outlives us. Only a
+        // page the reader actually turned to is saved, stamped with the time of that turn, so the
+        // watch's reading since then is never overwritten by a page that was merely left open.
         val b = book
-        val offset = page?.start
-        if (b != null && offset != null) {
-            GlobalScope.launch(Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset) }
+        val move = lastMove
+        if (b != null && move != null) {
+            val (offset, at) = move
+            GlobalScope.launch(Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset, at) }
         }
         super.onCleared()
     }
