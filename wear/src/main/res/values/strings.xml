@@ -36,7 +36,7 @@
     <string name="settings_section_speech">Read aloud</string>
     <string name="settings_speech_rate">Speed</string>
     <string name="settings_speech_rate_value">%1$s×</string>
-    <string name="settings_voices_have">Voices: %1$s</string>
+    <string name="settings_voices_have">Voice: %1$s</string>
     <string name="settings_voices_missing">Missing voice: %1$s</string>
     <string name="settings_voices_none">No speech engine installed</string>
     <string name="settings_version">v%1$s</string>
