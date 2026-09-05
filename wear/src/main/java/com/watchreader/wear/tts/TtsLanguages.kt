@@ -12,7 +12,8 @@ import java.util.Locale
  * the voice for that language at all, because a missing voice is silent rather than loud.
  */
 object TtsLanguages {
-    val SUPPORTED = listOf(Locale.SIMPLIFIED_CHINESE, Locale.US)
+    /** In the order the settings page lists them. */
+    val SUPPORTED = listOf(Locale.US, Locale.SIMPLIFIED_CHINESE)
 
     data class Availability(val installed: List<Locale>, val missing: List<Locale>)
 
