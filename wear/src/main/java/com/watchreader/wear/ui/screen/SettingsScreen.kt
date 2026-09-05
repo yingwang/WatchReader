@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -191,7 +192,7 @@ fun SettingsScreen() {
                         } else {
                             stringResource(
                                 R.string.settings_voices_have,
-                                v.installed.joinToString("  ") { TtsLanguages.label(it) },
+                                v.installed.joinToString(", ") { TtsLanguages.label(it) },
                             )
                         },
                         color = ListRowText,
@@ -203,7 +204,7 @@ fun SettingsScreen() {
                         Caption(
                             text = stringResource(
                                 R.string.settings_voices_missing,
-                                v.missing.joinToString("  ") { TtsLanguages.label(it) },
+                                v.missing.joinToString(", ") { TtsLanguages.label(it) },
                             ),
                             color = ListRowSub,
                         )
@@ -231,6 +232,8 @@ fun SettingsScreen() {
             title = { Text(stringResource(R.string.settings_typeface), color = ListTitle, fontSize = 14.sp) },
             scrollState = dialogScroll,
             backgroundColor = WarmBlack,
+            // Room under the last face, so it can scroll up off the round edge like the others.
+            contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 20.dp, bottom = 56.dp),
         ) {
             // Each face is shown in itself, so the choice is made by eye rather than by name.
             items(faces, key = { it.key }) { face ->

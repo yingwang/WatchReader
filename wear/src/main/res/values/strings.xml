@@ -23,11 +23,11 @@
     <string name="reader_end">The end</string>
 
     <string name="settings_title">Settings</string>
-    <string name="settings_preview">Aa 春眠不觉晓，处处闻啼鸟。</string>
+    <string name="settings_preview">It was the best of times, it was the worst of times.</string>
     <string name="settings_font_size">Text size</string>
     <string name="settings_font_size_value">%1$d</string>
-    <string name="settings_typeface">Typeface</string>
-    <string name="settings_typeface_sample">春眠不觉晓</string>
+    <string name="settings_typeface">Font</string>
+    <string name="settings_typeface_sample">Quick brown fox</string>
     <string name="settings_theme">Page</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_sepia">Sepia</string>
@@ -36,9 +36,9 @@
     <string name="settings_section_speech">Read aloud</string>
     <string name="settings_speech_rate">Speed</string>
     <string name="settings_speech_rate_value">%1$s×</string>
-    <string name="settings_voices_have">Reads aloud in %1$s</string>
-    <string name="settings_voices_missing">No voice for %1$s on this watch</string>
-    <string name="settings_voices_none">No speech engine on this watch</string>
+    <string name="settings_voices_have">Voices: %1$s</string>
+    <string name="settings_voices_missing">Missing voice: %1$s</string>
+    <string name="settings_voices_none">No speech engine installed</string>
     <string name="settings_version">v%1$s</string>
 
     <string name="tts_channel_name">Read aloud</string>
