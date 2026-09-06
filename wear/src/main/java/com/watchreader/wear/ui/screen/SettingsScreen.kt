@@ -175,7 +175,7 @@ fun SpeechSettingsScreen() {
     var voices by remember { mutableStateOf<TtsLanguages.Availability?>(null) }
     DisposableEffect(Unit) {
         val engine = TtsLanguages.probe(context) { voices = it }
-        onDispose { engine.shutdown() }
+        onDispose { TtsLanguages.release(engine) }
     }
     SettingsList {
         item { SectionTitle(stringResource(R.string.settings_section_speech)) }

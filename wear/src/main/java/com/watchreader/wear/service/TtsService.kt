@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import kotlin.concurrent.thread
 import androidx.core.app.NotificationCompat
 import com.watchreader.wear.R
 import com.watchreader.wear.data.model.WearBook
@@ -261,9 +262,11 @@ class TtsService : Service() {
                 WearBookRepository.sendProgressToPhone(b, offset)
             }
         }
-        tts?.stop()
-        tts?.shutdown()
+        // stop() and shutdown() both take the engine's lock, which its connection set-up holds
+        // while it talks to the speech service; waiting for that here would stall the main thread.
+        val engine = tts
         tts = null
+        thread(name = "tts-release") { runCatching { engine?.stop(); engine?.shutdown() } }
         TtsPlayback.set(TtsState.IDLE, null, null)
         super.onDestroy()
     }

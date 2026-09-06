@@ -3,6 +3,7 @@ package com.watchreader.wear.tts
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import java.util.Locale
+import kotlin.concurrent.thread
 
 /**
  * Which of the languages this app reads aloud the watch can actually speak.
@@ -43,6 +44,16 @@ object TtsLanguages {
             onResult(Availability(installed, missing))
         }
         return engine
+    }
+
+    /**
+     * Shuts an engine down off the main thread. shutdown() takes the engine's own lock, which the
+     * connection set-up holds while it talks to the speech service; on a watch that can take
+     * seconds, and waiting for it on the main thread is an ANR.
+     */
+    fun release(engine: TextToSpeech?) {
+        if (engine == null) return
+        thread(name = "tts-release") { runCatching { engine.shutdown() } }
     }
 
     fun label(locale: Locale): String = if (locale.language == "zh") "Chinese" else "English"

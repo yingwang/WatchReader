@@ -22,11 +22,13 @@ A minimalist e-book reader for Wear OS. Add a book on your phone, read it on you
 - **Phone-to-watch transfer** — one channel per book with the metadata in the stream; the watch confirms with a receipt, and the phone only talks to a watch that actually runs the app
 - **Measured pagination** — each page is laid out against the real page box with a `TextMeasurer`, found by binary search and snapped to a paragraph, sentence or phrase; only the pages you look at are ever measured, so a long novel opens at 90% instantly. On the round screen the page is a left-aligned block inscribed in the circle, so no line is clipped and no line is centred against the one above it
 - **Read on the phone as well** — the same paginator drives a phone reader: tap the halves to turn pages, jump by chapter from the contents sheet, and send the book on from the button in the top right
-- **Read aloud** — a foreground media service reads the book with the watch's TTS engine, sentence by sentence with Chinese/English detection, and keeps going with the screen off or after you leave the reader; the reader follows along and highlights the sentence
+- **Read aloud** — a foreground media service reads the book with the watch's TTS engine, sentence by sentence with Chinese/English detection, and keeps going with the screen off or after you leave the reader; the reader follows along and highlights the sentence. Nothing that talks to the engine runs on the main thread: it is created, queried and shut down off it, because a cold engine start on a watch takes seconds
 - **Rotary crown** — one page per detent in the reader, scrolling in lists
 - **Progress both ways** — whichever device you read on keeps the place, and the other one is told; the later timestamp wins
 - **Share to WatchReader** — from a file manager, browser or mail client, or paste a link
-- **Settings** — font size, three typefaces (sans, serif, bundled 楷体 LXGW WenKai), dark or sepia page, keep-screen-on, speech rate and voice
+- **Library** — a Continue reading card for the book you last opened and progress under every title, on both devices; the phone shows covers, whether each book is on the watch, and why a send failed
+- **Reader controls** — long-press on the watch for read-aloud, the contents list and a go-to slider; on the phone the contents sheet and the send button sit in the top bar; a one-time hint explains the taps
+- **Settings** — Appearance: text size, three fonts shown in themselves (sans, serif, the bundled 楷体 LXGW WenKai) and a dark or sepia page, each editor with a preview of the reading page; Read aloud: speed, and which of the English and Chinese voices this watch actually has; keep the screen on while reading
 
 ## Architecture
 
