@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +46,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watchreader.mobile.R
 import com.watchreader.mobile.ui.SharedIntent
 import com.watchreader.mobile.ui.viewmodel.AddBookViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +62,7 @@ fun AddBookScreen(
     val error by vm.error.collectAsState()
     val done by vm.done.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Saved across rotation, so turning the phone does not throw away the file just chosen.
     var url by rememberSaveable { mutableStateOf("") }
@@ -67,8 +72,14 @@ fun AddBookScreen(
 
     fun take(uri: Uri) {
         selectedUri = uri
-        selectedFileName = displayName(context, uri)
+        selectedFileName = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "book"
         vm.clearError()
+        // The provider is asked for the file's proper name off the main thread: a cloud drive
+        // can take a while to answer, and the path's last segment stands in until it does.
+        scope.launch {
+            val name = withContext(Dispatchers.IO) { displayName(context, uri) }
+            if (name != null && selectedUri == uri) selectedFileName = name
+        }
     }
 
     // A file shared from another app lands here already selected. Keyed on the share, so a second
@@ -183,13 +194,9 @@ fun AddBookScreen(
     }
 }
 
-private fun displayName(context: android.content.Context, uri: Uri): String {
-    val fromProvider = runCatching {
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-            if (c.moveToFirst()) c.getString(0) else null
-        }
-    }.getOrNull()
-    return fromProvider?.takeIf { it.isNotBlank() }
-        ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-        ?: "book"
-}
+/** The name the document provider gives the file, or null when it gives none. */
+private fun displayName(context: android.content.Context, uri: Uri): String? = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+    }
+}.getOrNull()?.takeIf { it.isNotBlank() }

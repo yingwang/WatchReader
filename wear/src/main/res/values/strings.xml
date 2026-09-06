@@ -38,11 +38,8 @@
     <string name="reader_end">The end</string>
 
     <string name="settings_title">Settings</string>
-    <string name="settings_preview">It was the best of times, it was the worst of times.</string>
     <string name="settings_font_size">Text size</string>
-    <string name="settings_font_size_value">%1$d</string>
     <string name="settings_typeface">Font</string>
-    <string name="settings_typeface_sample">Quick brown fox</string>
     <string name="settings_theme">Page</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_sepia">Sepia</string>
@@ -50,7 +47,6 @@
     <string name="settings_keep_screen_on_hint">While reading</string>
     <string name="settings_section_speech">Read aloud</string>
     <string name="settings_speech_rate">Speed</string>
-    <string name="settings_speech_rate_value">%1$s×</string>
     <string name="settings_voices_have">Voice: %1$s</string>
     <string name="settings_voices_missing">Missing voice: %1$s</string>
     <string name="settings_voices_none">No speech engine installed</string>

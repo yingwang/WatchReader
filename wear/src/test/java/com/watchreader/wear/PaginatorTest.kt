@@ -64,6 +64,10 @@ class PaginatorTest {
         val p = Paginator(text, rect(lines = 5, charsPerLine = 20), fakeMeasurer)
         assertEquals(8, p.paragraphStart(12))
         assertEquals(0, p.paragraphStart(3))
+        assertEquals(21, p.nextParagraphStart(12))
+        assertEquals(8, p.nextParagraphStart(3))
+        // the last paragraph has none after it, so the offset stands
+        assertEquals(22, p.nextParagraphStart(22))
     }
 
     @Test

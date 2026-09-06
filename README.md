@@ -18,7 +18,7 @@ A minimalist e-book reader for Wear OS. Add a book on your phone, read it on you
 
 ## Features
 
-- **.txt and .epub** — epub is unpacked on the phone, along with its cover art and its own table of contents; text encodings (UTF-8, GBK, GB18030, byte-order marks) are detected there too, so the watch only ever stores UTF-8
+- **.txt and .epub** — epub is unpacked on the phone, along with its cover art and its own table of contents; text encodings (UTF-8, GBK, GB18030, Big5, Shift_JIS, byte-order marks) are detected there too, so the watch only ever stores UTF-8
 - **Phone-to-watch transfer** — one channel per book with the metadata in the stream; the watch confirms with a receipt, and the phone only talks to a watch that actually runs the app
 - **Measured pagination** — each page is laid out against the real page box with a `TextMeasurer`, found by binary search and snapped to a paragraph, sentence or phrase; only the pages you look at are ever measured, so a long novel opens at 90% instantly. On the round screen the page is a left-aligned block inscribed in the circle, so no line is clipped and no line is centred against the one above it
 - **Read on the phone as well** — the same paginator drives a phone reader: tap the halves to turn pages, jump by chapter from the contents sheet, and send the book on from the button in the top right

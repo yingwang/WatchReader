@@ -184,7 +184,7 @@ object BookRepository {
                 addedEpochMs = existing?.addedEpochMs ?: System.currentTimeMillis(),
                 syncStatus = existing?.syncStatus ?: SyncStatus.NOT_SENT,
                 totalChars = text.length,
-                tocJson = BookToc.detect(text).takeIf { it.isNotEmpty() }?.let { BookToc.toJson(it) },
+                tocJson = BookToc.toJson(BookToc.detect(text)),
             ),
         )
         prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
@@ -235,7 +235,9 @@ object BookRepository {
                 addedEpochMs = System.currentTimeMillis(),
                 totalChars = imported.text.length,
                 coverPath = coverFile?.absolutePath,
-                tocJson = imported.chapters.takeIf { it.isNotEmpty() }?.let { BookToc.toJson(it) },
+                // Written even when empty: a book known to have no chapters is not scanned for
+                // them again on every opening, here or on the watch.
+                tocJson = BookToc.toJson(imported.chapters),
             )
             dao.upsert(book)
             book

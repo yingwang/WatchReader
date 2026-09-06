@@ -427,11 +427,13 @@ private fun Toolbar(
                     )
                 }
                 item {
+                    // One notch is a twentieth of the book: the slider only has + and -, and
+                    // crossing half a book should not take fifty presses.
                     InlineSlider(
-                        value = (fraction * 100).roundToInt().toFloat(),
-                        onValueChange = { onJump(it / 100f) },
-                        valueRange = 0f..100f,
-                        steps = 99,
+                        value = (fraction * 20).roundToInt().toFloat(),
+                        onValueChange = { onJump(it / 20f) },
+                        valueRange = 0f..20f,
+                        steps = 19,
                         increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
                         decreaseIcon = { Text("–", color = textColor, fontSize = 16.sp) },
                         colors = InlineSliderDefaults.colors(),

@@ -40,6 +40,15 @@ class ReadingContentsTest {
         assertEquals(listOf(Chapter("A", 0), Chapter("B", 5)), BookToc.resolve(json, "0123456789"))
     }
 
+    @Test fun anEmptyContentsListMeansNoChaptersAndNoScan() {
+        val text = "Chapter 1\nFirst paragraph.\n\nChapter 2\nSecond paragraph."
+        assertEquals(2, BookToc.resolve(null, text).size)
+        assertTrue(BookToc.resolve("[]", text).isEmpty())
+        assertEquals(emptyList<Chapter>(), BookToc.parse("[]"))
+        assertNull(BookToc.parse(null))
+        assertNull(BookToc.parse("not json"))
+    }
+
     @Test fun oldBooksAndMalformedContentsUseDetectedHeadings() {
         val text = "Chapter 1\nFirst paragraph.\n\nChapter 2\nSecond paragraph."
         assertEquals(2, BookToc.resolve(null, text).size)

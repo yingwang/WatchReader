@@ -121,9 +121,19 @@ object WearBookRepository {
         }
     }
 
+    /**
+     * The contents that came with the book, else headings found in its text. A book that came
+     * without contents is scanned once and the answer kept beside it, so a long one is not read
+     * end to end every time it is opened; a resend replaces the companion file and starts over.
+     */
     suspend fun loadChapters(book: WearBook, text: String): List<Chapter> = withContext(Dispatchers.IO) {
-        val json = runCatching { File(book.filePath + ".toc.json").readText(Charsets.UTF_8) }.getOrNull()
-        BookToc.resolve(json, text)
+        val file = File(book.filePath + ".toc.json")
+        val json = runCatching { file.readText(Charsets.UTF_8) }.getOrNull()
+        if (BookToc.parse(json) != null) return@withContext BookToc.resolve(json, text)
+        val found = BookToc.detect(text)
+        runCatching { file.writeText(BookToc.toJson(found), Charsets.UTF_8) }
+            .onFailure { Log.w(TAG, "Could not keep the detected contents", it) }
+        found
     }
 
     private suspend fun sendToPhone(path: String, payload: ByteArray) {

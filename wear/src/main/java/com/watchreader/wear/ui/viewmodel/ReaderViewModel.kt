@@ -76,9 +76,12 @@ class ReaderViewModel(
                 return@launch
             }
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
-            chapters = WearBookRepository.loadChapters(found, text)
             loaded = true
             rebuild()
+            // The first page goes up before the contents are known: a book without a table of
+            // its own is scanned for headings, which takes a moment on a long one.
+            chapters = WearBookRepository.loadChapters(found, text)
+            publish()
         }
     }
 
@@ -119,7 +122,19 @@ class ReaderViewModel(
         val p = paginator ?: return
         if (!loaded) return
         val offset = (fraction.coerceIn(0f, 1f) * p.length).toInt()
-        page = if (fraction >= 1f) p.pageEndingAt(p.length) else p.pageFrom(p.paragraphStart(offset))
+        val current = page
+        var target = if (fraction >= 1f) p.pageEndingAt(p.length) else p.pageFrom(p.paragraphStart(offset))
+        // Snapping to the start of a paragraph lands on the page already open when the paragraph
+        // is longer than one notch of the slider, as it is in a short book. A notch must always
+        // move the reader: forward to the next paragraph, back to the page before.
+        if (current != null && fraction < 1f && target.start == current.start) {
+            target = when {
+                offset > current.start -> p.pageFrom(p.nextParagraphStart(offset))
+                current.start > 0 -> p.pageEndingAt(current.start)
+                else -> target
+            }
+        }
+        page = target
         publish()
         saveProgress(toPhone = false)
         scheduleSync()

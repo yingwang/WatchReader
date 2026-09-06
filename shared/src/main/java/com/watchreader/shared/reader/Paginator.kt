@@ -101,6 +101,18 @@ class Paginator(
         return if (floor == 0) 0 else skipBlank(o)
     }
 
+    /** Start of the paragraph after the one containing [offset], or [offset] itself when none is near. */
+    fun nextParagraphStart(offset: Int): Int {
+        val o = offset.coerceIn(0, text.length)
+        val limit = minOf(text.length, o + JUMP_LOOKBACK)
+        var i = o
+        while (i < limit) {
+            if (text[i] == '\n') return skipBlank(i + 1)
+            i++
+        }
+        return o
+    }
+
     companion object {
         /** Bounds the backward search; far more than any watch page holds. */
         const val MAX_PAGE_CHARS = 1500

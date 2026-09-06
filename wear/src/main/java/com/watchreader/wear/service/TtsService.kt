@@ -32,6 +32,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 private const val TAG = "WatchReader"
@@ -48,7 +49,8 @@ class TtsService : Service() {
 
     private var book: WearBook? = null
     private var text: String = ""
-    private var sentences: List<Pair<String, IntRange>> = emptyList()
+    /** Where each sentence lies in [text]; the words are cut out only as they are queued. */
+    private var sentences: List<IntRange> = emptyList()
     private var nextToQueue = 0
     @Volatile private var current = -1
     /** When the current sentence began; the reading saved on the way out is stamped with this. */
@@ -116,9 +118,15 @@ class TtsService : Service() {
             val loadedText = WearBookRepository.loadText(loaded)
             // another play() came in while this one was reading the file; that one owns the engine now
             if (serial != playSerial) return@launch
+            // Every character from here to the end is looked at; a novel's worth is too much for
+            // the main thread, so it happens on a worker.
+            val split = withContext(Dispatchers.IO) {
+                SentenceParser.ranges(loadedText, offset.coerceIn(0, loadedText.length))
+            }
+            if (serial != playSerial) return@launch
             book = loaded
             text = loadedText
-            sentences = SentenceParser.splitWithRanges(text, offset.coerceIn(0, text.length))
+            sentences = split
             if (sentences.isEmpty()) {
                 finish()
                 return@launch
@@ -145,7 +153,8 @@ class TtsService : Service() {
         val engine = tts ?: return
         val end = minOf(sentences.size, nextToQueue + BATCH)
         for (i in nextToQueue until end) {
-            val (sentence, _) = sentences[i]
+            val range = sentences[i]
+            val sentence = text.substring(range.first, range.last + 1)
             // Every sentence is spoken in the language it is written in; there is nothing to
             // choose. A watch without that voice keeps the one it has rather than falling silent.
             val locale = LanguageDetector.detect(sentence)
@@ -156,7 +165,15 @@ class TtsService : Service() {
                 }
             }
             val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "s$i") }
-            engine.speak(sentence, TextToSpeech.QUEUE_ADD, params, "s$i")
+            if (engine.speak(sentence, TextToSpeech.QUEUE_ADD, params, "s$i") != TextToSpeech.SUCCESS) {
+                // A sentence the engine refuses to take never gets an onError, so the queue
+                // would drain and the service sit silent in PLAYING. The engine is gone; the
+                // sentence being spoken is saved on the way out, and the reader sees idle.
+                Log.w(TAG, "Engine refused sentence $i; stopping")
+                nextToQueue = i
+                finish()
+                return
+            }
         }
         nextToQueue = end
     }
@@ -166,7 +183,7 @@ class TtsService : Service() {
             val index = utteranceId.removePrefix("s").toIntOrNull() ?: return
             current = index
             currentStartedAt = System.currentTimeMillis()
-            val range = sentences.getOrNull(index)?.second
+            val range = sentences.getOrNull(index)
             scope.launch {
                 TtsPlayback.sentence(range)
                 if (++sentencesSinceSave >= SAVE_EVERY) {
@@ -215,7 +232,7 @@ class TtsService : Service() {
                 topUp(index)
             }
             if (index >= sentences.size - 1) {
-                val offset = if (failed) sentences.getOrNull(index)?.second?.first ?: text.length else text.length
+                val offset = if (failed) sentences.getOrNull(index)?.first ?: text.length else text.length
                 if (!failed) finishedBook = true
                 saveProgress(offset, toPhone = true)
                 finish()
@@ -230,7 +247,7 @@ class TtsService : Service() {
         TtsPlayback.state(TtsState.PAUSED)
         goForeground(titleOrLoading(), playing = false)
         val at = currentStartedAt
-        scope.launch { sentences.getOrNull(current)?.second?.let { saveProgress(it.first, toPhone = true, at) } }
+        scope.launch { sentences.getOrNull(current)?.let { saveProgress(it.first, toPhone = true, at) } }
     }
 
     private fun resume() {
@@ -261,7 +278,7 @@ class TtsService : Service() {
         destroyed = true
         pendingPlay = null
         val b = book
-        val offset = if (finishedBook) text.length else sentences.getOrNull(current)?.second?.first
+        val offset = if (finishedBook) text.length else sentences.getOrNull(current)?.first
         // The reading is stamped with the moment its sentence began, not with now: a jump the
         // reader made while it was being spoken carries a later stamp and must win at both ends.
         val at = if (finishedBook || currentStartedAt == 0L) System.currentTimeMillis() else currentStartedAt

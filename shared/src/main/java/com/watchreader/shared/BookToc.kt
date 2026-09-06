@@ -7,11 +7,17 @@ import org.json.JSONObject
 data class Chapter(val title: String, val start: Int)
 
 object BookToc {
-    /** Prefer the EPUB's contents, falling back to headings for old transfers and plain text. */
+    /**
+     * The book's own contents when it has any, else headings found in the text. A contents list
+     * that is present but empty is a book already known to have no chapters, and its text is left
+     * alone; a list that is missing or unreadable is an old transfer, and the text is scanned.
+     */
     fun resolve(json: String?, text: String): List<Chapter> {
-        val embedded = fromJson(json).filter { it.title.isNotBlank() && it.start in text.indices }
+        val declared = parse(json) ?: return detect(text)
+        if (declared.isEmpty()) return emptyList()
+        val usable = declared.filter { it.title.isNotBlank() && it.start in text.indices }
             .distinctBy { it.start }.sortedBy { it.start }
-        return embedded.ifEmpty { detect(text) }
+        return usable.ifEmpty { detect(text) }
     }
 
     /** Longest a line can be and still read as a heading rather than a sentence. */
@@ -31,15 +37,16 @@ object BookToc {
         return array.toString()
     }
 
-    fun fromJson(json: String?): List<Chapter> {
-        if (json.isNullOrBlank()) return emptyList()
+    /** The chapters a contents string holds; null when there is no string or it cannot be read. */
+    fun parse(json: String?): List<Chapter>? {
+        if (json.isNullOrBlank()) return null
         return runCatching {
             val array = JSONArray(json)
             (0 until array.length()).map { i ->
                 val item = array.getJSONObject(i)
                 Chapter(item.getString("title"), item.getInt("start"))
             }
-        }.getOrDefault(emptyList())
+        }.getOrNull()
     }
 
     /**
