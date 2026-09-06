@@ -19,12 +19,13 @@ object TextNormalizer {
         bom(bytes)?.let { (charset, skip) ->
             return Decoded(normalize(String(bytes, skip, bytes.size - skip, charset)), charset.name())
         }
-        declaredCharset?.takeIf { it.isNotBlank() }?.let { name ->
-            runCatching { Charset.forName(name) }.getOrNull()?.let { cs ->
-                strict(bytes, cs)?.let { return Decoded(normalize(it), cs.name()) }
-            }
-        }
+        val declared = declaredCharset?.takeIf { it.isNotBlank() }?.let { runCatching { Charset.forName(it) }.getOrNull() }
+        // A single-byte charset decodes any bytes without complaint, so a server that still stamps
+        // its old Latin-1 default on a UTF-8 file cannot be believed until strict UTF-8 has failed.
+        val singleByte = declared != null && declared.newEncoder().maxBytesPerChar() <= 1f
+        if (declared != null && !singleByte) strict(bytes, declared)?.let { return Decoded(normalize(it), declared.name()) }
         strict(bytes, Charsets.UTF_8)?.let { return Decoded(normalize(it), "UTF-8") }
+        if (declared != null && singleByte) strict(bytes, declared)?.let { return Decoded(normalize(it), declared.name()) }
         val gb = Charset.forName("GB18030")
         strict(bytes, gb)?.let { return Decoded(normalize(it), gb.name()) }
         return Decoded(normalize(String(bytes, Charsets.ISO_8859_1)), "ISO-8859-1")

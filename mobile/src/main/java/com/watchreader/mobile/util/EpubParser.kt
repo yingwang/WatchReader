@@ -105,8 +105,10 @@ object EpubParser {
                     else -> null
                 }
             }.firstOrNull()
+        // Targets inside the contents document are relative to that document, not to the OPF.
+        val navDir = navPath?.substringBeforeLast('/', "") ?: opfDir
         val declared = navPath?.let { entries[it] }?.toString(Charsets.UTF_8)?.let { nav ->
-            tocEntries(nav, opfDir).mapNotNull { (name, target) ->
+            tocEntries(nav, navDir).mapNotNull { (name, target) ->
                 docStart[target]?.let { Chapter(name, it) }
             }
         }.orEmpty()
@@ -177,8 +179,11 @@ object EpubParser {
             decodeEntities(label).trim().take(80) to resolve(opfDir, src)
         }.toList()
         if (ncx.isNotEmpty()) return ncx
+        // An EPUB 3 nav document may also carry landmarks and a page list; only the toc is contents.
+        val toc = Regex("""<nav\b[^>]*epub:type\s*=\s*"toc"[^>]*>(.*?)</nav>""", RegexOption.DOT_MATCHES_ALL)
+            .find(nav)?.groupValues?.get(1) ?: nav
         return Regex("""<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
-            .findAll(nav)
+            .findAll(toc)
             .map { htmlToText(it.groupValues[2]).trim().take(80) to resolve(opfDir, it.groupValues[1]) }
             .filter { it.first.isNotBlank() }
             .toList()
@@ -190,7 +195,8 @@ object EpubParser {
 
     /** Joins an OPF-relative href to the OPF directory, decoding %20 and collapsing "../". */
     internal fun resolve(opfDir: String, href: String): String {
-        val decoded = runCatching { URLDecoder.decode(href.substringBefore('#'), "UTF-8") }.getOrDefault(href)
+        // URLDecoder is for form encoding, where + is a space; in a plain URI it is a plus sign.
+        val decoded = runCatching { URLDecoder.decode(href.substringBefore('#').replace("+", "%2B"), "UTF-8") }.getOrDefault(href)
         val raw = if (opfDir.isEmpty()) decoded else "$opfDir/$decoded"
         val parts = ArrayList<String>()
         for (part in raw.split('/')) {
@@ -205,7 +211,7 @@ object EpubParser {
 
     internal fun htmlToText(html: String): String {
         var s = html
-        s = s.replace(Regex("<(style|script|head)[^>]*>.*?</(style|script|head)>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+        s = s.replace(Regex("<(style|script|head)\\b[^>]*>.*?</(style|script|head)>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         s = s.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
         // Mark the breaks the markup asks for, so the ones the source file merely wrapped at can
         // be flattened away: a paragraph should reach the reader as one long line, not as the

@@ -44,10 +44,10 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
 
     fun deleteBook(book: Book) {
         viewModelScope.launch {
-            if (book.syncStatus == SyncStatus.SENT || book.syncStatus == SyncStatus.SENDING) {
-                (sender.findWatch() as? WatchLookup.Ready)?.let { sender.deleteBookOnWatch(book.id, it.nodeId) }
-            }
             BookRepository.delete(book.id)
+            // Whatever the phone believes about the transfer, the watch may hold a copy: a receipt
+            // can go missing after a send that worked. Telling a watch that has none is harmless.
+            (sender.findWatch() as? WatchLookup.Ready)?.let { sender.deleteBookOnWatch(book.id, it.nodeId) }
         }
     }
 

@@ -20,6 +20,9 @@ fun MobileNavigation(shareGeneration: Int) {
     val navController = rememberNavController()
     // One list view model for both screens: the reader sends to the watch through the same path.
     val listVm: BookListViewModel = viewModel()
+    // Popping past the start destination leaves the host blank, and a screen can ask to go back
+    // twice: an import that finishes after its screen was already left does exactly that.
+    val back: () -> Unit = { if (navController.previousBackStackEntry != null) navController.popBackStack() }
 
     // A file shared from another app opens the add screen straight away.
     LaunchedEffect(shareGeneration) {
@@ -37,7 +40,7 @@ fun MobileNavigation(shareGeneration: Int) {
             )
         }
         composable("add") {
-            AddBookScreen(shareGeneration = shareGeneration, onBack = { navController.popBackStack() })
+            AddBookScreen(shareGeneration = shareGeneration, onBack = back)
         }
         composable(
             route = "read/{bookId}",
@@ -47,7 +50,7 @@ fun MobileNavigation(shareGeneration: Int) {
                 ReaderScreen(
                     bookId = entry.arguments?.getString("bookId").orEmpty(),
                     listVm = listVm,
-                    onBack = { navController.popBackStack() },
+                    onBack = back,
                 )
             }
         }

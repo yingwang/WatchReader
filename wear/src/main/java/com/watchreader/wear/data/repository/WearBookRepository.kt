@@ -50,6 +50,9 @@ object WearBookRepository {
                 val text = appContext.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
                 val file = File(booksDir, "$SAMPLE_ID.txt")
                 file.writeText(text, Charsets.UTF_8)
+                // A contents file left by an earlier edition sent from the phone would pair the
+                // new text with the old offsets.
+                storeContents(file, null)
                 dao.upsert(
                     WearBook(
                         id = SAMPLE_ID,

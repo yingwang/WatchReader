@@ -2,6 +2,7 @@ package com.watchreader.wear.reader
 
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Typeface
 import com.watchreader.wear.R
 import java.io.File
 
@@ -20,14 +21,26 @@ object Typefaces {
     private const val CJK_SANS = "/system/fonts/NotoSansCJK-Regular.ttc"
     private const val CJK_SERIF = "/system/fonts/NotoSerifCJK-Regular.ttc"
 
-    /** Only the faces this watch can actually render, in the order they cycle. */
-    fun available(): List<Face> = buildList {
-        add(Face("sans", "Sans") { FontFamily.SansSerif })
-        add(Face("serif", "Serif") { FontFamily.Serif })
-        systemFace("hei", "Hei", CJK_SANS)?.let { add(it) }
-        systemFace("song", "Song", CJK_SERIF)?.let { add(it) }
-        add(Face("kai", "Kai") { FontFamily(Font(R.font.lxgw_wenkai)) })
+    /** Both Noto CJK collections order their faces Japanese, Korean, Simplified, Traditional. */
+    private const val SIMPLIFIED_CHINESE_TTC_INDEX = 2
+
+    /**
+     * Built once: every screen then hands Compose the same family objects, so its typeface cache
+     * hits instead of parsing a twenty-megabyte collection again on each recomposition.
+     */
+    private val faces: List<Face> by lazy {
+        buildList {
+            add(Face("sans", "Sans") { FontFamily.SansSerif })
+            add(Face("serif", "Serif") { FontFamily.Serif })
+            systemFace("hei", "Hei", CJK_SANS)?.let { add(it) }
+            systemFace("song", "Song", CJK_SERIF)?.let { add(it) }
+            val kai = FontFamily(Font(R.font.lxgw_wenkai))
+            add(Face("kai", "Kai") { kai })
+        }
     }
+
+    /** Only the faces this watch can actually render, in the order they cycle. */
+    fun available(): List<Face> = faces
 
     fun familyFor(key: String): FontFamily =
         available().firstOrNull { it.key == key }?.family?.invoke() ?: FontFamily.SansSerif
@@ -38,8 +51,13 @@ object Typefaces {
     private fun systemFace(key: String, label: String, path: String): Face? {
         val file = File(path)
         if (!file.isFile) return null
-        // A collection that will not load is worse than an option that was never offered.
-        val family = runCatching { FontFamily(Font(file)) }.getOrNull() ?: return null
+        // A collection that will not load is worse than an option that was never offered. Loading
+        // it as a plain Font takes face 0, which is the Japanese one and draws 直, 骨, 角 and their
+        // like in Japanese forms; the Simplified face has to be asked for by index.
+        val family = runCatching {
+            android.graphics.Typeface.Builder(file).setTtcIndex(SIMPLIFIED_CHINESE_TTC_INDEX).build()
+                ?.let { FontFamily(Typeface(it)) }
+        }.getOrNull() ?: return null
         return Face(key, label) { family }
     }
 }

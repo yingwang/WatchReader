@@ -13,6 +13,7 @@ import com.watchreader.shared.Chapter
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.TextNormalizer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -100,8 +101,8 @@ object BookRepository {
         }
     }
 
-    suspend fun delete(id: String) {
-        val book = dao.getById(id) ?: return
+    suspend fun delete(id: String) = withContext(Dispatchers.IO) {
+        val book = dao.getById(id) ?: return@withContext
         File(book.filePath).delete()
         book.coverPath?.let { File(it).delete() }
         dao.deleteById(id)
@@ -221,22 +222,24 @@ object BookRepository {
         val id = UUID.randomUUID().toString()
         val destFile = File(booksDir, "$id.txt")
         val coverFile = imported.cover?.let { File(booksDir, "$id.cover") }
-        withContext(Dispatchers.IO) {
+        // The file and its row go down together: a screen left mid-import must not leave a file
+        // on disk that no row points at.
+        return withContext(Dispatchers.IO + NonCancellable) {
             destFile.writeText(imported.text, Charsets.UTF_8)
             if (coverFile != null) coverFile.writeBytes(imported.cover)
+            val book = Book(
+                id = id,
+                title = imported.title.trim().ifBlank { "Untitled" },
+                filePath = destFile.absolutePath,
+                sizeBytes = destFile.length(),
+                addedEpochMs = System.currentTimeMillis(),
+                totalChars = imported.text.length,
+                coverPath = coverFile?.absolutePath,
+                tocJson = imported.chapters.takeIf { it.isNotEmpty() }?.let { BookToc.toJson(it) },
+            )
+            dao.upsert(book)
+            book
         }
-        val book = Book(
-            id = id,
-            title = imported.title.trim().ifBlank { "Untitled" },
-            filePath = destFile.absolutePath,
-            sizeBytes = destFile.length(),
-            addedEpochMs = System.currentTimeMillis(),
-            totalChars = imported.text.length,
-            coverPath = coverFile?.absolutePath,
-            tocJson = imported.chapters.takeIf { it.isNotEmpty() }?.let { BookToc.toJson(it) },
-        )
-        dao.upsert(book)
-        return book
     }
 
     private fun readLimited(input: InputStream): ByteArray {

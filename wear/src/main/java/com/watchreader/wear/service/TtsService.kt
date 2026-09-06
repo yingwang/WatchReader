@@ -51,6 +51,10 @@ class TtsService : Service() {
     private var sentences: List<Pair<String, IntRange>> = emptyList()
     private var nextToQueue = 0
     @Volatile private var current = -1
+    /** When the current sentence began; the reading saved on the way out is stamped with this. */
+    @Volatile private var currentStartedAt = 0L
+    /** Set in onDestroy so an engine that reports ready afterwards is ignored. */
+    @Volatile private var destroyed = false
     private var currentLocale: Locale? = null
     private var sentencesSinceSave = 0
     private var finishedBook = false
@@ -66,6 +70,7 @@ class TtsService : Service() {
         // the engine then turns out to be missing and we stop straight away.
         goForeground(getString(R.string.tts_loading), playing = true)
         tts = TextToSpeech(this) { status ->
+            if (destroyed) return@TextToSpeech
             engineReady = status == TextToSpeech.SUCCESS
             if (!engineReady) {
                 Log.e(TAG, "TTS engine failed to initialise")
@@ -160,6 +165,7 @@ class TtsService : Service() {
         override fun onStart(utteranceId: String) {
             val index = utteranceId.removePrefix("s").toIntOrNull() ?: return
             current = index
+            currentStartedAt = System.currentTimeMillis()
             val range = sentences.getOrNull(index)?.second
             scope.launch {
                 TtsPlayback.sentence(range)
@@ -223,7 +229,8 @@ class TtsService : Service() {
         nextToQueue = maxOf(current, 0)
         TtsPlayback.state(TtsState.PAUSED)
         goForeground(titleOrLoading(), playing = false)
-        scope.launch { sentences.getOrNull(current)?.second?.let { saveProgress(it.first, toPhone = true) } }
+        val at = currentStartedAt
+        scope.launch { sentences.getOrNull(current)?.second?.let { saveProgress(it.first, toPhone = true, at) } }
     }
 
     private fun resume() {
@@ -235,22 +242,29 @@ class TtsService : Service() {
     }
 
     private fun finish() {
-        tts?.stop()
+        // stop() waits for the engine's lock, which its connection set-up holds for seconds on a
+        // cold start; before the engine has reported ready there is nothing to stop anyway.
+        if (engineReady) tts?.stop()
         TtsPlayback.set(TtsState.IDLE, null, null)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private suspend fun saveProgress(offset: Int, toPhone: Boolean) {
+    private suspend fun saveProgress(offset: Int, toPhone: Boolean, atEpochMs: Long = System.currentTimeMillis()) {
         val b = book ?: return
-        WearBookRepository.updateProgress(b.id, offset)
-        if (toPhone) WearBookRepository.sendProgressToPhone(b, offset)
+        WearBookRepository.updateProgress(b.id, offset, atEpochMs)
+        if (toPhone) WearBookRepository.sendProgressToPhone(b, offset, atEpochMs)
     }
 
     @OptIn(DelicateCoroutinesApi::class)
     override fun onDestroy() {
+        destroyed = true
+        pendingPlay = null
         val b = book
         val offset = if (finishedBook) text.length else sentences.getOrNull(current)?.second?.first
+        // The reading is stamped with the moment its sentence began, not with now: a jump the
+        // reader made while it was being spoken carries a later stamp and must win at both ends.
+        val at = if (finishedBook || currentStartedAt == 0L) System.currentTimeMillis() else currentStartedAt
         // The service's own scope goes first, so no save from the listener lands after this one.
         scope.cancel()
         if (b != null && offset != null) {
@@ -258,8 +272,8 @@ class TtsService : Service() {
             // blocking onDestroy() on a database write and a message to the phone would stall the
             // main thread. It rides a job that outlives the service and finishes on its own.
             GlobalScope.launch(Dispatchers.IO + NonCancellable) {
-                WearBookRepository.updateProgress(b.id, offset)
-                WearBookRepository.sendProgressToPhone(b, offset)
+                WearBookRepository.updateProgress(b.id, offset, at)
+                WearBookRepository.sendProgressToPhone(b, offset, at)
             }
         }
         // stop() and shutdown() both take the engine's lock, which its connection set-up holds

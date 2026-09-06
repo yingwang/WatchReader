@@ -67,7 +67,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
                 _state.value = ReaderUiState.Missing
                 return@launch
             }
-            chapters = BookToc.fromJson(found.tocJson)
+            chapters = BookToc.resolve(found.tocJson, text)
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
             loaded = true
             rebuild()

@@ -128,7 +128,7 @@ fun AppearanceEditor(kind: String) {
                 color = colors.text,
                 fontSize = fontSize.sp,
                 lineHeight = (fontSize * 1.4f).sp,
-                fontFamily = Typefaces.familyFor(fontFamily),
+                fontFamily = remember(fontFamily) { Typefaces.familyFor(fontFamily) },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),

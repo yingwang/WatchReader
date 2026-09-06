@@ -211,7 +211,9 @@ fun ReaderScreen(
                 )
             },
     ) {
-        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+        // The toolbar's list takes rotary focus while it is up and clears it on the way out, so the
+        // page asks for it back every time the toolbar closes, not only on first composition.
+        LaunchedEffect(showToolbar) { if (!showToolbar) focusRequester.requestFocus() }
 
         // One left-aligned block, inset from the bezel on a round screen.
         val screenWpx = with(density) { maxWidth.roundToPx() }
