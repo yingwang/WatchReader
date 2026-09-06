@@ -7,6 +7,13 @@ import org.json.JSONObject
 data class Chapter(val title: String, val start: Int)
 
 object BookToc {
+    /** Prefer the EPUB's contents, falling back to headings for old transfers and plain text. */
+    fun resolve(json: String?, text: String): List<Chapter> {
+        val embedded = fromJson(json).filter { it.title.isNotBlank() && it.start in text.indices }
+            .distinctBy { it.start }.sortedBy { it.start }
+        return embedded.ifEmpty { detect(text) }
+    }
+
     /** Longest a line can be and still read as a heading rather than a sentence. */
     private const val MAX_HEADING_CHARS = 48
 

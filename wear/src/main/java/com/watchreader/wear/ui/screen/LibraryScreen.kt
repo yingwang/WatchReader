@@ -3,6 +3,7 @@ package com.watchreader.wear.ui.screen
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -23,6 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +54,7 @@ import com.watchreader.wear.ui.theme.ListRowBg
 import com.watchreader.wear.ui.theme.ListRowSub
 import com.watchreader.wear.ui.theme.ListRowText
 import com.watchreader.wear.ui.theme.ListTitle
+import com.watchreader.wear.ui.theme.BlueAccent
 import com.watchreader.wear.ui.viewmodel.LibraryViewModel
 
 @Composable
@@ -61,6 +69,9 @@ fun LibraryScreen(
     val listState = rememberScalingLazyListState()
     val view = LocalView.current
     var deleteTarget by remember { mutableStateOf<WearBook?>(null) }
+    val currentBook = books.filter { it.lastReadEpochMs > 0 }
+        .maxByOrNull { it.lastReadEpochMs }
+    val orderedBooks = listOfNotNull(currentBook) + books.filter { it.id != currentBook?.id }
 
     Scaffold(
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) },
@@ -88,7 +99,8 @@ fun LibraryScreen(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-                items(books, key = { it.id }) { book ->
+                items(orderedBooks, key = { it.id }) { book ->
+                    val featured = book.id == currentBook?.id
                     val listening = ttsBook == book.id && ttsState != TtsState.IDLE
                     val progress = if (book.totalChars > 0) book.readOffsetChars.toFloat() / book.totalChars else 0f
                     val subtitle = when {
@@ -99,6 +111,8 @@ fun LibraryScreen(
                     BookRow(
                         title = book.title,
                         subtitle = subtitle,
+                        progress = progress.coerceIn(0f, 1f),
+                        featured = featured,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             onBookClick(book.id)
@@ -109,7 +123,10 @@ fun LibraryScreen(
                         },
                     )
                 }
-                item { SettingsRow(onSettings) }
+                item {
+                    Spacer(Modifier.height(10.dp))
+                    SettingsRow(onSettings)
+                }
             }
         }
     }
@@ -154,6 +171,8 @@ fun LibraryScreen(
 private fun BookRow(
     title: String,
     subtitle: String,
+    progress: Float,
+    featured: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -161,13 +180,27 @@ private fun BookRow(
         modifier = Modifier
             .fillMaxWidth(0.84f)
             .clip(RoundedCornerShape(24.dp))
-            .background(ListRowBg)
+            .background(if (featured) Color(0xFF243A56) else ListRowBg)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Column {
-            Text(title, color = ListRowText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, fontSize = 10.sp, color = ListRowSub)
+            if (featured) {
+                Text(stringResource(R.string.library_continue), color = BlueAccent, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+            }
+            Text(title, color = ListRowText, fontSize = if (featured) 16.sp else 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(3.dp))
+            Text(subtitle, fontSize = 12.sp, color = ListRowSub)
+            if (featured || progress > 0f) {
+                Spacer(Modifier.height(8.dp))
+                Canvas(Modifier.fillMaxWidth().height(3.dp).semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
+                }) {
+                    drawLine(ListRowSub.copy(alpha = 0.25f), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), size.height, StrokeCap.Round)
+                    if (progress > 0f) drawLine(BlueAccent, Offset(0f, size.height / 2), Offset(size.width * progress, size.height / 2), size.height, StrokeCap.Round)
+                }
+            }
         }
     }
 }
@@ -177,12 +210,12 @@ private fun SettingsRow(onSettings: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth(0.84f)
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(ListRowBg)
             .clickable(onClick = onSettings)
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        contentAlignment = Alignment.CenterStart,
+        contentAlignment = Alignment.Center,
     ) {
-        Text(stringResource(R.string.library_settings), color = ListRowText, fontSize = 14.sp)
+        Text(stringResource(R.string.library_settings), color = BlueAccent, fontSize = 14.sp)
     }
 }

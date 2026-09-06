@@ -6,6 +6,8 @@ import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.BookToc
+import com.watchreader.shared.Chapter
 import com.watchreader.wear.data.db.WearBookDao
 import com.watchreader.wear.data.db.WearDatabase
 import com.watchreader.wear.R
@@ -73,6 +75,7 @@ object WearBookRepository {
     suspend fun delete(id: String, tellPhone: Boolean) {
         val book = dao.getById(id) ?: return
         File(book.filePath).delete()
+        File(book.filePath + ".toc.json").delete()
         dao.deleteById(id)
         if (tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
     }
@@ -104,6 +107,22 @@ object WearBookRepository {
         File(book.filePath).readText(Charsets.UTF_8)
     }
 
+    /** Optional companion file avoids changing the database or the book's character offsets. */
+    fun storeContents(bookFile: File, tocJson: String?) {
+        val file = File(bookFile.path + ".toc.json")
+        // Never reuse a previous edition's chapter offsets after a resend.
+        if (file.exists() && !file.delete()) throw java.io.IOException("Could not replace book contents")
+        if (tocJson != null) {
+            runCatching { file.writeText(tocJson, Charsets.UTF_8) }
+                .onFailure { file.delete(); Log.w(TAG, "Could not store optional contents", it) }
+        }
+    }
+
+    suspend fun loadChapters(book: WearBook, text: String): List<Chapter> = withContext(Dispatchers.IO) {
+        val json = runCatching { File(book.filePath + ".toc.json").readText(Charsets.UTF_8) }.getOrNull()
+        BookToc.resolve(json, text)
+    }
+
     private suspend fun sendToPhone(path: String, payload: ByteArray) {
         runCatching {
             val nodes = Wearable.getCapabilityClient(appContext)
@@ -117,6 +136,6 @@ object WearBookRepository {
     private const val SAMPLE_ID = "sample"
     private const val SAMPLE_ASSET = "sample.txt"
     /** Bumped whenever the bundled guide is rewritten. */
-    private const val SAMPLE_VERSION = 4
+    private const val SAMPLE_VERSION = 5
     private const val KEY_SAMPLE_VERSION = "sample_version"
 }

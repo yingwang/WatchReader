@@ -8,6 +8,7 @@ data class BookMetadata(
     val sizeBytes: Long,
     val addedEpochMs: Long,
     val totalChars: Int = 0,
+    val tocJson: String? = null,
 ) {
     fun toJson(): String = JSONObject().apply {
         put("id", id)
@@ -15,6 +16,7 @@ data class BookMetadata(
         put("sizeBytes", sizeBytes)
         put("addedEpochMs", addedEpochMs)
         put("totalChars", totalChars)
+        tocJson?.let { put("tocJson", it) }
     }.toString()
 
     companion object {
@@ -26,6 +28,7 @@ data class BookMetadata(
                 sizeBytes = obj.getLong("sizeBytes"),
                 addedEpochMs = obj.getLong("addedEpochMs"),
                 totalChars = obj.optInt("totalChars", 0),
+                tocJson = obj.optString("tocJson").takeIf { it.isNotBlank() && it != "null" },
             )
         }
     }

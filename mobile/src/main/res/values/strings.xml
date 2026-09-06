@@ -3,6 +3,12 @@
     <string name="app_name">WatchReader</string>
 
     <string name="list_title">WatchReader</string>
+    <string name="list_continue">Continue reading</string>
+    <string name="list_books">Your books</string>
+    <string name="list_progress">%1$d%% read</string>
+    <string name="list_new">Not started</string>
+    <string name="list_about">About WatchReader</string>
+    <string name="list_dismiss_hint">Got it</string>
     <string name="list_version">v%1$s</string>
     <string name="list_empty_title">No books yet</string>
     <string name="list_empty_hint">Tap + to add a .txt or .epub, or share one to WatchReader from any app.</string>

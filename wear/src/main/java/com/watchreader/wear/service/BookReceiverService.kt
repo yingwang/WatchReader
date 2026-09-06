@@ -61,6 +61,7 @@ class BookReceiverService : WearableListenerService() {
             if (text.isBlank()) throw IllegalStateException("Received an empty book")
             val file = File(WearBookRepository.getBooksDir(), "$bookId.txt")
             if (!tmp.renameTo(file)) throw IllegalStateException("Could not store the book")
+            WearBookRepository.storeContents(file, meta.tocJson)
             runBlocking {
                 val existing = WearBookRepository.getById(bookId)
                 WearBookRepository.insert(

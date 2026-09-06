@@ -6,6 +6,7 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,6 +50,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -66,6 +73,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.InlineSlider
 import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.Scaffold
+import androidx.wear.compose.material.PositionIndicator
+import androidx.wear.compose.material.dialog.Dialog
+import androidx.wear.compose.material.dialog.Alert
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import com.watchreader.shared.Chapter
+import com.watchreader.wear.ui.theme.BlueAccent
+import com.watchreader.wear.ui.theme.ListRowBg
+import com.watchreader.wear.ui.theme.ListRowText
 import com.watchreader.wear.R
 import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
@@ -78,7 +98,6 @@ import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.ui.theme.pageColors
 import com.watchreader.wear.ui.viewmodel.ReaderUiState
 import com.watchreader.wear.ui.viewmodel.ReaderViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlin.math.roundToInt
 
@@ -118,6 +137,7 @@ fun ReaderScreen(
     val isRound = LocalConfiguration.current.isScreenRound
 
     var showToolbar by remember { mutableStateOf(false) }
+    var showHint by remember { mutableStateOf(!prefs.readerHintSeen) }
     var crownTravel by remember { mutableFloatStateOf(0f) }
     val focusRequester = remember { FocusRequester() }
     val measurer = rememberTextMeasurer()
@@ -135,12 +155,10 @@ fun ReaderScreen(
             .collect { range -> if (range != null) vm.followSpoken(range.first) }
     }
 
-    LaunchedEffect(showToolbar) {
-        if (showToolbar) {
-            delay(5000)
-            showToolbar = false
-        }
-    }
+    BackHandler(enabled = showToolbar) { showToolbar = false }
+    val previousLabel = stringResource(R.string.reader_previous_page)
+    val nextLabel = stringResource(R.string.reader_next_page)
+    val controlsLabel = stringResource(R.string.reader_controls)
 
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun startReadingAloud(offset: Int) {
@@ -160,6 +178,7 @@ fun ReaderScreen(
             .fillMaxSize()
             .background(colors.background)
             .onRotaryScrollEvent { event ->
+                if (showToolbar || showHint) return@onRotaryScrollEvent false
                 // The crown reports a stream of small deltas; one page per notch, not per event.
                 crownTravel += event.verticalScrollPixels
                 while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
@@ -176,14 +195,16 @@ fun ReaderScreen(
             }
             .focusRequester(focusRequester)
             .focusable()
-            .pointerInput(Unit) {
+            .pointerInput(showToolbar, showHint) {
                 detectTapGestures(
                     // Nothing but a page turn on a plain tap: the toolbar was too easy to hit.
                     onTap = { offset ->
+                        if (showToolbar || showHint) return@detectTapGestures
                         if (offset.x < size.width / 2f) vm.prevPage() else vm.nextPage()
                         tick()
                     },
                     onLongPress = {
+                        if (showToolbar || showHint) return@detectTapGestures
                         showToolbar = true
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     },
@@ -234,7 +255,14 @@ fun ReaderScreen(
             is ReaderUiState.Ready -> {
                 val highlight = if (ttsHere && ttsState == TtsState.PLAYING) spoken else null
                 val page = s.page
-                Canvas(modifier = Modifier.fillMaxSize()) {
+                Canvas(modifier = Modifier.fillMaxSize().semantics {
+                    contentDescription = page.lines.joinToString(" ") { lineString(page, it, null).orEmpty() }
+                    customActions = listOf(
+                        CustomAccessibilityAction(previousLabel) { vm.prevPage(); true },
+                        CustomAccessibilityAction(nextLabel) { vm.nextPage(); true },
+                        CustomAccessibilityAction(controlsLabel) { showToolbar = true; true },
+                    )
+                }) {
                     for (line in page.lines) {
                         val slot = geometry.slots.getOrNull(line.slot) ?: continue
                         val lineText = lineString(page, line, vmText = null) ?: continue
@@ -277,7 +305,15 @@ fun ReaderScreen(
                         ttsState = ttsState,
                         background = colors.background,
                         textColor = colors.text,
-                        dimColor = colors.dim,
+                        chapters = s.chapters,
+                        currentOffset = page.start,
+                        onChapter = { chapter ->
+                            if (ttsHere) TtsService.stop(context)
+                            vm.jumpToChapter(chapter)
+                            showToolbar = false
+                            tick()
+                        },
+                        onClose = { showToolbar = false },
                         onPlayPause = {
                             when {
                                 ttsHere && ttsState == TtsState.PLAYING -> TtsService.pause(context)
@@ -291,11 +327,23 @@ fun ReaderScreen(
                             showToolbar = false
                         },
                         onJump = { f ->
+                            if (ttsHere) TtsService.stop(context)
                             vm.jumpToFraction(f)
                             tick()
                         },
                     )
                 }
+            }
+        }
+    }
+
+    Dialog(showDialog = showHint && state is ReaderUiState.Ready, onDismissRequest = {
+        showHint = false
+        prefs.readerHintSeen = true
+    }) {
+        Alert(title = { Text(stringResource(R.string.reader_hint), fontSize = 14.sp, textAlign = TextAlign.Center) }) {
+            item {
+                Chip(onClick = { showHint = false; prefs.readerHintSeen = true }, label = { Text(stringResource(R.string.reader_got_it)) })
             }
         }
     }
@@ -308,45 +356,95 @@ private fun Toolbar(
     ttsState: TtsState,
     background: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
-    dimColor: androidx.compose.ui.graphics.Color,
+    chapters: List<Chapter>,
+    currentOffset: Int,
+    onChapter: (Chapter) -> Unit,
+    onClose: () -> Unit,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onJump: (Float) -> Unit,
 ) {
-    Box(
+    var contents by remember { mutableStateOf(false) }
+    val listState = rememberScalingLazyListState()
+    val chapterState = rememberScalingLazyListState(initialCenterItemIndex = (chapters.indexOfLast { it.start <= currentOffset } + 1).coerceAtLeast(1))
+    val activeState = if (contents) chapterState else listState
+    BackHandler { if (contents) contents = false else onClose() }
+    Scaffold(
         modifier = Modifier.fillMaxSize().background(background),
-        contentAlignment = Alignment.Center,
+        positionIndicator = { PositionIndicator(scalingLazyListState = activeState) },
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                val playing = ttsHere && ttsState == TtsState.PLAYING
-                TransportButton(
-                    shape = if (playing) Transport.PAUSE else Transport.PLAY,
-                    color = textColor,
-                    onClick = onPlayPause,
-                )
-                if (ttsHere) {
-                    TransportButton(shape = Transport.STOP, color = textColor, onClick = onStop)
+        ScalingLazyColumn(state = activeState, modifier = Modifier.fillMaxSize()) {
+            if (contents) {
+                item { Text(stringResource(R.string.reader_contents), color = textColor, fontSize = 14.sp) }
+                if (chapters.isEmpty()) item {
+                    Text(stringResource(R.string.reader_no_chapters), color = textColor, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                }
+                items(chapters) { chapter ->
+                    Chip(
+                        onClick = { onChapter(chapter) },
+                        label = { Text(chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        modifier = Modifier.fillMaxWidth(0.84f),
+                    )
+                }
+                item { Chip(onClick = { contents = false }, label = { Text(stringResource(R.string.reader_controls)) }, colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText), modifier = Modifier.fillMaxWidth(0.84f)) }
+            } else {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        val playing = ttsHere && ttsState == TtsState.PLAYING
+                        TransportButton(
+                            shape = if (playing) Transport.PAUSE else Transport.PLAY,
+                            color = BlueAccent,
+                            label = stringResource(if (playing) R.string.reader_pause else R.string.reader_play),
+                            onClick = onPlayPause,
+                        )
+                        if (ttsHere) {
+                            TransportButton(shape = Transport.STOP, color = textColor, label = stringResource(R.string.reader_stop), onClick = onStop)
+                        }
+                    }
+                }
+                item {
+                    Text(
+                        stringResource(if (ttsHere && ttsState == TtsState.PLAYING) R.string.reader_pause else R.string.reader_play),
+                        color = textColor, fontSize = 12.sp,
+                    )
+                }
+                item {
+                    Chip(
+                        onClick = { contents = true },
+                        label = { Text(stringResource(R.string.reader_contents)) },
+                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        modifier = Modifier.fillMaxWidth(0.84f),
+                    )
+                }
+                item {
+                    Text(
+                        text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (fraction * 100).roundToInt()),
+                        color = textColor,
+                        fontSize = 12.sp,
+                    )
+                }
+                item {
+                    InlineSlider(
+                        value = (fraction * 100).roundToInt().toFloat(),
+                        onValueChange = { onJump(it / 100f) },
+                        valueRange = 0f..100f,
+                        steps = 99,
+                        increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
+                        decreaseIcon = { Text("–", color = textColor, fontSize = 16.sp) },
+                        colors = InlineSliderDefaults.colors(),
+                        modifier = Modifier.fillMaxWidth(0.8f),
+                    )
                 }
             }
-            Text(
-                text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (fraction * 100).roundToInt()),
-                color = textColor,
-                fontSize = 12.sp,
-            )
-            InlineSlider(
-                value = (fraction * 20).roundToInt().toFloat(),
-                onValueChange = { onJump(it / 20f) },
-                valueRange = 0f..20f,
-                steps = 19,
-                increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
-                decreaseIcon = { Text("–", color = textColor, fontSize = 16.sp) },
-                colors = InlineSliderDefaults.colors(),
-                modifier = Modifier.fillMaxWidth(0.8f),
-            )
+            item {
+                Chip(
+                    onClick = onClose,
+                    label = { Text(stringResource(R.string.reader_done)) },
+                    colors = ChipDefaults.chipColors(backgroundColor = background, contentColor = textColor),
+                    modifier = Modifier.fillMaxWidth(0.84f).heightIn(min = 48.dp),
+                )
+            }
         }
     }
 }
@@ -359,13 +457,14 @@ private enum class Transport { PLAY, PAUSE, STOP }
  * styles on the same watch.
  */
 @Composable
-private fun TransportButton(shape: Transport, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+private fun TransportButton(shape: Transport, color: androidx.compose.ui.graphics.Color, label: String, onClick: () -> Unit) {
     Canvas(
         modifier = Modifier
             .size(52.dp)
             .clip(CircleShape)
             .background(color.copy(alpha = 0.22f))
-            .clickable(onClick = onClick),
+            .semantics { contentDescription = label }
+            .clickable(role = Role.Button, onClick = onClick),
     ) {
         val w = size.width
         val mark = w * 0.36f

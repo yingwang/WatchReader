@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
+import com.watchreader.shared.Chapter
 import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
@@ -28,6 +29,7 @@ sealed class ReaderUiState {
         val title: String,
         val page: Paginator.Page,
         val totalChars: Int,
+        val chapters: List<Chapter>,
     ) : ReaderUiState() {
         val fraction: Float get() = if (totalChars == 0) 0f else page.end.toFloat() / totalChars
         val atEnd: Boolean get() = page.end >= totalChars
@@ -49,6 +51,7 @@ class ReaderViewModel(
 
     private var book: WearBook? = null
     private var text: String = ""
+    private var chapters: List<Chapter> = emptyList()
     private var loaded = false
     private var layout: Pair<PageGeometry, LineMeasurer>? = null
     private var paginator: Paginator? = null
@@ -73,6 +76,7 @@ class ReaderViewModel(
                 return@launch
             }
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            chapters = WearBookRepository.loadChapters(found, text)
             loaded = true
             rebuild()
         }
@@ -121,6 +125,15 @@ class ReaderViewModel(
         scheduleSync()
     }
 
+    fun jumpToChapter(chapter: Chapter) {
+        val p = paginator ?: return
+        if (chapter !in chapters) return
+        page = p.pageFrom(chapter.start.coerceIn(0, p.length))
+        publish()
+        saveProgress(toPhone = false)
+        scheduleSync()
+    }
+
     /** Keeps the page under the sentence being read aloud. */
     fun followSpoken(offset: Int) {
         val p = paginator ?: return
@@ -138,7 +151,7 @@ class ReaderViewModel(
     private fun publish() {
         val b = book ?: return
         val current = page ?: return
-        _state.value = ReaderUiState.Ready(title = b.title, page = current, totalChars = text.length)
+        _state.value = ReaderUiState.Ready(title = b.title, page = current, totalChars = text.length, chapters = chapters)
     }
 
     private fun flipped() {

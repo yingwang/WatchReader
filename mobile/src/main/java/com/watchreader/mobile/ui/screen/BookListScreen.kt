@@ -15,15 +15,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -84,6 +89,10 @@ fun BookListScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var deleteTarget by remember { mutableStateOf<Book?>(null) }
+    var showAbout by remember { mutableStateOf(false) }
+    val uiPrefs = remember { context.getSharedPreferences("library_ui", android.content.Context.MODE_PRIVATE) }
+    var showHint by remember { mutableStateOf(!uiPrefs.getBoolean("hint_dismissed", false)) }
+    val currentBook = books.filter { it.lastReadEpochMs > 0 }.maxByOrNull { it.lastReadEpochMs }
 
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
@@ -106,13 +115,11 @@ fun BookListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(stringResource(R.string.list_title))
-                        Text(
-                            stringResource(R.string.list_version, BuildConfig.VERSION_NAME),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                        )
+                    Text(stringResource(R.string.list_title))
+                },
+                actions = {
+                    IconButton(onClick = { showAbout = true }) {
+                        Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.list_about))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -122,7 +129,11 @@ fun BookListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddBook) {
+            FloatingActionButton(
+                onClick = onAddBook,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.list_add))
             }
         },
@@ -151,12 +162,6 @@ fun BookListScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                Text(
-                    stringResource(R.string.list_tap_hint),
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
@@ -164,6 +169,34 @@ fun BookListScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    if (showHint) item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column {
+                            Text(stringResource(R.string.list_tap_hint), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = {
+                                showHint = false
+                                uiPrefs.edit().putBoolean("hint_dismissed", true).apply()
+                            }) { Text(stringResource(R.string.list_dismiss_hint)) }
+                        }
+                    }
+                    currentBook?.let { book ->
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Card(
+                                onClick = { onOpenBook(book.id) },
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(stringResource(R.string.list_continue), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                    Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(stringResource(R.string.list_progress, (book.readProgress.coerceIn(0f, 1f) * 100).toInt()), style = MaterialTheme.typography.bodyMedium)
+                                    LinearProgressIndicator(progress = { book.readProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(stringResource(R.string.list_books), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    }
                     items(books, key = { it.id }) { book ->
                         BookCover(
                             book = book,
@@ -175,6 +208,13 @@ fun BookListScreen(
             }
         }
     }
+
+    if (showAbout) AlertDialog(
+        onDismissRequest = { showAbout = false },
+        title = { Text(stringResource(R.string.list_about)) },
+        text = { Text(stringResource(R.string.list_version, BuildConfig.VERSION_NAME)) },
+        confirmButton = { TextButton(onClick = { showAbout = false }) { Text(stringResource(R.string.list_dismiss_hint)) } },
+    )
 
     deleteTarget?.let { book ->
         AlertDialog(
@@ -202,13 +242,13 @@ private fun BookCover(
     onLongClick: () -> Unit,
 ) {
     val bgColor = coverColors[book.id.hashCode().absoluteValue % coverColors.size]
+    val art = rememberCoverArt(book.coverPath)
 
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        val art = rememberCoverArt(book.coverPath)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -240,22 +280,27 @@ private fun BookCover(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(bgColor.copy(alpha = 0.6f), RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
         ) {
-            if (book.syncStatus == SyncStatus.SENT && book.readProgress > 0f) {
+            Text(book.title, style = MaterialTheme.typography.titleSmall, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (book.lastReadEpochMs > 0 || book.readProgress > 0f) stringResource(R.string.list_progress, (book.readProgress.coerceIn(0f, 1f) * 100).toInt()) else stringResource(R.string.list_new),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+            if (book.readProgress > 0f) {
                 LinearProgressIndicator(
-                    progress = { book.readProgress },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp),
-                    color = Color.White.copy(alpha = 0.8f),
-                    trackColor = Color.White.copy(alpha = 0.2f),
+                    progress = { book.readProgress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                 )
             }
             Text(
                 text = statusText(book),
-                color = Color.White.copy(alpha = 0.75f),
-                fontSize = 11.sp,
-                maxLines = 1,
+                color = if (book.syncStatus == SyncStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -266,9 +311,7 @@ private fun BookCover(
 private fun statusText(book: Book): String = when (book.syncStatus) {
     SyncStatus.NOT_SENT -> stringResource(R.string.status_not_sent)
     SyncStatus.SENDING -> stringResource(R.string.status_sending)
-    SyncStatus.SENT ->
-        if (book.readProgress > 0f) stringResource(R.string.status_sent_progress, (book.readProgress * 100).toInt())
-        else stringResource(R.string.status_sent)
+    SyncStatus.SENT -> stringResource(R.string.status_sent)
     SyncStatus.FAILED -> book.syncMessage?.takeIf { it.isNotBlank() }
         ?.let { stringResource(R.string.status_failed_reason, it) }
         ?: stringResource(R.string.status_failed)

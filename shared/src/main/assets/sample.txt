@@ -12,7 +12,7 @@ Reading on the watch
 
 Tap the right half of the screen to go forward and the left half to go back. The crown does the same thing: turn it away from you to go forward, towards you to go back, one page for each notch.
 
-Press and hold anywhere and a toolbar appears. It folds away on its own after a few seconds, or when you press and hold again.
+Press and hold anywhere to open the reading controls. They stay open while you use them. Scroll down and tap Back to book when you are ready to carry on.
 
 Your place travels with you. Read a few pages on the watch and the phone opens at the same spot, and the other way round, so you can put the phone down and carry on from your wrist.
 
@@ -20,13 +20,13 @@ Reading aloud
 
 Press the triangle in the toolbar and the watch reads the book to you with the system speech engine. The sentence being spoken is highlighted as it goes. Reading carries on when the screen turns off and when you leave the app, and the notification carries a pause and a stop. To stop, press the square in the toolbar or stop it from the notification.
 
-You never have to choose a voice. Each sentence is spoken in the language it is written in, so a book in English and a book in Chinese both read correctly, and a book that mixes the two switches as it goes. The bottom of the settings screen tells you which languages this particular watch can speak. If one is missing, install its voice in the watch's own system settings.
+You never have to choose a voice. Each sentence is spoken in the language it is written in, so a book in English and a book in Chinese both read correctly, and a book that mixes the two switches as it goes. Open Settings, then Read aloud to see which languages this watch can speak. If one is missing, install its voice in the watch's own system settings.
 
-Under the triangle is a jump bar: each press of plus or minus moves five percent, which is the quickest way back to the beginning.
+Open Contents to jump to a chapter. EPUB contents arrive with books sent from the updated phone app; older books use headings detected in the text. If no headings are found, use the jump bar below Contents. Each press of plus or minus moves one percent. Jumping stops any current read-aloud session so it does not pull you back to the old page.
 
 Settings
 
-Open Settings from the watch's library to change the text size, the typeface, the page colour and the reading speed. Changing the text size re-flows the pages against the real screen, so nothing is ever cut off at the round edge.
+Open Settings from the library. Appearance has separate text size, font and page controls, each with a live preview. Read aloud has the reading speed and voice status. Changing the text size re-flows the pages against the real screen.
 
 Adding books
 

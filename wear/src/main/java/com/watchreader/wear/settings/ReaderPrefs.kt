@@ -31,6 +31,10 @@ class ReaderPrefs(context: Context) {
         get() = prefs.getFloat(KEY_SPEECH_RATE, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_SPEECH_RATE, value.coerceIn(0.5f, 2.0f)).apply()
 
+    var readerHintSeen: Boolean
+        get() = prefs.getBoolean("reader_hint_seen", false)
+        set(value) = prefs.edit().putBoolean("reader_hint_seen", value).apply()
+
     companion object {
         const val MIN_FONT = 12
         const val MAX_FONT = 22

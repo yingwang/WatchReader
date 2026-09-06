@@ -16,7 +16,12 @@ object BookTransfer {
     private const val MAX_HEADER_BYTES = 64 * 1024
 
     fun writeHeader(output: OutputStream, meta: BookMetadata) {
-        output.write(meta.toJson().toByteArray(Charsets.UTF_8))
+        var header = meta.toJson().toByteArray(Charsets.UTF_8)
+        // Contents are optional. Large EPUB navigation trees must not break book transfer,
+        // including transfers to older watches with the same 64 KiB header limit.
+        if (header.size > MAX_HEADER_BYTES) header = meta.copy(tocJson = null).toJson().toByteArray(Charsets.UTF_8)
+        require(header.size <= MAX_HEADER_BYTES) { "Book header is too large" }
+        output.write(header)
         output.write('\n'.code)
     }
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WatchReader" parent="Theme.WatchReader.Base">
+        <item name="android:navigationBarColor">@color/page_background</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

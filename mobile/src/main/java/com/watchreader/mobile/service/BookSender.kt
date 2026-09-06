@@ -73,6 +73,7 @@ class BookSender(private val context: Context) {
                 sizeBytes = file.length(),
                 addedEpochMs = book.addedEpochMs,
                 totalChars = book.totalChars,
+                tocJson = book.tocJson,
             )
             output.use { out ->
                 BookTransfer.writeHeader(out, meta)
