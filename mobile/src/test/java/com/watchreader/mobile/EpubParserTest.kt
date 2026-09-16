@@ -136,4 +136,52 @@ class EpubParserTest {
     fun zipMagicIsRecognised() {
         assertTrue(EpubParser.looksLikeEpub(epub("a" to "b")))
     }
+
+    /** A book that prints its contents as a page of its own, the way converted epubs often do. */
+    private val bookWithContentsPage = listOf(
+        "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>""",
+        "OEBPS/content.opf" to """
+            <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+            <item id="toc" href="contents.xhtml" media-type="application/xhtml+xml"/>
+            <item id="a" href="a.xhtml" media-type="application/xhtml+xml"/>
+            <item id="b" href="b.xhtml" media-type="application/xhtml+xml"/>
+            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+            </manifest><spine toc="ncx"><itemref idref="toc"/><itemref idref="a"/><itemref idref="b"/></spine></package>
+        """.trimIndent(),
+        "OEBPS/contents.xhtml" to "<html><body><p>Chapter One</p><p>Chapter Two</p><p>Chapter Three</p></body></html>",
+        "OEBPS/a.xhtml" to "<html><body><h1>Chapter One</h1><p>Body A.</p></body></html>",
+        "OEBPS/b.xhtml" to "<html><body><h1>Chapter Two</h1><p>Body B.</p></body></html>",
+        "OEBPS/toc.ncx" to """
+            <ncx><navMap>
+            <navPoint id="a"><navLabel><text>Chapter One</text></navLabel><content src="a.xhtml"/></navPoint>
+            <navPoint id="b"><navLabel><text>Chapter Two</text></navLabel><content src="b.xhtml"/></navPoint>
+            <navPoint id="c"><navLabel><text>Chapter Three</text></navLabel><content src="c.xhtml"/></navPoint>
+            </navMap></ncx>
+        """.trimIndent(),
+    )
+
+    @Test
+    fun aContentsPageIsNotReadAsText() {
+        val parsed = EpubParser.parse(epub(bookWithContentsPage, blob = null).inputStream())
+        assertEquals(listOf("Chapter One", "Chapter Two"), parsed.chapters.map { it.title })
+        // The page that merely lists the chapters is gone, so the text opens on the first of them
+        // and each entry lands on the chapter rather than on the line that announced it.
+        assertTrue(parsed.text.startsWith("Chapter One"))
+        assertEquals(1, Regex("Chapter Two").findAll(parsed.text).count())
+        assertEquals(0, parsed.chapters[0].start)
+        assertEquals(parsed.text.indexOf("Chapter Two"), parsed.chapters[1].start)
+    }
+
+    @Test
+    fun anEpub3NavDocumentInTheSpineIsNotReadAsText() {
+        val spined = navBook.map { (name, content) ->
+            if (name.endsWith("content.opf")) {
+                name to content.replace("""<itemref idref="a"/>""", """<itemref idref="toc"/><itemref idref="a"/>""")
+            } else name to content
+        }
+        val parsed = EpubParser.parse(epub(spined, blob = null).inputStream())
+        assertEquals(listOf("Declared A", "Declared B"), parsed.chapters.map { it.title })
+        assertTrue(parsed.text.startsWith("Heading A"))
+        assertEquals(0, parsed.chapters[0].start)
+    }
 }

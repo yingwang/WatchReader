@@ -1,0 +1,7 @@
+{
+ "language": "en-US",
+ "title": "WatchReader",
+ "shortDescription": "Read .txt and .epub books on your Wear OS watch, or have them read aloud.",
+ "fullDescription": "WatchReader turns a Wear OS watch into a small, quiet e-book reader.\n\nAdd a .txt or .epub on the phone, tap it, and it is on the watch a moment later. Pages are laid out for the round screen with a real measurement of your font and size, so nothing is cut off at the edges. Turn the crown or tap the sides to flip pages; your place is kept and shown on the phone as well.\n\nLong-press a page to have the watch read the book aloud. Reading continues with the screen off and after you leave the app, with a pause and stop control in the notification. Chinese and English text are detected sentence by sentence and spoken with the matching voice.\n\nFeatures\n• .txt and .epub, in UTF-8, GBK or GB18030 - encoding is detected on the phone\n• Pagination measured against the actual screen, with breaks at sentences and paragraphs\n• Rotary crown and tap navigation, jump to any percentage\n• Read aloud as a background service, with sentence highlighting\n• Sans, serif, and a bundled Kai calligraphic face, dark or sepia page\n• Share a file to WatchReader from any app, or paste a link\n• No account, no ads, no analytics; books never leave your devices\n• Read on the phone as well, with your place kept in step between phone and watch\n\nRequires a phone running the companion app and a watch on Wear OS 3 or later.",
+ "video": "https://www.youtube.com/watch?v=Tb6mDi8Y_ko"
+}

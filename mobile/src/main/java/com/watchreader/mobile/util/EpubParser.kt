@@ -76,24 +76,6 @@ object EpubParser {
             .mapNotNull { attr(it.value, "idref") }
             .toList()
 
-        val result = StringBuilder()
-        val chapters = ArrayList<Chapter>()
-        val docStart = HashMap<String, Int>()
-        for (idref in spine) {
-            val path = manifest[idref] ?: continue
-            val html = entries[path]?.toString(Charsets.UTF_8) ?: continue
-            val text = htmlToText(html)
-            if (text.isNotBlank()) {
-                docStart[path] = result.length
-                // One spine document is one chapter; its own heading names it, else its first line.
-                val heading = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-                    .find(html)?.groupValues?.get(1)?.let { htmlToText(it) }?.trim()
-                val name = heading?.takeIf { it.isNotBlank() }
-                    ?: text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
-                if (name.isNotBlank()) chapters.add(Chapter(name.take(80), result.length))
-                result.append(text).append("\n\n")
-            }
-        }
         // The book's own table of contents beats guessing from headings, when it has one.
         val navPath = Regex("""<item\b[^>]*?/?>""").findAll(opfContent)
             .mapNotNull { tag ->
@@ -107,11 +89,38 @@ object EpubParser {
             }.firstOrNull()
         // Targets inside the contents document are relative to that document, not to the OPF.
         val navDir = navPath?.substringBeforeLast('/', "") ?: opfDir
-        val declared = navPath?.let { entries[it] }?.toString(Charsets.UTF_8)?.let { nav ->
-            tocEntries(nav, navDir).mapNotNull { (name, target) ->
-                docStart[target]?.let { Chapter(name, it) }
-            }
-        }.orEmpty()
+        val toc = navPath?.let { entries[it] }?.toString(Charsets.UTF_8)
+            ?.let { tocEntries(it, navDir) }.orEmpty()
+        val tocTitles = toc.mapTo(HashSet()) { it.first.trim().lowercase() }.apply { remove("") }
+
+        val documents = spine.mapNotNull { idref ->
+            val path = manifest[idref] ?: return@mapNotNull null
+            val html = entries[path]?.toString(Charsets.UTF_8) ?: return@mapNotNull null
+            val text = htmlToText(html)
+            if (text.isBlank()) null else Triple(path, html, text)
+        }
+        // A book that prints its contents carries a page holding nothing but the titles the
+        // contents already names. Reading it means reading the whole list before the book starts,
+        // and every heading on it competes with the chapter it points at, so it is not text.
+        val listing = documents.filter { (path, _, text) ->
+            path == navPath || isContentsPage(text, tocTitles)
+        }.mapTo(HashSet()) { it.first }
+        val readable = if (listing.size < documents.size) documents.filterNot { it.first in listing } else documents
+
+        val result = StringBuilder()
+        val chapters = ArrayList<Chapter>()
+        val docStart = HashMap<String, Int>()
+        for ((path, html, text) in readable) {
+            docStart[path] = result.length
+            // One spine document is one chapter; its own heading names it, else its first line.
+            val heading = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+                .find(html)?.groupValues?.get(1)?.let { htmlToText(it) }?.trim()
+            val name = heading?.takeIf { it.isNotBlank() }
+                ?: text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+            if (name.isNotBlank()) chapters.add(Chapter(name.take(80), result.length))
+            result.append(text).append("\n\n")
+        }
+        val declared = toc.mapNotNull { (name, target) -> docStart[target]?.let { Chapter(name, it) } }
         if (declared.size >= 2) {
             chapters.clear()
             chapters.addAll(declared)
@@ -168,6 +177,22 @@ object EpubParser {
         }
         return entries
     }
+
+    /**
+     * Whether a spine document is the printed contents rather than a chapter of the book. Such a
+     * page is made almost entirely of the titles the contents document already lists, which is
+     * what tells it apart from a chapter that merely opens with its own heading.
+     */
+    private fun isContentsPage(text: String, tocTitles: Set<String>): Boolean {
+        if (tocTitles.size < MIN_LISTED_TITLES) return false
+        val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        if (lines.size < MIN_LISTED_TITLES) return false
+        val listed = lines.count { it.lowercase() in tocTitles }
+        return listed * 4 >= lines.size * 3
+    }
+
+    /** Below this many entries a contents document is too slight to recognise a page by. */
+    private const val MIN_LISTED_TITLES = 3
 
     /** Titles and targets from an EPUB 3 nav document or an EPUB 2 NCX, in reading order. */
     private fun tocEntries(nav: String, opfDir: String): List<Pair<String, String>> {
