@@ -184,4 +184,41 @@ class EpubParserTest {
         assertTrue(parsed.text.startsWith("Heading A"))
         assertEquals(0, parsed.chapters[0].start)
     }
+
+    /** A book kept in one document, its chapters marked by anchors the way converters emit them. */
+    private val singleDocumentBook = listOf(
+        "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>""",
+        "OEBPS/content.opf" to """
+            <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+            <item id="all" href="book.xhtml" media-type="application/xhtml+xml"/>
+            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+            </manifest><spine toc="ncx"><itemref idref="all"/></spine></package>
+        """.trimIndent(),
+        "OEBPS/book.xhtml" to "<html><body><h1 id=\"c1\">Chapter One</h1><p>Body one.</p>" +
+            "<h1 id=\"c2\">Chapter Two</h1><p>Body two.</p>" +
+            "<h1 id=\"c3\">Chapter Three</h1><p>Body three.</p></body></html>",
+        "OEBPS/toc.ncx" to """
+            <ncx><navMap>
+            <navPoint id="a"><navLabel><text>Chapter One</text></navLabel><content src="book.xhtml#c1"/></navPoint>
+            <navPoint id="b"><navLabel><text>Chapter Two</text></navLabel><content src="book.xhtml#c2"/></navPoint>
+            <navPoint id="c"><navLabel><text>Chapter Three</text></navLabel><content src="book.xhtml#c3"/></navPoint>
+            </navMap></ncx>
+        """.trimIndent(),
+    )
+
+    @Test
+    fun chaptersMarkedByAnchorsInOneDocumentKeepTheirOwnPlaces() {
+        val parsed = EpubParser.parse(epub(singleDocumentBook, blob = null).inputStream())
+        assertEquals(listOf("Chapter One", "Chapter Two", "Chapter Three"), parsed.chapters.map { it.title })
+        // Without the anchors all three would share the offset the one document starts at.
+        assertEquals(listOf(0, parsed.text.indexOf("Chapter Two"), parsed.text.indexOf("Chapter Three")),
+            parsed.chapters.map { it.start })
+        assertTrue(parsed.chapters.all { parsed.text.startsWith(it.title, it.start) })
+    }
+
+    @Test
+    fun anchorsLeaveNoMarkBehindInTheText() {
+        val parsed = EpubParser.parse(epub(singleDocumentBook, blob = null).inputStream())
+        assertEquals("Chapter One\n\nBody one.\n\nChapter Two\n\nBody two.\n\nChapter Three\n\nBody three.", parsed.text)
+    }
 }

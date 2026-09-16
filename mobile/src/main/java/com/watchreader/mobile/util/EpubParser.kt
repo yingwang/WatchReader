@@ -96,22 +96,23 @@ object EpubParser {
         val documents = spine.mapNotNull { idref ->
             val path = manifest[idref] ?: return@mapNotNull null
             val html = entries[path]?.toString(Charsets.UTF_8) ?: return@mapNotNull null
-            val text = htmlToText(html)
-            if (text.isBlank()) null else Triple(path, html, text)
+            val (text, anchors) = textWithAnchors(html)
+            if (text.isBlank()) null else Document(path, html, text, anchors)
         }
         // A book that prints its contents carries a page holding nothing but the titles the
         // contents already names. Reading it means reading the whole list before the book starts,
         // and every heading on it competes with the chapter it points at, so it is not text.
-        val listing = documents.filter { (path, _, text) ->
-            path == navPath || isContentsPage(text, tocTitles)
-        }.mapTo(HashSet()) { it.first }
-        val readable = if (listing.size < documents.size) documents.filterNot { it.first in listing } else documents
+        val listing = documents.filter { it.path == navPath || isContentsPage(it.text, tocTitles) }
+            .mapTo(HashSet()) { it.path }
+        val readable = if (listing.size < documents.size) documents.filterNot { it.path in listing } else documents
 
         val result = StringBuilder()
         val chapters = ArrayList<Chapter>()
         val docStart = HashMap<String, Int>()
-        for ((path, html, text) in readable) {
+        val anchorStart = HashMap<String, Int>()
+        for ((path, html, text, anchors) in readable) {
             docStart[path] = result.length
+            for ((id, offset) in anchors) anchorStart["$path#$id"] = result.length + offset
             // One spine document is one chapter; its own heading names it, else its first line.
             val heading = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
                 .find(html)?.groupValues?.get(1)?.let { htmlToText(it) }?.trim()
@@ -120,7 +121,11 @@ object EpubParser {
             if (name.isNotBlank()) chapters.add(Chapter(name.take(80), result.length))
             result.append(text).append("\n\n")
         }
-        val declared = toc.mapNotNull { (name, target) -> docStart[target]?.let { Chapter(name, it) } }
+        // A book kept in one document names its chapters by anchor, so the anchor is what places
+        // them; without it every entry would share the one offset the document itself starts at.
+        val declared = toc.mapNotNull { (name, target) ->
+            (anchorStart[target] ?: docStart[target.substringBefore('#')])?.let { Chapter(name, it) }
+        }
         if (declared.size >= 2) {
             chapters.clear()
             chapters.addAll(declared)
@@ -178,6 +183,59 @@ object EpubParser {
         return entries
     }
 
+    /** A spine document: where it lives, its markup, its text, and where its anchors land in it. */
+    private data class Document(
+        val path: String,
+        val html: String,
+        val text: String,
+        val anchors: Map<String, Int>,
+    )
+
+    /** An OPF-relative href as a lookup key, keeping the anchor the fragment names. */
+    private fun target(opfDir: String, href: String): String {
+        val path = resolve(opfDir, href)
+        val fragment = href.substringAfter('#', "")
+        return if (fragment.isEmpty()) path else "$path#$fragment"
+    }
+
+    /**
+     * A document's text together with the offset each of its anchors lands at. The offsets are
+     * taken by planting a marker just inside every tag that carries an id, converting as usual,
+     * and then noting where the markers ended up as they are taken back out: the conversion
+     * rewrites too much of the markup for a position in the source to survive it otherwise.
+     */
+    internal fun textWithAnchors(html: String): Pair<String, Map<String, Int>> {
+        val ids = ArrayList<String>()
+        val planted = Regex("""<[a-zA-Z][^>]*>""").replace(html) { m ->
+            val id = attr(m.value, "id")?.takeIf { it.isNotBlank() } ?: return@replace m.value
+            ids.add(id)
+            m.value + MARK + (ids.size - 1) + MARK
+        }
+        if (ids.isEmpty()) return htmlToText(html) to emptyMap()
+        val marked = htmlToText(planted)
+        val anchors = HashMap<String, Int>()
+        val text = StringBuilder(marked.length)
+        var i = 0
+        while (i < marked.length) {
+            val c = marked[i]
+            if (c == MARK) {
+                val close = marked.indexOf(MARK, i + 1)
+                val which = if (close > i) marked.substring(i + 1, close).toIntOrNull() else null
+                if (which != null && which in ids.indices) {
+                    if (!anchors.containsKey(ids[which])) anchors[ids[which]] = text.length
+                    i = close + 1
+                    continue
+                }
+            }
+            text.append(c)
+            i++
+        }
+        return text.toString() to anchors
+    }
+
+    /** Stands in for an anchor while the markup around it is converted away. */
+    private const val MARK = '\u0003'
+
     /**
      * Whether a spine document is the printed contents rather than a chapter of the book. Such a
      * page is made almost entirely of the titles the contents document already lists, which is
@@ -201,7 +259,7 @@ object EpubParser {
                 .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
             val src = Regex("""<content[^>]*\bsrc="([^"]+)""" + "\"")
                 .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
-            decodeEntities(label).trim().take(80) to resolve(opfDir, src)
+            decodeEntities(label).trim().take(80) to target(opfDir, src)
         }.toList()
         if (ncx.isNotEmpty()) return ncx
         // An EPUB 3 nav document may also carry landmarks and a page list; only the toc is contents.
@@ -209,7 +267,7 @@ object EpubParser {
             .find(nav)?.groupValues?.get(1) ?: nav
         return Regex("""<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
             .findAll(toc)
-            .map { htmlToText(it.groupValues[2]).trim().take(80) to resolve(opfDir, it.groupValues[1]) }
+            .map { htmlToText(it.groupValues[2]).trim().take(80) to target(opfDir, it.groupValues[1]) }
             .filter { it.first.isNotBlank() }
             .toList()
     }
