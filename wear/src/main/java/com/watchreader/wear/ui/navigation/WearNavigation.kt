@@ -12,6 +12,7 @@ import com.watchreader.wear.ui.screen.SettingsScreen
 import com.watchreader.wear.ui.screen.AppearanceScreen
 import com.watchreader.wear.ui.screen.AppearanceEditor
 import com.watchreader.wear.ui.screen.SpeechSettingsScreen
+import com.watchreader.wear.ui.screen.AutoTurnSettingsScreen
 
 @Composable
 fun WearNavigation(openRequest: WearActivity.OpenRequest?) {
@@ -43,10 +44,12 @@ fun WearNavigation(openRequest: WearActivity.OpenRequest?) {
             SettingsScreen(
                 onAppearance = { navController.navigate("appearance") },
                 onSpeech = { navController.navigate("speech") },
+                onAutoTurn = { navController.navigate("autoturn") },
             )
         }
         composable("appearance") { AppearanceScreen { navController.navigate("appearance/$it") } }
         composable("appearance/{kind}") { entry -> AppearanceEditor(entry.arguments?.getString("kind") ?: "size") }
         composable("speech") { SpeechSettingsScreen() }
+        composable("autoturn") { AutoTurnSettingsScreen() }
     }
 }

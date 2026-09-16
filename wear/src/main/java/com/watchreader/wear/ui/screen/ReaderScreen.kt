@@ -332,7 +332,7 @@ fun ReaderScreen(
                     )
                 } else if (autoTurn) {
                     Text(
-                        text = stringResource(R.string.reader_auto_turn_interval, autoSeconds.roundToInt()),
+                        text = stringResource(R.string.reader_auto_turn_interval),
                         color = colors.dim,
                         fontSize = 9.sp,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
