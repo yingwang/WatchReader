@@ -51,8 +51,9 @@ object WearBookRepository {
                 val file = File(booksDir, "$SAMPLE_ID.txt")
                 file.writeText(text, Charsets.UTF_8)
                 // A contents file left by an earlier edition sent from the phone would pair the
-                // new text with the old offsets.
-                storeContents(file, null)
+                // new text with the old offsets. This book is laid down rather than sent, so its
+                // chapters are read out of the text here, the once, and kept like any other.
+                storeContents(file, BookToc.toJson(BookToc.detect(text)))
                 dao.upsert(
                     WearBook(
                         id = SAMPLE_ID,
@@ -122,18 +123,16 @@ object WearBookRepository {
     }
 
     /**
-     * The contents that came with the book, else headings found in its text. A book that came
-     * without contents is scanned once and the answer kept beside it, so a long one is not read
-     * end to end every time it is opened; a resend replaces the companion file and starts over.
+     * The contents that came with the book. Working them out here from the text alone is no
+     * longer attempted: the phone has the file the book came from and can read the chapter list
+     * out of it properly, while the watch has only the text, and a book that prints its own
+     * contents defeated the guessing entirely by handing back the printed list, whose every
+     * entry pointed at the opening pages. Books sent before the phone passed its contents along
+     * have none here and show no chapters until they are sent again.
      */
     suspend fun loadChapters(book: WearBook, text: String): List<Chapter> = withContext(Dispatchers.IO) {
-        val file = File(book.filePath + ".toc.json")
-        val json = runCatching { file.readText(Charsets.UTF_8) }.getOrNull()
-        if (BookToc.parse(json) != null) return@withContext BookToc.resolve(json, text)
-        val found = BookToc.detect(text)
-        runCatching { file.writeText(BookToc.toJson(found), Charsets.UTF_8) }
-            .onFailure { Log.w(TAG, "Could not keep the detected contents", it) }
-        found
+        val json = runCatching { File(book.filePath + ".toc.json").readText(Charsets.UTF_8) }.getOrNull()
+        BookToc.declared(json, text)
     }
 
     private suspend fun sendToPhone(path: String, payload: ByteArray) {

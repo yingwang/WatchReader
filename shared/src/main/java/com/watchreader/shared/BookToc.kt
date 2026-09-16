@@ -45,6 +45,20 @@ object BookToc {
     /** A contents that reaches no further than this fraction of the book has placed nothing. */
     private const val PLACED_BEYOND = 4
 
+    /**
+     * The contents a book was given, with nothing scanned in its place. The phone reads the file
+     * a book came from and sends the chapter list along with the text; the watch keeps only the
+     * text, and what it used to work out from that alone was worse than going without. A book
+     * that prints its own contents yielded the printed list and nothing else, so every chapter
+     * in the reader led back to the opening pages and tapping one appeared to do nothing.
+     */
+    fun declared(json: String?, text: String): List<Chapter> {
+        val declared = parse(json) ?: return emptyList()
+        val named = declared.filter { it.title.isNotBlank() && it.start in text.indices }
+        val usable = withoutContentsPage(named.distinctBy { it.start }.sortedBy { it.start })
+        return if (places(named.size, usable, text.length)) usable else emptyList()
+    }
+
     /** Longest a line can be and still read as a heading rather than a sentence. */
     private const val MAX_HEADING_CHARS = 48
 
@@ -80,7 +94,7 @@ object BookToc {
      */
     fun detect(text: String): List<Chapter> {
         val named = withoutContentsPage(scan(text) { line, _, _ -> headings.any { it.matches(line) } })
-        if (named.size >= 2) return named
+        if (named.size >= 2 && reachesThroughBook(named, text.length)) return named
         // A book that does not name its divisions still sets them apart: a short line of its own,
         // blank above and below, ending in no full stop, closing quote or bracket.
         val guessed = withoutContentsPage(scan(text) { line, before, after ->
@@ -90,8 +104,21 @@ object BookToc {
         // Dialogue set one speech to a line looks just like a run of headings. No book has a
         // chapter every couple of paragraphs, so a list that dense is noise and the book goes without.
         val paragraphs = text.lineSequence().count { it.isNotBlank() }
-        return if (guessed.size * MIN_PARAGRAPHS_PER_CHAPTER > paragraphs) emptyList() else guessed
+        if (guessed.size * MIN_PARAGRAPHS_PER_CHAPTER > paragraphs) return emptyList()
+        return if (reachesThroughBook(guessed, text.length)) guessed else emptyList()
     }
+
+    /**
+     * Whether headings found in a book are spread through it rather than gathered at its front.
+     * A book that prints its contents and then names its chapters some way the scan cannot read
+     * gives up only the printed list, and every entry of it points into the opening pages. Such
+     * an answer is worse than none: each chapter leads back to the beginning of the book.
+     */
+    private fun reachesThroughBook(found: List<Chapter>, length: Int): Boolean =
+        found.isEmpty() || length <= 0 || found.last().start.toLong() * FRONT_MATTER_SHARE >= length.toLong()
+
+    /** Headings that end within this fraction of a book never reached its chapters. */
+    private const val FRONT_MATTER_SHARE = 20
 
     private inline fun scan(text: String, isHeading: (line: String, before: String, after: String) -> Boolean): List<Chapter> {
         val found = ArrayList<Chapter>()
@@ -110,6 +137,9 @@ object BookToc {
             if (found.size >= MAX_CHAPTERS * 2) break
             val line = lines[i]
             if (line.length !in 1..MAX_HEADING_CHARS) continue
+            // A heading names something. Rules, ornaments and stray punctuation name nothing,
+            // and a contents made of them gives the reader a list of blank rows to tap.
+            if (line.none { it.isLetterOrDigit() }) continue
             val before = lines.getOrNull(i - 1).orEmpty()
             val after = lines.getOrNull(i + 1).orEmpty()
             if (isHeading(line, before, after)) found.add(Chapter(line, starts[i]))

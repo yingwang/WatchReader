@@ -23,6 +23,16 @@ object DataLayerPaths {
     /** Either side -> the other, payload is a [ReadingProgress] JSON. The later reading wins. */
     const val PROGRESS_PATH = "/progress"
 
+    /**
+     * Watch -> phone message, payload is the id of a book whose contents the watch cannot use.
+     * Books sent before the phone passed its contents along left the watch to find the chapters
+     * itself, which it cannot always do well; asking costs one message rather than a resend.
+     */
+    const val REQUEST_CONTENTS_PATH = "/request_contents"
+
+    /** Phone -> watch message answering [REQUEST_CONTENTS_PATH], payload is a [BookContents] JSON. */
+    const val CONTENTS_PATH = "/contents"
+
     /** Capabilities advertised by each side, used to find nodes that actually run the app. */
     const val WEAR_CAPABILITY = "watchreader_wear"
     const val PHONE_CAPABILITY = "watchreader_phone"

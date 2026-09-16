@@ -163,4 +163,49 @@ class BookTocTest {
         ))
         assertEquals(listOf("Opening", "Middle", "Closing"), BookToc.resolve(stored, text).map { it.title })
     }
+
+    @Test
+    fun rulesAndOrnamentsAreNotHeadings() {
+        val text = book(
+            "Opening", prose, prose, prose, prose,
+            "* * *", prose, prose, prose, prose,
+            "\u2014\u2014\u2014", prose, prose, prose, prose,
+            "Closing", prose, prose, prose, prose,
+        )
+        assertEquals(listOf("Opening", "Closing"), BookToc.detect(text).map { it.title })
+    }
+
+    @Test
+    fun givenContentsAreUsedWithoutScanningInTheirPlace() {
+        val text = book("Chapter 1", prose, prose, "Chapter 2", prose, prose, "Chapter 3", prose, prose)
+        val stored = BookToc.toJson(listOf(
+            Chapter("One", text.indexOf("Chapter 1")),
+            Chapter("Two", text.indexOf("Chapter 2")),
+            Chapter("Three", text.indexOf("Chapter 3")),
+        ))
+        // The names the book gave, not the headings the text happens to carry.
+        assertEquals(listOf("One", "Two", "Three"), BookToc.declared(stored, text).map { it.title })
+    }
+
+    @Test
+    fun aBookWithNoGivenContentsGetsNoneRatherThanAGuess() {
+        val text = book("Chapter 1", prose, prose, "Chapter 2", prose, prose, "Chapter 3", prose, prose)
+        assertTrue(BookToc.declared(null, text).isEmpty())
+        assertTrue(BookToc.declared("", text).isEmpty())
+        assertTrue(BookToc.declared("not json", text).isEmpty())
+    }
+
+    @Test
+    fun givenContentsThatNeverPlacedItsChaptersIsDroppedNotUsed() {
+        val text = book(
+            "Chapter 1", prose, prose, prose,
+            "Chapter 2", prose, prose, prose,
+            "Chapter 3", prose, prose, prose,
+            "Chapter 4", prose, prose, prose,
+        )
+        // What the watch used to scan out of a book that prints its contents: every entry in
+        // the opening pages. Leading the reader nowhere is worse than showing no contents.
+        val stored = BookToc.toJson(listOf(Chapter("I", 0), Chapter("II", 12), Chapter("III", 24)))
+        assertTrue(BookToc.declared(stored, text).isEmpty())
+    }
 }
