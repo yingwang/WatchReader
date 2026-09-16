@@ -6,9 +6,9 @@
     <string name="library_continue">Continue reading</string>
     <string name="reader_hint">Tap left or right to turn pages. Long press for controls.</string>
     <string name="reader_done">Back to book</string>
-    <string name="reader_auto_turn_interval">Every %1$d s · crown adjusts</string>
+    <string name="reader_auto_turn_interval">Auto · %1$d s</string>
     <string name="settings_auto_turn">Auto page turn</string>
-        <string name="settings_auto_turn_seconds">Auto page turn: each page %1$d s</string>
+        <string name="settings_auto_turn_seconds">Auto page turn: %1$d s a page</string>
     <string name="reader_got_it">Got it</string>
     <string name="reader_contents">Contents</string>
     <string name="reader_no_chapters">No chapter headings found. Use the percentage to jump.</string>
