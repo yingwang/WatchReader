@@ -89,6 +89,13 @@ tasks.matching { it.name.startsWith("package") && it.name.contains("Release") }.
 dependencies {
     implementation(project(":shared"))
 
+    // play-services-basement carries a fragment from 2019 that Play reports as outdated in a
+    // release. Nothing here asks for it directly, so the version is constrained rather than
+    // declared: the constraint applies only while something else still pulls it in.
+    constraints {
+        implementation("androidx.fragment:fragment:1.8.5")
+    }
+
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")

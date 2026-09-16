@@ -1,0 +1,1 @@
+A component reaching this app through Google Play services was several years old, and Play reported the version as outdated. It now resolves to a current one. Nothing in the app itself has changed.
