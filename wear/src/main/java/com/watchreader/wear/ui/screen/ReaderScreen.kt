@@ -222,24 +222,11 @@ fun ReaderScreen(
             .background(colors.background)
             .onRotaryScrollEvent { event ->
                 if (showToolbar || showHint) return@onRotaryScrollEvent false
-                if (autoTurn) {
-                    // While pages turn by themselves the crown sets the pace, one stop a notch:
-                    // forward is faster, back is slower.
-                    crownTravel += event.verticalScrollPixels
-                    while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
-                        crownTravel -= CROWN_PIXELS_PER_PAGE
-                        autoSeconds = ReaderPrefs.autoTurnStep(autoSeconds, -1)
-                        prefs.autoTurnSeconds = autoSeconds
-                        tick()
-                    }
-                    while (crownTravel <= -CROWN_PIXELS_PER_PAGE) {
-                        crownTravel += CROWN_PIXELS_PER_PAGE
-                        autoSeconds = ReaderPrefs.autoTurnStep(autoSeconds, +1)
-                        prefs.autoTurnSeconds = autoSeconds
-                        tick()
-                    }
-                    return@onRotaryScrollEvent true
-                }
+                // The crown turns pages, and it does so whether or not they are also turning by
+                // themselves. It used to set the pace while auto page turn was on, which quietly
+                // took the crown away from the one thing a reader reaches for it to do: a turn of
+                // it went unanswered, and the pace ran down to its shortest stop without being
+                // asked. The pace belongs in Settings, where it can be seen while it is changed.
                 // The crown reports a stream of small deltas; one page per notch, not per event.
                 crownTravel += event.verticalScrollPixels
                 while (crownTravel >= CROWN_PIXELS_PER_PAGE) {

@@ -58,8 +58,6 @@ class ReaderPrefs(context: Context) {
             for (i in AUTO_TURN_LADDER.indices) if (kotlin.math.abs(AUTO_TURN_LADDER[i] - seconds) < kotlin.math.abs(AUTO_TURN_LADDER[best] - seconds)) best = i
             return best
         }
-        fun autoTurnStep(seconds: Float, delta: Int): Float =
-            AUTO_TURN_LADDER[(autoTurnIndex(seconds) + delta).coerceIn(0, AUTO_TURN_LADDER.size - 1)]
         private const val KEY_AUTO_TURN_SECONDS = "auto_turn_seconds"
         private const val KEY_AUTO_TURN_ENABLED = "auto_turn_enabled"
         private const val NAME = "watchreader_settings"
