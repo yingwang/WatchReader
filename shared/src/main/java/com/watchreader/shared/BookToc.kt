@@ -17,12 +17,33 @@ object BookToc {
         if (declared.isEmpty()) return emptyList()
         // Books imported before contents pages were recognised carry the whole list in their
         // stored contents, so the same sieve runs here and they come right without being re-added.
-        val usable = withoutContentsPage(
-            declared.filter { it.title.isNotBlank() && it.start in text.indices }
-                .distinctBy { it.start }.sortedBy { it.start }
-        )
-        return usable.ifEmpty { detect(text) }
+        val named = declared.filter { it.title.isNotBlank() && it.start in text.indices }
+        val usable = withoutContentsPage(named.distinctBy { it.start }.sortedBy { it.start })
+        if (usable.isEmpty()) return detect(text)
+        if (places(named.size, usable, text.length)) return usable
+        // The stored offsets never told the chapters apart. That is how a book kept in one
+        // document looked before the anchors naming its chapters were read, and the offsets
+        // cannot be recovered from here, so the text is scanned instead. Where a scan turns up
+        // nothing, what was stored is still better than leaving the book without contents.
+        return detect(text).ifEmpty { usable }
     }
+
+    /**
+     * Whether a contents has actually placed its chapters through the book. Entries that all
+     * came to rest on one offset were never told apart, and a book whose last chapter falls
+     * inside its opening quarter has not been divided so much as pointed at.
+     */
+    private fun places(declared: Int, usable: List<Chapter>, length: Int): Boolean {
+        if (declared < MIN_PLACED_CHAPTERS || length <= 0) return true
+        if (usable.size < MIN_PLACED_CHAPTERS) return false
+        return usable.last().start.toLong() * PLACED_BEYOND >= length.toLong()
+    }
+
+    /** Below this many entries there is no telling a failure of placement from a short book. */
+    private const val MIN_PLACED_CHAPTERS = 3
+
+    /** A contents that reaches no further than this fraction of the book has placed nothing. */
+    private const val PLACED_BEYOND = 4
 
     /** Longest a line can be and still read as a heading rather than a sentence. */
     private const val MAX_HEADING_CHARS = 48

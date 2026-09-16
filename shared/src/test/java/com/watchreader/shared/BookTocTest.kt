@@ -111,4 +111,56 @@ class BookTocTest {
         assertEquals(listOf("Chapter 1", "Chapter 2", "Chapter 3"), toc.map { it.title })
         assertEquals(text.indexOf("Chapter 1", text.indexOf("Chapter 3")), toc.first().start)
     }
+
+    @Test
+    fun aStoredContentsThatNeverPlacedItsChaptersIsRescanned() {
+        val text = book(
+            "Chapter 1", prose, prose, prose,
+            "Chapter 2", prose, prose, prose,
+            "Chapter 3", prose, prose, prose,
+            "Chapter 4", prose, prose, prose,
+        )
+        // What a single-document epub stored before its anchors were read: every chapter at the
+        // offset the one document starts at, a few of them nudged apart by the document's title.
+        val stored = BookToc.toJson(
+            listOf(Chapter("One", 0), Chapter("Two", 1), Chapter("Three", 2), Chapter("Four", 3))
+        )
+        val toc = BookToc.resolve(stored, text)
+        assertEquals(listOf("Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4"), toc.map { it.title })
+        assertEquals(text.indexOf("Chapter 4"), toc.last().start)
+    }
+
+    @Test
+    fun entriesCollapsedOntoOneOffsetAreRescanned() {
+        val text = book(
+            "Chapter 1", prose, prose, prose,
+            "Chapter 2", prose, prose, prose,
+            "Chapter 3", prose, prose, prose,
+        )
+        val stored = BookToc.toJson(List(6) { Chapter("Part ${'$'}it", 0) })
+        assertEquals(listOf("Chapter 1", "Chapter 2", "Chapter 3"), BookToc.resolve(stored, text).map { it.title })
+    }
+
+    @Test
+    fun aStoredContentsIsKeptWhenNothingCanBeScannedInstead() {
+        // Prose with no headings at all: a broken contents still beats no contents.
+        val text = book(prose, prose, prose, prose, prose, prose, prose, prose)
+        val stored = BookToc.toJson(listOf(Chapter("One", 0), Chapter("Two", 1), Chapter("Three", 2)))
+        assertEquals(listOf("One", "Two", "Three"), BookToc.resolve(stored, text).map { it.title })
+    }
+
+    @Test
+    fun aContentsThatReachesTheEndOfTheBookIsTrusted() {
+        val text = book(
+            "Opening", prose, prose, prose, prose,
+            "Middle", prose, prose, prose, prose,
+            "Closing", prose, prose, prose, prose,
+        )
+        val stored = BookToc.toJson(listOf(
+            Chapter("Opening", text.indexOf("Opening")),
+            Chapter("Middle", text.indexOf("Middle")),
+            Chapter("Closing", text.indexOf("Closing")),
+        ))
+        assertEquals(listOf("Opening", "Middle", "Closing"), BookToc.resolve(stored, text).map { it.title })
+    }
 }
