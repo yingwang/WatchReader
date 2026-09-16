@@ -69,6 +69,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.InlineSlider
 import androidx.wear.compose.material.InlineSliderDefaults
@@ -101,6 +105,7 @@ import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.ui.theme.pageColors
 import com.watchreader.wear.ui.viewmodel.ReaderUiState
 import com.watchreader.wear.ui.viewmodel.ReaderViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlin.math.roundToInt
 
@@ -145,6 +150,7 @@ fun ReaderScreen(
     var autoTurn by remember { mutableStateOf(prefs.autoTurnEnabled) }
     var autoSeconds by remember { mutableFloatStateOf(prefs.autoTurnSeconds) }
     val focusRequester = remember { FocusRequester() }
+    val lifecycleOwner = LocalLifecycleOwner.current
     val measurer = rememberTextMeasurer()
 
     // Keep the screen on while this page is up, if the user wants that.
@@ -162,17 +168,37 @@ fun ReaderScreen(
 
     BackHandler(enabled = showToolbar) { showToolbar = false }
 
-    // Auto page turn: the page stays for the chosen seconds, then moves on; a manual turn
-    // restarts the wait, the end of the book or the toolbar stops it.
-    LaunchedEffect(autoTurn, state, showToolbar) {
+    // Auto page turn: the page stays for the chosen seconds, then moves on. The wait lives
+    // inside repeatOnLifecycle, so it stops the moment the watch leaves the page (screen off,
+    // Home, another app) and starts afresh on the way back; otherwise a book left open would
+    // keep turning in the dark and overwrite the reading position on the phone.
+    LaunchedEffect(autoTurn, autoSeconds, state, showToolbar) {
         val s = state
         if (!autoTurn || showToolbar || s !is ReaderUiState.Ready) return@LaunchedEffect
         if (s.atEnd) { autoTurn = false; return@LaunchedEffect }
-        kotlinx.coroutines.delay((autoSeconds * 1000).toLong())
-        if (autoTurn && !showToolbar) vm.nextPage()
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            delay((autoSeconds * 1000).toLong())
+            if (autoTurn && !showToolbar) vm.nextPage()
+        }
     }
-    // Reading aloud turns pages on its own; auto turn steps aside while a voice is playing.
-    LaunchedEffect(ttsHere, ttsState) { if (ttsHere && ttsState == TtsState.PLAYING) autoTurn = false }
+    // Reading aloud turns pages by itself, so the two never run together: starting a voice
+    // switches auto page turn off and remembers that, which is also what the switch then shows.
+    // Turning it back on afterwards is the reader's call, not something that happens by itself.
+    LaunchedEffect(ttsHere, ttsState) {
+        if (ttsHere && ttsState == TtsState.PLAYING && autoTurn) {
+            autoTurn = false
+            prefs.autoTurnEnabled = false
+        }
+    }
+    // The seconds a page stays can be changed in Settings while this screen sits in the back
+    // stack, so read it again every time the page comes forward.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) autoSeconds = prefs.autoTurnSeconds
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val previousLabel = stringResource(R.string.reader_previous_page)
     val nextLabel = stringResource(R.string.reader_next_page)
     val controlsLabel = stringResource(R.string.reader_controls)
@@ -203,14 +229,15 @@ fun ReaderScreen(
                     while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
                         crownTravel -= CROWN_PIXELS_PER_PAGE
                         autoSeconds = ReaderPrefs.autoTurnStep(autoSeconds, -1)
+                        prefs.autoTurnSeconds = autoSeconds
                         tick()
                     }
                     while (crownTravel <= -CROWN_PIXELS_PER_PAGE) {
                         crownTravel += CROWN_PIXELS_PER_PAGE
                         autoSeconds = ReaderPrefs.autoTurnStep(autoSeconds, +1)
+                        prefs.autoTurnSeconds = autoSeconds
                         tick()
                     }
-                    prefs.autoTurnSeconds = autoSeconds
                     return@onRotaryScrollEvent true
                 }
                 // The crown reports a stream of small deltas; one page per notch, not per event.
@@ -247,10 +274,7 @@ fun ReaderScreen(
     ) {
         // The toolbar's list takes rotary focus while it is up and clears it on the way out, so the
         // page asks for it back every time the toolbar closes, not only on first composition.
-        LaunchedEffect(showToolbar) {
-            if (!showToolbar) focusRequester.requestFocus()
-            autoSeconds = prefs.autoTurnSeconds
-        }
+        LaunchedEffect(showToolbar) { if (!showToolbar) focusRequester.requestFocus() }
 
         // One left-aligned block, inset from the bezel on a round screen.
         val screenWpx = with(density) { maxWidth.roundToPx() }
@@ -356,7 +380,6 @@ fun ReaderScreen(
                             prefs.autoTurnEnabled = on
                             tick()
                         },
-
                         background = colors.background,
                         textColor = colors.text,
                         chapters = s.chapters,
