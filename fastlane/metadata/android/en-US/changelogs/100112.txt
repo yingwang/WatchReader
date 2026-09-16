@@ -1,5 +1,1 @@
-Fixed the chapter list in books that print their own contents. When a book opens with the whole list of chapter titles, every entry used to point at that list rather than at the chapter it named, so tapping one landed you back on the contents page. The list now holds only the chapters as they are set in the text.
-
-Also fixed books kept as a single file, whose chapters are marked from within. Their entries all led to the front of the book; each now goes to its own chapter.
-
-Books already on the shelf are corrected the next time they are opened, so there is no need to add them again.
+Fixed the chapter list in books that print their own contents. Every entry used to point at that printed list rather than at the chapter it named, so tapping one landed you back on the contents page. Books kept as a single file are fixed too: their entries all led to the front of the book, and each now goes to its own chapter. Books already on the shelf are corrected the next time they are opened, so there is no need to add them again.
