@@ -72,6 +72,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.InlineSlider
 import androidx.wear.compose.material.InlineSliderDefaults
+import androidx.wear.compose.material.Switch
+import androidx.wear.compose.material.ToggleChip
+import androidx.wear.compose.material.ToggleChipDefaults
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
@@ -139,6 +142,8 @@ fun ReaderScreen(
     var showToolbar by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(!prefs.readerHintSeen) }
     var crownTravel by remember { mutableFloatStateOf(0f) }
+    var autoTurn by remember { mutableStateOf(prefs.autoTurnEnabled) }
+    var autoSeconds by remember { mutableFloatStateOf(prefs.autoTurnSeconds) }
     val focusRequester = remember { FocusRequester() }
     val measurer = rememberTextMeasurer()
 
@@ -156,6 +161,18 @@ fun ReaderScreen(
     }
 
     BackHandler(enabled = showToolbar) { showToolbar = false }
+
+    // Auto page turn: the page stays for the chosen seconds, then moves on; a manual turn
+    // restarts the wait, the end of the book or the toolbar stops it.
+    LaunchedEffect(autoTurn, state, showToolbar) {
+        val s = state
+        if (!autoTurn || showToolbar || s !is ReaderUiState.Ready) return@LaunchedEffect
+        if (s.atEnd) { autoTurn = false; return@LaunchedEffect }
+        kotlinx.coroutines.delay((autoSeconds * 1000).toLong())
+        if (autoTurn && !showToolbar) vm.nextPage()
+    }
+    // Reading aloud turns pages on its own; auto turn steps aside while a voice is playing.
+    LaunchedEffect(ttsHere, ttsState) { if (ttsHere && ttsState == TtsState.PLAYING) autoTurn = false }
     val previousLabel = stringResource(R.string.reader_previous_page)
     val nextLabel = stringResource(R.string.reader_next_page)
     val controlsLabel = stringResource(R.string.reader_controls)
@@ -179,6 +196,23 @@ fun ReaderScreen(
             .background(colors.background)
             .onRotaryScrollEvent { event ->
                 if (showToolbar || showHint) return@onRotaryScrollEvent false
+                if (autoTurn) {
+                    // While pages turn by themselves the crown sets the pace, one stop a notch:
+                    // forward is faster, back is slower.
+                    crownTravel += event.verticalScrollPixels
+                    while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
+                        crownTravel -= CROWN_PIXELS_PER_PAGE
+                        autoSeconds = ReaderPrefs.autoTurnStep(autoSeconds, -1)
+                        tick()
+                    }
+                    while (crownTravel <= -CROWN_PIXELS_PER_PAGE) {
+                        crownTravel += CROWN_PIXELS_PER_PAGE
+                        autoSeconds = ReaderPrefs.autoTurnStep(autoSeconds, +1)
+                        tick()
+                    }
+                    prefs.autoTurnSeconds = autoSeconds
+                    return@onRotaryScrollEvent true
+                }
                 // The crown reports a stream of small deltas; one page per notch, not per event.
                 crownTravel += event.verticalScrollPixels
                 while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
@@ -213,7 +247,10 @@ fun ReaderScreen(
     ) {
         // The toolbar's list takes rotary focus while it is up and clears it on the way out, so the
         // page asks for it back every time the toolbar closes, not only on first composition.
-        LaunchedEffect(showToolbar) { if (!showToolbar) focusRequester.requestFocus() }
+        LaunchedEffect(showToolbar) {
+            if (!showToolbar) focusRequester.requestFocus()
+            autoSeconds = prefs.autoTurnSeconds
+        }
 
         // One left-aligned block, inset from the bezel on a round screen.
         val screenWpx = with(density) { maxWidth.roundToPx() }
@@ -293,6 +330,13 @@ fun ReaderScreen(
                         fontSize = 10.sp,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
                     )
+                } else if (autoTurn) {
+                    Text(
+                        text = stringResource(R.string.reader_auto_turn_interval, autoSeconds.roundToInt()),
+                        color = colors.dim,
+                        fontSize = 9.sp,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                    )
                 }
 
                 AnimatedVisibility(
@@ -305,6 +349,14 @@ fun ReaderScreen(
                         fraction = s.fraction,
                         ttsHere = ttsHere,
                         ttsState = ttsState,
+                        autoTurn = autoTurn,
+                        onAutoTurnChange = { on ->
+                            if (on && ttsHere) TtsService.stop(context)
+                            autoTurn = on
+                            prefs.autoTurnEnabled = on
+                            tick()
+                        },
+
                         background = colors.background,
                         textColor = colors.text,
                         chapters = s.chapters,
@@ -356,6 +408,8 @@ private fun Toolbar(
     fraction: Float,
     ttsHere: Boolean,
     ttsState: TtsState,
+    autoTurn: Boolean,
+    onAutoTurnChange: (Boolean) -> Unit,
     background: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
     chapters: List<Chapter>,
@@ -409,6 +463,21 @@ private fun Toolbar(
                     Text(
                         stringResource(if (ttsHere && ttsState == TtsState.PLAYING) R.string.reader_pause else R.string.reader_play),
                         color = textColor, fontSize = 12.sp,
+                    )
+                }
+                item {
+                    ToggleChip(
+                        checked = autoTurn,
+                        onCheckedChange = onAutoTurnChange,
+                        label = { Text(stringResource(R.string.settings_auto_turn), fontSize = 14.sp) },
+                        toggleControl = { Switch(checked = autoTurn) },
+                        colors = ToggleChipDefaults.toggleChipColors(
+                            checkedStartBackgroundColor = ListRowBg,
+                            checkedEndBackgroundColor = ListRowBg,
+                            uncheckedStartBackgroundColor = ListRowBg,
+                            uncheckedEndBackgroundColor = ListRowBg,
+                        ),
+                        modifier = Modifier.fillMaxWidth(0.84f),
                     )
                 }
                 item {

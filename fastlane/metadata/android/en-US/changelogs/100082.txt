@@ -1,0 +1,1 @@
+Auto page turn: long press while reading and switch it on; pages then turn by themselves, eight seconds each by default. Set the time per page in Settings (1 to 31 seconds, finer steps at the short end), or turn the crown while reading. Tap to turn early. It steps aside while the book is read aloud.

@@ -62,6 +62,8 @@ fun SettingsScreen(onAppearance: () -> Unit, onSpeech: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { ReaderPrefs(context) }
     var keepScreenOn by remember { mutableStateOf(prefs.keepScreenOn) }
+    var autoSeconds by remember { mutableFloatStateOf(prefs.autoTurnSeconds) }
+    val view = LocalView.current
     SettingsList {
         item { SectionTitle(stringResource(R.string.settings_title)) }
         item { SettingsLink(stringResource(R.string.settings_appearance), stringResource(R.string.settings_appearance_hint), onAppearance) }
@@ -81,6 +83,27 @@ fun SettingsScreen(onAppearance: () -> Unit, onSpeech: () -> Unit) {
                 ),
                 modifier = Modifier.fillMaxWidth(0.84f),
             )
+        }
+        item {
+            // How long auto page turn leaves each page; the switch itself lives in the reading
+            // controls, the way read-aloud's play button does with its speed here.
+            Column(Modifier.fillMaxWidth(0.84f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(stringResource(R.string.settings_auto_turn_seconds, autoSeconds.roundToInt()), color = BlueAccent, fontSize = 14.sp)
+                val ladder = ReaderPrefs.AUTO_TURN_LADDER
+                InlineSlider(
+                    value = ReaderPrefs.autoTurnIndex(autoSeconds).toFloat(),
+                    onValueChange = {
+                        autoSeconds = ladder[it.roundToInt().coerceIn(0, ladder.size - 1)]
+                        prefs.autoTurnSeconds = autoSeconds
+                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    },
+                    valueRange = 0f..(ladder.size - 1).toFloat(),
+                    steps = ladder.size - 2,
+                    decreaseIcon = { Icon(InlineSliderDefaults.Decrease, contentDescription = null) },
+                    increaseIcon = { Icon(InlineSliderDefaults.Increase, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
         item { Caption(stringResource(R.string.settings_version, BuildConfig.VERSION_NAME)) }
     }
