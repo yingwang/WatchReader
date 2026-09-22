@@ -2,6 +2,7 @@ package com.watchreader.wear.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.watchreader.wear.reader.PageMargins
 
 enum class ReaderTheme { DARK, SEPIA }
 
@@ -41,6 +42,16 @@ class ReaderPrefs(context: Context) {
         get() = prefs.getFloat(KEY_AUTO_TURN_SECONDS, DEFAULT_AUTO_TURN_SECONDS)
         set(value) = prefs.edit().putFloat(KEY_AUTO_TURN_SECONDS, value.coerceIn(MIN_AUTO_TURN_SECONDS, MAX_AUTO_TURN_SECONDS)).apply()
 
+    /** Top and bottom page margin, a step of [com.watchreader.wear.reader.PageMargins]. */
+    var marginTopBottom: Int
+        get() = prefs.getInt(KEY_MARGIN_TOP_BOTTOM, PageMargins.DEFAULT)
+        set(value) = prefs.edit().putInt(KEY_MARGIN_TOP_BOTTOM, value.coerceIn(0, PageMargins.STEPS - 1)).apply()
+
+    /** Side page margin, a step of [com.watchreader.wear.reader.PageMargins]. */
+    var marginSides: Int
+        get() = prefs.getInt(KEY_MARGIN_SIDES, PageMargins.DEFAULT)
+        set(value) = prefs.edit().putInt(KEY_MARGIN_SIDES, value.coerceIn(0, PageMargins.STEPS - 1)).apply()
+
     var readerHintSeen: Boolean
         get() = prefs.getBoolean("reader_hint_seen", false)
         set(value) = prefs.edit().putBoolean("reader_hint_seen", value).apply()
@@ -66,5 +77,7 @@ class ReaderPrefs(context: Context) {
         private const val KEY_THEME = "theme"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_SPEECH_RATE = "speech_rate"
+        private const val KEY_MARGIN_TOP_BOTTOM = "margin_top_bottom"
+        private const val KEY_MARGIN_SIDES = "margin_sides"
     }
 }

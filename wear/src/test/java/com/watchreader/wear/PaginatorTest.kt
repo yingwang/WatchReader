@@ -84,4 +84,58 @@ class PaginatorTest {
             assertTrue(edge * edge + half * half <= r * r + 1f)
         }
     }
+
+    @Test
+    fun defaultMarginsKeepTheShippedRoundLayout() {
+        // What round() computed before the margin settings existed, spelled out.
+        val d = 384; val m = 18f; val lh = 44f
+        val r = d / 2f - m
+        fun chord(h: Float) = 2 * kotlin.math.sqrt(maxOf(0f, r * r - h * h / 4))
+        val n = (1..(2 * r / lh).toInt()).last { chord(it * lh) >= d * 0.72f }
+        val g = PageGeometry.round(diameterPx = d, marginPx = m, lineHeightPx = lh)
+        assertEquals(n, g.slots.size)
+        assertEquals(chord(n * lh).toInt(), g.slots[0].width)
+    }
+
+    @Test
+    fun smallerTopAndBottomMarginAddsLinesAndShortensThem() {
+        val standard = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 44f)
+        val narrow = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 44f, lineDelta = 2)
+        val wide = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 44f, lineDelta = -1)
+        assertEquals(standard.slots.size + 2, narrow.slots.size)
+        assertEquals(standard.slots.size - 1, wide.slots.size)
+        assertTrue(narrow.slots[0].width < standard.slots[0].width)
+    }
+
+    @Test
+    fun sideMarginChangesTheWidthButNotTheLineCount() {
+        val standard = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 44f)
+        val wide = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 44f, sideMarginPx = 40f)
+        val narrow = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 44f, sideMarginPx = 6f)
+        assertEquals(standard.slots.size, wide.slots.size)
+        assertEquals(standard.slots.size, narrow.slots.size)
+        assertTrue(wide.slots[0].width < standard.slots[0].width)
+        assertTrue(narrow.slots[0].width > standard.slots[0].width)
+        // Still one block centred on the screen.
+        assertEquals(456f, wide.slots[0].left * 2 + wide.slots[0].width, 2f)
+    }
+
+    @Test
+    fun noMarginCombinationLeavesACrampedLine() {
+        val g = PageGeometry.round(diameterPx = 456, marginPx = 18f, lineHeightPx = 30f, lineDelta = 8, sideMarginPx = 60f)
+        assertTrue(g.slots[0].width >= 456 * 0.45f - 1)
+    }
+
+    @Test
+    fun aWideMarginStillLeavesTwoLines() {
+        val g = PageGeometry.round(diameterPx = 384, marginPx = 18f, lineHeightPx = 60f, lineDelta = -5)
+        assertEquals(2, g.slots.size)
+    }
+
+    @Test
+    fun rectTopMarginIsItsOwnSetting() {
+        val g = PageGeometry.rect(widthPx = 400, heightPx = 400, marginPx = 10f, lineHeightPx = 40f, marginTopPx = 60f)
+        assertEquals(7, g.slots.size)
+        assertEquals(380, g.slots[0].width)
+    }
 }

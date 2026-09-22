@@ -1,6 +1,19 @@
 package com.watchreader.wear.ui.screen
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.unit.Dp
+import com.watchreader.shared.reader.PageGeometry
+import com.watchreader.wear.reader.PageMargins
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -91,11 +104,14 @@ fun SettingsScreen(onAppearance: () -> Unit, onSpeech: () -> Unit, onAutoTurn: (
 fun AppearanceScreen(onEdit: (String) -> Unit) {
     val context = LocalContext.current
     val prefs = remember { ReaderPrefs(context) }
+    val levels = stringArrayResource(R.array.settings_margin_levels)
     SettingsList {
         item { SectionTitle(stringResource(R.string.settings_appearance)) }
         item { SettingsLink(stringResource(R.string.settings_font_size), prefs.fontSize.toString(), { onEdit("size") }) }
         item { SettingsLink(stringResource(R.string.settings_typeface), Typefaces.labelFor(prefs.fontFamily), { onEdit("font") }) }
         item { SettingsLink(stringResource(R.string.settings_theme), stringResource(if (prefs.theme == ReaderTheme.DARK) R.string.settings_theme_dark else R.string.settings_theme_sepia), { onEdit("page") }) }
+        item { SettingsLink(stringResource(R.string.settings_margin_top_bottom), levels[prefs.marginTopBottom], { onEdit("vmargin") }) }
+        item { SettingsLink(stringResource(R.string.settings_margin_sides), levels[prefs.marginSides], { onEdit("hmargin") }) }
     }
 }
 
@@ -108,11 +124,18 @@ fun AppearanceEditor(kind: String) {
     var fontSize by remember { mutableIntStateOf(prefs.fontSize) }
     var fontFamily by remember { mutableStateOf(prefs.fontFamily) }
     var theme by remember { mutableStateOf(prefs.theme) }
+    var marginTopBottom by remember { mutableIntStateOf(prefs.marginTopBottom) }
+    var marginSides by remember { mutableIntStateOf(prefs.marginSides) }
+    val levels = stringArrayResource(R.array.settings_margin_levels)
+    val isRound = LocalConfiguration.current.isScreenRound
+    val density = LocalDensity.current
     val faces = remember { Typefaces.available() }
     val colors = pageColors(theme)
     fun tick() { view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
+        val screenW = maxWidth
+        val screenH = maxHeight
         Column(
             modifier = Modifier.fillMaxSize()
                 .padding(horizontal = maxWidth * 0.13f, vertical = maxHeight * 0.13f)
@@ -121,19 +144,36 @@ fun AppearanceEditor(kind: String) {
             verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
         ) {
             Text(
-                stringResource(when (kind) { "size" -> R.string.settings_font_size; "font" -> R.string.settings_typeface; else -> R.string.settings_theme }),
+                stringResource(when (kind) {
+                    "size" -> R.string.settings_font_size
+                    "font" -> R.string.settings_typeface
+                    "vmargin" -> R.string.settings_margin_top_bottom
+                    "hmargin" -> R.string.settings_margin_sides
+                    else -> R.string.settings_theme
+                }),
                 color = colors.text, fontSize = 13.sp,
             )
-            Text(
-                stringResource(R.string.settings_preview_short),
-                color = colors.text,
-                fontSize = fontSize.sp,
-                lineHeight = (fontSize * 1.4f).sp,
-                fontFamily = remember(fontFamily) { Typefaces.familyFor(fontFamily) },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
-            )
+            if (kind == "vmargin" || kind == "hmargin") {
+                // The whole page in miniature, laid out exactly as the reader will lay it out.
+                val screenWpx = with(density) { screenW.roundToPx() }
+                val screenHpx = with(density) { screenH.roundToPx() }
+                val lineHeightPx = with(density) { (fontSize * 1.4f).sp.toPx() }
+                val geometry = remember(screenWpx, screenHpx, isRound, lineHeightPx, marginTopBottom, marginSides) {
+                    PageMargins.geometry(screenWpx, screenHpx, isRound, lineHeightPx, density.density, marginTopBottom, marginSides)
+                }
+                MarginPreview(geometry, screenWpx, screenHpx, isRound, colors.text, colors.dim, screenW * 0.27f)
+            } else {
+                Text(
+                    stringResource(R.string.settings_preview_short),
+                    color = colors.text,
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.4f).sp,
+                    fontFamily = remember(fontFamily) { Typefaces.familyFor(fontFamily) },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
+                )
+            }
             when (kind) {
                 "size" -> {
                     Text(fontSize.toString(), color = colors.text, fontSize = 12.sp)
@@ -142,6 +182,29 @@ fun AppearanceEditor(kind: String) {
                         onValueChange = { fontSize = it.roundToInt(); prefs.fontSize = fontSize; tick() },
                         valueRange = ReaderPrefs.MIN_FONT.toFloat()..ReaderPrefs.MAX_FONT.toFloat(),
                         steps = ReaderPrefs.MAX_FONT - ReaderPrefs.MIN_FONT - 1,
+                        decreaseIcon = { Icon(InlineSliderDefaults.Decrease, contentDescription = null) },
+                        increaseIcon = { Icon(InlineSliderDefaults.Increase, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                "vmargin", "hmargin" -> {
+                    val step = if (kind == "vmargin") marginTopBottom else marginSides
+                    Text(levels[step], color = colors.text, fontSize = 12.sp)
+                    InlineSlider(
+                        value = step.toFloat(),
+                        onValueChange = {
+                            val next = it.roundToInt().coerceIn(0, PageMargins.STEPS - 1)
+                            if (kind == "vmargin") {
+                                marginTopBottom = next
+                                prefs.marginTopBottom = next
+                            } else {
+                                marginSides = next
+                                prefs.marginSides = next
+                            }
+                            tick()
+                        },
+                        valueRange = 0f..(PageMargins.STEPS - 1).toFloat(),
+                        steps = PageMargins.STEPS - 2,
                         decreaseIcon = { Icon(InlineSliderDefaults.Decrease, contentDescription = null) },
                         increaseIcon = { Icon(InlineSliderDefaults.Increase, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
@@ -163,6 +226,41 @@ fun AppearanceEditor(kind: String) {
                     }, Modifier.fillMaxWidth(),
                 )
             }
+        }
+    }
+}
+
+/** The page's outline with its lines drawn as bars, scaled down from the real screen. */
+@Composable
+private fun MarginPreview(
+    geometry: PageGeometry,
+    screenWpx: Int,
+    screenHpx: Int,
+    isRound: Boolean,
+    ink: Color,
+    edge: Color,
+    width: Dp,
+) {
+    val pageW = if (isRound) minOf(screenWpx, screenHpx) else screenWpx
+    val pageH = if (isRound) pageW else screenHpx
+    Canvas(Modifier.size(width = width, height = width * (pageH.toFloat() / pageW))) {
+        val scale = size.width / pageW
+        val stroke = 1.dp.toPx()
+        if (isRound) {
+            drawCircle(color = edge, radius = size.width / 2f - stroke / 2f, style = Stroke(stroke))
+        } else {
+            drawRoundRect(color = edge, cornerRadius = CornerRadius(6.dp.toPx()), style = Stroke(stroke))
+        }
+        val lh = geometry.lineHeight * scale
+        geometry.slots.forEachIndexed { i, slot ->
+            // The last line of the sample runs short, the way a paragraph ends.
+            val w = slot.width * scale * if (i == geometry.slots.lastIndex && i > 0) 0.6f else 1f
+            drawRoundRect(
+                color = ink.copy(alpha = 0.75f),
+                topLeft = Offset(slot.left * scale, slot.top * scale + lh * 0.3f),
+                size = Size(w, lh * 0.4f),
+                cornerRadius = CornerRadius(lh * 0.2f),
+            )
         }
     }
 }

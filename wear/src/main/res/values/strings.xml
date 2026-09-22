@@ -9,7 +9,7 @@
     <string name="reader_auto_turn_interval">Auto</string>
     <string name="settings_auto_turn">Auto page turn</string>
     <string name="settings_auto_turn_link_hint">Speed</string>
-    <string name="settings_auto_turn_hint">Switch it on from the reading controls (long press the page). The crown changes the pace while reading.</string>
+    <string name="settings_auto_turn_hint">Long press a page to turn it on.</string>
         <string name="settings_auto_turn_seconds">%1$d s a page</string>
     <string name="reader_got_it">Got it</string>
     <string name="reader_contents">Contents</string>
@@ -23,6 +23,15 @@
     <string name="settings_preview_short">清晨 Aa</string>
     <string name="settings_next_font">Next font</string>
     <string name="settings_next_theme">Switch page colour</string>
+    <string name="settings_margin_top_bottom">Top &amp; bottom margin</string>
+    <string name="settings_margin_sides">Side margin</string>
+    <string-array name="settings_margin_levels">
+        <item>Narrowest</item>
+        <item>Narrow</item>
+        <item>Standard</item>
+        <item>Wide</item>
+        <item>Widest</item>
+    </string-array>
     <string name="library_empty">No books</string>
     <string name="library_empty_hint">Add from the phone app</string>
     <string name="library_new">New</string>

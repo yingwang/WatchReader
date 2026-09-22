@@ -95,7 +95,7 @@ import com.watchreader.wear.ui.theme.ListRowBg
 import com.watchreader.wear.ui.theme.ListRowText
 import com.watchreader.wear.R
 import com.watchreader.shared.reader.LineMeasurer
-import com.watchreader.shared.reader.PageGeometry
+import com.watchreader.wear.reader.PageMargins
 import com.watchreader.wear.reader.Typefaces
 import com.watchreader.shared.reader.Paginator
 import com.watchreader.wear.service.TtsService
@@ -127,6 +127,8 @@ fun ReaderScreen(
     val colors = remember { pageColors(prefs.theme) }
     val fontSize = remember { prefs.fontSize }
     val fontFamily = remember { Typefaces.familyFor(prefs.fontFamily) }
+    val marginTopBottom = remember { prefs.marginTopBottom }
+    val marginSides = remember { prefs.marginSides }
     val textStyle = remember(fontSize, fontFamily) {
         TextStyle(
             color = colors.text,
@@ -267,12 +269,8 @@ fun ReaderScreen(
         val screenWpx = with(density) { maxWidth.roundToPx() }
         val screenHpx = with(density) { maxHeight.roundToPx() }
         val lineHeightPx = with(density) { (fontSize * 1.4f).sp.toPx() }
-        val geometry = remember(screenWpx, screenHpx, lineHeightPx, isRound) {
-            if (isRound) {
-                PageGeometry.round(minOf(screenWpx, screenHpx), marginPx = with(density) { 9.dp.toPx() }, lineHeightPx = lineHeightPx)
-            } else {
-                PageGeometry.rect(screenWpx, screenHpx, marginPx = with(density) { 12.dp.toPx() }, lineHeightPx = lineHeightPx)
-            }
+        val geometry = remember(screenWpx, screenHpx, lineHeightPx, isRound, marginTopBottom, marginSides) {
+            PageMargins.geometry(screenWpx, screenHpx, isRound, lineHeightPx, density.density, marginTopBottom, marginSides)
         }
         val lineMeasurer = remember(measurer, textStyle) {
             LineMeasurer { text, start, end, widthPx ->
