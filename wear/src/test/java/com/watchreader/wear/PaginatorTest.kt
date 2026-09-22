@@ -138,4 +138,32 @@ class PaginatorTest {
         assertEquals(7, g.slots.size)
         assertEquals(380, g.slots[0].width)
     }
+
+    /** Like the platform on Latin text: as many characters as fit, pulled back to the last space. */
+    private val wordMeasurer = LineMeasurer { text, start, end, widthPx ->
+        val max = minOf(end - start, widthPx / 32).coerceAtLeast(1)
+        if (start + max >= end) return@LineMeasurer end - start
+        val space = text.lastIndexOf(' ', start + max - 1)
+        if (space >= start) space - start + 1 else max
+    }
+
+    @Test
+    fun goingBackNeverStartsOrEndsAPageInsideAWord() {
+        val text = (1..12).joinToString("\n") {
+            "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife $it."
+        }
+        val p = Paginator(text, rect(lines = 4, charsPerLine = 14), wordMeasurer)
+        fun atWordStart(i: Int) = i == 0 || text[i - 1] == ' ' || text[i - 1] == '\n'
+        var e = text.length
+        var pages = 0
+        while (e > 0) {
+            val page = p.pageEndingAt(e)
+            assertEquals(e, page.end)
+            assertTrue("page ${page.start} starts inside a word", atWordStart(page.start))
+            assertTrue(page.start < e)
+            e = page.start
+            pages++
+        }
+        assertTrue(pages > 10)
+    }
 }

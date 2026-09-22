@@ -74,6 +74,12 @@ class Paginator(
         } else {
             hi = lo
         }
+        // The smallest start that reaches [e] is any character, often inside a word: going back a
+        // page then began "ar, to be sure" and the page before it ended "four or five thousan".
+        // A later start still reaches [e] (the end only grows with the start), so move up to where
+        // a line can begin; the few characters skipped belong to the page before.
+        val start = wordStartFrom(hi)
+        if (start < e) hi = start
         val full = pageFrom(hi)
         val cut = full.lines.filter { it.start < e }.map { line ->
             if (line.next <= e) line else Line(line.slot, line.start, minOf(line.end, e), e)
@@ -87,6 +93,22 @@ class Paginator(
         var p = pos.coerceIn(0, text.length)
         while (p < text.length && text[p].let { it == '\n' || it == ' ' || it == '\t' || it == '\r' }) p++
         return p
+    }
+
+    /**
+     * First position at or after [pos] where a line can begin: after a space or line break, or
+     * anywhere in CJK text, which breaks between characters. Gives up after a word's length.
+     */
+    private fun wordStartFrom(pos: Int): Int {
+        val limit = minOf(text.length, pos + MAX_WORD_CHARS)
+        var p = pos
+        while (p < limit) {
+            if (p == 0) return 0
+            val before = text[p - 1]
+            if (before.isWhitespace() || before.code >= CJK_FROM || text[p].code >= CJK_FROM) return p
+            p++
+        }
+        return pos
     }
 
     /** Start of the paragraph containing [offset]; used when jumping to a percentage. */
@@ -118,5 +140,8 @@ class Paginator(
         const val MAX_PAGE_CHARS = 1500
         private const val MAX_LINE_CHARS = 200
         private const val JUMP_LOOKBACK = 400
+        private const val MAX_WORD_CHARS = 40
+        /** From CJK radicals on: ideographs, kana, hangul and full-width forms break anywhere. */
+        private const val CJK_FROM = 0x2E80
     }
 }
