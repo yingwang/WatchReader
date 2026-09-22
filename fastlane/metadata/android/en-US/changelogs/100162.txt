@@ -1,1 +1,1 @@
-Page margins. In Settings, Appearance now has a top and bottom margin and a side margin, each with a small picture of the page that changes as you adjust it. The auto page turn note is one line now.
+Page margins. In Settings, Appearance now has a top and bottom margin and a side margin, each with a small picture of the page that changes as you adjust it. Going back a page no longer starts it in the middle of a word. The auto page turn note is one line now.
