@@ -5,15 +5,19 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,9 +41,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -69,10 +75,13 @@ fun AddBookScreen(
     var title by rememberSaveable { mutableStateOf("") }
     var selectedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var selectedFileName by rememberSaveable { mutableStateOf("") }
+    // Shared text with no link in it: said once, on this screen, and gone as soon as anything is chosen.
+    var needsFileOrLink by rememberSaveable { mutableStateOf(false) }
 
     fun take(uri: Uri) {
         selectedUri = uri
         selectedFileName = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "book"
+        needsFileOrLink = false
         vm.clearError()
         // The provider is asked for the file's proper name off the main thread: a cloud drive
         // can take a while to answer, and the path's last segment stands in until it does.
@@ -82,10 +91,26 @@ fun AddBookScreen(
         }
     }
 
-    // A file shared from another app lands here already selected. Keyed on the share, so a second
-    // file shared while this screen is already open is taken as well instead of waiting in the wings.
+    fun clearFile() {
+        selectedUri = null
+        selectedFileName = ""
+        vm.clearError()
+    }
+
+    // A file shared from another app lands here already selected, and a shared link waits in the
+    // link field. Keyed on the share, so a second one shared while this screen is already open is
+    // taken as well instead of waiting in the wings.
     LaunchedEffect(shareGeneration) {
-        SharedIntent.consume()?.let { take(it) }
+        when (val shared = SharedIntent.consume()) {
+            is SharedIntent.Shared.File -> take(shared.uri)
+            is SharedIntent.Shared.Link -> {
+                clearFile()
+                url = shared.url
+                needsFileOrLink = false
+            }
+            SharedIntent.Shared.Unusable -> needsFileOrLink = true
+            null -> {}
+        }
     }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -126,34 +151,62 @@ fun AddBookScreen(
         ) {
             Spacer(Modifier.height(16.dp))
 
-            OutlinedButton(
-                onClick = {
-                    filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream"))
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
+            if (needsFileOrLink) {
                 Text(
-                    if (selectedUri != null) selectedFileName else stringResource(R.string.add_pick_file),
-                    fontSize = 16.sp,
+                    stringResource(R.string.add_share_needs_file_or_link),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream"))
+                    },
+                    modifier = Modifier.weight(1f).height(56.dp),
+                ) {
+                    // Compose here has no ellipsis in the middle of a line, so a long name loses its
+                    // end, extension and all, rather than wrapping out of the button.
+                    Text(
+                        if (selectedUri != null) selectedFileName else stringResource(R.string.add_pick_file),
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // Once a file is chosen the link field is shut, and this is the way back to it.
+                if (selectedUri != null) {
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(onClick = { clearFile() }, enabled = !isLoading) {
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.add_clear_file))
+                    }
+                }
             }
 
             Spacer(Modifier.height(24.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f))
             Text(
                 stringResource(R.string.add_or),
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
 
             OutlinedTextField(
                 value = url,
-                onValueChange = { url = it; vm.clearError() },
+                onValueChange = { url = it; needsFileOrLink = false; vm.clearError() },
                 label = { Text(stringResource(R.string.add_url_label)) },
                 placeholder = { Text(stringResource(R.string.add_url_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = selectedUri == null,
+                // An address, not a sentence: no capital at the front and no correcting it into words.
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    keyboardType = KeyboardType.Uri,
+                ),
             )
 
             Spacer(Modifier.height(16.dp))
@@ -170,7 +223,7 @@ fun AddBookScreen(
             Spacer(Modifier.height(24.dp))
 
             if (error != null) {
-                Text(error!!, color = Color(0xFFEF5350), modifier = Modifier.padding(bottom = 12.dp))
+                Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 12.dp))
             }
 
             if (isLoading) {
