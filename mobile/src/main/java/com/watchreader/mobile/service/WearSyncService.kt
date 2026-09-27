@@ -23,7 +23,8 @@ private const val TAG = "WatchReader"
  * destroy this service as soon as a callback is done, so work handed to a scope that is cancelled
  * in onDestroy() can be dropped on the floor; a dropped receipt leaves a book the watch has
  * marked failed once the sender's wait runs out. The callbacks arrive on a background thread and
- * every write here is a single-row update, so blocking on them is safe and short.
+ * every write here is a single-row update, so blocking on them is safe and short; so is the one
+ * message a receipt can send back, the contents of a book too long for its header.
  */
 class WearSyncService : WearableListenerService() {
 
@@ -48,6 +49,10 @@ class WearSyncService : WearableListenerService() {
                 runBlocking {
                     if (receipt.ok) {
                         BookRepository.updateSyncStatus(receipt.bookId, SyncStatus.SENT)
+                        // A long contents list could not ride in the book's header; it follows now.
+                        BookRepository.getById(receipt.bookId)?.let {
+                            BookSender(this@WearSyncService).sendContentsIfLeftOut(it, messageEvent.sourceNodeId)
+                        }
                     } else {
                         BookRepository.updateSyncStatus(receipt.bookId, SyncStatus.FAILED, receipt.message)
                     }

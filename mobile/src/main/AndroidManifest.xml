@@ -20,7 +20,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- "Share to WatchReader" from file managers, browsers and mail clients -->
+            <!-- "Share to WatchReader" from file managers, browsers and mail clients. A browser
+                 shares a link as text/plain, and that link goes to the add screen's link field. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

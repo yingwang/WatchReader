@@ -8,6 +8,7 @@ import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
+import com.watchreader.shared.BookContents
 import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
@@ -60,6 +61,18 @@ class BookReceiverService : WearableListenerService() {
                     return
                 }
                 runBlocking { WearBookRepository.applyProgressFromPhone(progress) }
+            }
+            DataLayerPaths.CONTENTS_PATH -> {
+                val contents = runCatching {
+                    BookContents.fromJson(String(messageEvent.data, Charsets.UTF_8))
+                }.getOrElse {
+                    Log.w(TAG, "Bad contents from the phone")
+                    return
+                }
+                // Contents for a book no longer here have nothing to go beside.
+                val book = runBlocking { WearBookRepository.getById(contents.bookId) } ?: return
+                runCatching { WearBookRepository.storeContents(File(book.filePath), contents.tocJson) }
+                    .onFailure { Log.w(TAG, "Could not store the contents of ${contents.bookId}", it) }
             }
         }
     }

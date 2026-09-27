@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="add_clear_file">Clear the chosen file</string>
+    <string name="add_share_needs_file_or_link">To add a book, share a .txt or .epub file, or a link to one.</string>
+</resources>

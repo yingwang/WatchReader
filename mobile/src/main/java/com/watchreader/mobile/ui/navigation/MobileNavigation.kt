@@ -23,9 +23,9 @@ fun MobileNavigation(shareGeneration: Int) {
     // twice: an import that finishes after its screen was already left does exactly that.
     val back: () -> Unit = { if (navController.previousBackStackEntry != null) navController.popBackStack() }
 
-    // A file shared from another app opens the add screen straight away.
+    // A file or link shared from another app opens the add screen straight away.
     LaunchedEffect(shareGeneration) {
-        if (shareGeneration > 0 && SharedIntent.pendingUri != null) {
+        if (shareGeneration > 0 && SharedIntent.pending != null) {
             navController.navigate("add") { launchSingleTop = true }
         }
     }

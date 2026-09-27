@@ -16,15 +16,20 @@ import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.TextNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.net.UnknownServiceException
 import java.util.UUID
+import javax.net.ssl.SSLException
+import kotlin.coroutines.coroutineContext
 
 /** Thrown for problems the user can act on; the message is already human-readable. */
 class ImportException(message: String) : IOException(message)
@@ -59,29 +64,31 @@ object BookRepository {
         withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
             val mimeType = resolver.getType(uri) ?: ""
-            val bytes = resolver.openInputStream(uri)?.use { readLimited(it) }
-                ?: throw ImportException("Cannot open the selected file")
-            val imported = importBytes(bytes, mimeType, title, fallbackTitle, declaredCharset = null)
+            val imported = withinMemory {
+                val bytes = resolver.openInputStream(uri)?.use { readLimited(it) }
+                    ?: throw ImportException("Cannot open the selected file")
+                importBytes(bytes, mimeType, title, fallbackTitle, declaredCharset = null)
+            }
+            // A screen left while the file was read has given up on it, and it stays out of the library.
+            coroutineContext.ensureActive()
             store(imported)
         }
 
     /** Downloads a .txt or .epub from [url]; web pages are refused rather than saved as books. */
     suspend fun addFromUrl(url: String, title: String): Book = withContext(Dispatchers.IO) {
-        val parsed = runCatching { URL(url.trim()) }.getOrElse { throw ImportException("That is not a valid URL") }
-        if (parsed.protocol != "http" && parsed.protocol != "https") {
+        val address = secureAddress(url)
+        val parsed = runCatching { URL(address) }.getOrElse { throw ImportException("That is not a valid URL") }
+        if (parsed.protocol != "https") {
             throw ImportException("Only http:// and https:// links can be downloaded")
         }
-        val conn = try {
-            (parsed.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
-                readTimeout = 30_000
-                instanceFollowRedirects = true
-                // A bare product token is turned away by several book archives, Gutenberg included.
-                setRequestProperty("User-Agent", USER_AGENT)
-                setRequestProperty("Accept", "*/*")
-            }
-        } catch (e: UnknownServiceException) {
-            throw ImportException("Plain http:// links are blocked by Android; use https://")
+        val upgraded = address != url.trim()
+        val conn = (parsed.openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            instanceFollowRedirects = true
+            // A bare product token is turned away by several book archives, Gutenberg included.
+            setRequestProperty("User-Agent", USER_AGENT)
+            setRequestProperty("Accept", "*/*")
         }
         try {
             if (conn.responseCode !in 200..299) {
@@ -94,15 +101,32 @@ object BookRepository {
             val mime = contentType.substringBefore(';').trim().lowercase()
             val charset = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
                 .find(contentType)?.groupValues?.get(1)?.trim('"')
-            val nameFromUrl = parsed.path.substringAfterLast('/').substringBeforeLast('.').ifBlank { "Untitled" }
-            val bytes = conn.inputStream.use { readLimited(it) }
-            if (mime == "text/html" || (mime.isEmpty() && looksLikeHtml(bytes))) {
-                throw ImportException("That link is a web page, not a text or epub file")
+            val nameFromUrl = titleFromPath(parsed.path)
+            val imported = withinMemory {
+                val bytes = conn.inputStream.use { readLimited(it) }
+                if (mime == "text/html" || (mime.isEmpty() && looksLikeHtml(bytes))) {
+                    throw ImportException("That link is a web page, not a text or epub file")
+                }
+                importBytes(bytes, mime, title, nameFromUrl, charset)
             }
-            val imported = importBytes(bytes, mime, title, nameFromUrl, charset)
+            // A screen left while the book downloaded has given up on it, and it stays out of the library.
+            coroutineContext.ensureActive()
             store(imported)
-        } catch (e: UnknownServiceException) {
-            throw ImportException("Plain http:// links are blocked by Android; use https://")
+        } catch (e: IOException) {
+            // A download given up on ends quietly, whatever the connection said as it went.
+            coroutineContext.ensureActive()
+            throw when {
+                e is ImportException -> e
+                // Android refuses plain http outright, and a server that sends the download on
+                // to such an address is refused with it.
+                e is UnknownServiceException || e.message.orEmpty().contains("cleartext", ignoreCase = true) ->
+                    ImportException("The server sent the download to a plain http:// address, which Android does not allow")
+                // A link given as http:// or with no scheme was asked for over https, and a site
+                // that never set that up turns the request away at the door.
+                upgraded && (e is SSLException || e is ConnectException) ->
+                    ImportException("That site does not offer a secure https:// download, and Android does not allow plain http://")
+                else -> e
+            }
         } finally {
             conn.disconnect()
         }
@@ -253,10 +277,23 @@ object BookRepository {
         if (bytes.isEmpty()) throw ImportException("The file is empty")
         val isEpub = mimeType == "application/epub+zip" || EpubParser.looksLikeEpub(bytes)
         return if (isEpub) {
-            val epub = EpubParser.parse(bytes.inputStream())
+            // The parser's refusals, a copy-protected book among them, are already worded for the reader.
+            val epub = try {
+                EpubParser.parse(bytes.inputStream())
+            } catch (e: IllegalArgumentException) {
+                throw ImportException(e.message ?: "This epub could not be read")
+            }
             if (epub.text.isBlank()) throw ImportException("No readable text found in this epub")
             Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, epub.text, epub.cover, epub.chapters)
         } else {
+            // The picker offers files by their generic type as well, since some providers label
+            // every .txt and .epub that way, and a Kindle book or a PDF comes in by the same door.
+            if (TextNormalizer.looksBinary(bytes)) {
+                throw ImportException(
+                    "This file is not a .txt or .epub book. Kindle books (.mobi, .azw3), PDFs and " +
+                        "other formats need converting to epub first.",
+                )
+            }
             val decoded = TextNormalizer.decode(bytes, declaredCharset)
             if (decoded.text.isBlank()) throw ImportException("No readable text found in this file")
             Imported(title.ifBlank { fallbackTitle }, decoded.text, cover = null, chapters = BookToc.detect(decoded.text))
@@ -289,11 +326,49 @@ object BookRepository {
         }
     }
 
-    private fun readLimited(input: InputStream): ByteArray {
+    /**
+     * An import turns a book of a few megabytes into several copies of its text at once, and a
+     * phone with little memory to spare can run out partway. That is a file too large for this
+     * phone, which the reader is told, rather than a crash that takes the app down with it.
+     */
+    private inline fun <T> withinMemory(block: () -> T): T = try {
+        block()
+    } catch (e: OutOfMemoryError) {
+        throw ImportException("This file is too large to import on this phone")
+    }
+
+    /**
+     * [url] as an https address. Android refuses plain http, and a link typed without a scheme,
+     * as a site's address usually is, names no protocol at all; both are asked for over https,
+     * which almost every site that serves books now answers.
+     */
+    internal fun secureAddress(url: String): String {
+        val trimmed = url.trim()
+        val scheme = SCHEME.find(trimmed)?.groupValues?.get(1)
+        return when {
+            scheme == null -> "https://" + trimmed.removePrefix("//")
+            scheme.equals("http", ignoreCase = true) -> "https" + trimmed.substring(scheme.length)
+            else -> trimmed
+        }
+    }
+
+    /** A scheme and the slashes after it; in "example.com:8080/book.txt" the colon comes before a port. */
+    private val SCHEME = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://")
+
+    /** The name a link gives its file, decoded, as the title of a book that brings none. */
+    internal fun titleFromPath(path: String): String {
+        val name = path.substringAfterLast('/')
+        // URLDecoder is for form encoding, where + is a space; in a path it is a plus sign.
+        val decoded = runCatching { URLDecoder.decode(name.replace("+", "%2B"), "UTF-8") }.getOrDefault(name)
+        return decoded.substringBeforeLast('.').trim().ifBlank { "Untitled" }
+    }
+
+    private suspend fun readLimited(input: InputStream): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         val buffer = ByteArray(64 * 1024)
         var total = 0L
         while (true) {
+            coroutineContext.ensureActive()
             val n = input.read(buffer)
             if (n < 0) break
             total += n

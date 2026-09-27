@@ -36,7 +36,9 @@ class AddBookViewModel(application: Application) : AndroidViewModel(application)
         } catch (e: Exception) {
             _error.value = describe(e, R.string.err_add_failed)
         } finally {
-            _isLoading.value = false
+            // A book that went in keeps the screen busy while it leaves; handing the button back
+            // during the exit animation let a second tap store the same book twice.
+            if (!_done.value) _isLoading.value = false
         }
     }
 
@@ -49,11 +51,13 @@ class AddBookViewModel(application: Application) : AndroidViewModel(application)
         } catch (e: Exception) {
             _error.value = describe(e, R.string.err_download_failed)
         } finally {
-            _isLoading.value = false
+            if (!_done.value) _isLoading.value = false
         }
     }
 
+    /** One import at a time, and none once a book is in: two quick taps would add it twice. */
     private fun run(block: suspend () -> Unit) {
+        if (_isLoading.value || _done.value) return
         viewModelScope.launch { block() }
     }
 

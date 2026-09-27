@@ -68,14 +68,7 @@ class BookSender(private val context: Context) {
             channel = channelClient.openChannel(nodeId, DataLayerPaths.bookChannelPath(book.id)).await()
             val output = channelClient.getOutputStream(channel).await()
             val file = File(book.filePath)
-            val meta = BookMetadata(
-                id = book.id,
-                title = book.title,
-                sizeBytes = file.length(),
-                addedEpochMs = book.addedEpochMs,
-                totalChars = book.totalChars,
-                tocJson = book.tocJson,
-            )
+            val meta = metadata(book)
             output.use { out ->
                 BookTransfer.writeHeader(out, meta)
                 file.inputStream().use { input -> input.copyTo(out, bufferSize = 16 * 1024) }
@@ -89,6 +82,29 @@ class BookSender(private val context: Context) {
         } finally {
             channel?.let { runCatching { channelClient.close(it).await() } }
         }
+    }
+
+    /** The header a book travels under; worked out the same way when its receipt comes back. */
+    private fun metadata(book: Book) = BookMetadata(
+        id = book.id,
+        title = book.title,
+        sizeBytes = File(book.filePath).length(),
+        addedEpochMs = book.addedEpochMs,
+        totalChars = book.totalChars,
+        tocJson = book.tocJson,
+    )
+
+    /**
+     * Sends the contents of a book the watch has just confirmed, when they were too large to
+     * travel in its header. Sent after the receipt rather than straight after the text, so the
+     * watch already has the book to put them beside and a resend that is still being stored
+     * cannot overwrite them with nothing.
+     */
+    suspend fun sendContentsIfLeftOut(book: Book, nodeId: String) = withContext(Dispatchers.IO) {
+        val payload = BookTransfer.contentsLeftOut(metadata(book)) ?: return@withContext
+        runCatching {
+            Wearable.getMessageClient(context).sendMessage(nodeId, DataLayerPaths.CONTENTS_PATH, payload).await()
+        }.onFailure { Log.w(TAG, "Could not send the contents of '${book.title}'", it) }
     }
 
     suspend fun deleteBookOnWatch(bookId: String, nodeId: String) {

@@ -208,4 +208,25 @@ class BookTocTest {
         val stored = BookToc.toJson(listOf(Chapter("I", 0), Chapter("II", 12), Chapter("III", 24)))
         assertTrue(BookToc.declared(stored, text).isEmpty())
     }
+
+    @Test
+    fun aWebNovelKeepsEveryOneOfItsChapters() {
+        val chapter = "\u4ed6\u8d70\u8fdb\u96e8\u91cc\uff0c\u6ca1\u6709\u56de\u5934\u3002".repeat(8)
+        val text = book(*(1..1500).flatMap { listOf("\u7b2c${it}\u7ae0 \u96e8\u591c", chapter, chapter) }.toTypedArray())
+        val toc = BookToc.detect(text)
+        assertEquals(1500, toc.size)
+        assertEquals("\u7b2c1500\u7ae0 \u96e8\u591c", toc.last().title)
+        assertTrue(toc.all { text.startsWith(it.title, it.start) })
+        // What the phone stores and sends comes back whole on the watch as well.
+        assertEquals(toc, BookToc.declared(BookToc.toJson(toc), text))
+    }
+
+    @Test
+    fun dialogueRunningPastTheScanLimitIsStillNotAContentsList() {
+        // Twelve thousand short speeches, each a line of its own between blank lines and none
+        // of them alike: far more than the scan looks at, so the density must not be judged on
+        // the part it saw against the paragraphs of the whole book.
+        val text = book(*(1..12_000).flatMap { listOf("Maybe $it", prose) }.toTypedArray())
+        assertTrue(BookToc.detect(text).isEmpty())
+    }
 }

@@ -25,6 +25,28 @@ object BookTransfer {
         output.write('\n'.code)
     }
 
+    /**
+     * The contents [writeHeader] had to leave out of this book's header, as the payload of a
+     * [DataLayerPaths.CONTENTS_PATH] message sent once the watch has the book; null when the
+     * header carried them, or when they are too large even for a message of their own.
+     *
+     * A web novel of a thousand chapters or so has a contents list past the header's limit.
+     * Without it the watch shows the book with no chapters at all, since it no longer works
+     * them out from the text, and a message can carry half as much again as a header can.
+     */
+    fun contentsLeftOut(meta: BookMetadata): ByteArray? {
+        val tocJson = meta.tocJson ?: return null
+        if (meta.toJson().toByteArray(Charsets.UTF_8).size <= MAX_HEADER_BYTES) return null
+        val payload = BookContents(meta.id, tocJson).toJson().toByteArray(Charsets.UTF_8)
+        return payload.takeIf { it.size <= MAX_CONTENTS_MESSAGE_BYTES }
+    }
+
+    /**
+     * The Data Layer refuses a message over 100 KB, and the bound kept here leaves room below
+     * that for whatever the layer adds around the payload.
+     */
+    const val MAX_CONTENTS_MESSAGE_BYTES = 90 * 1000
+
     /** Reads the header line and leaves [input] positioned at the first byte of the text. */
     @Throws(IOException::class)
     fun readHeader(input: InputStream): BookMetadata {

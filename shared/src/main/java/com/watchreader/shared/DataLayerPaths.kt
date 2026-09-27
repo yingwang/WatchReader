@@ -30,7 +30,11 @@ object DataLayerPaths {
      */
     const val REQUEST_CONTENTS_PATH = "/request_contents"
 
-    /** Phone -> watch message answering [REQUEST_CONTENTS_PATH], payload is a [BookContents] JSON. */
+    /**
+     * Phone -> watch message, payload is a [BookContents] JSON. The phone sends it once the watch
+     * confirms a book whose contents did not fit in its header (see [BookTransfer.contentsLeftOut]),
+     * and it is the answer to [REQUEST_CONTENTS_PATH] as well. A watch that predates it ignores it.
+     */
     const val CONTENTS_PATH = "/contents"
 
     /** Capabilities advertised by each side, used to find nodes that actually run the app. */

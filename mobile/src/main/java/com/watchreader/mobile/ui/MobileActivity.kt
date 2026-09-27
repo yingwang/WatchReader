@@ -16,7 +16,7 @@ class MobileActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null && SharedIntent.capture(intent)) shareGeneration++
+        if (savedInstanceState == null && !fromRecents(intent) && SharedIntent.capture(intent)) shareGeneration++
         setContent {
             WatchReaderTheme {
                 MobileNavigation(shareGeneration = shareGeneration)
@@ -27,6 +27,14 @@ class MobileActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (SharedIntent.capture(intent)) shareGeneration++
+        if (!fromRecents(intent) && SharedIntent.capture(intent)) shareGeneration++
     }
+
+    /**
+     * Whether the task was brought back from Recents. The system then starts the activity with
+     * the intent that first created the task, share and all, and taking it again would open the
+     * add screen on a file the reader added long ago, or no longer has permission to read.
+     */
+    private fun fromRecents(intent: Intent?): Boolean =
+        intent != null && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
 }
