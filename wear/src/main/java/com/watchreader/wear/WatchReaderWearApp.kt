@@ -2,6 +2,7 @@ package com.watchreader.wear
 
 import android.app.Application
 import android.util.Log
+import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.wear.data.repository.WearBookRepository
 import com.watchreader.wear.service.TtsService
@@ -19,6 +20,9 @@ class WatchReaderWearApp : Application() {
             WearBookRepository.seedSampleIfNeeded()
             runCatching { ProgressDataSync.restore(this@WatchReaderWearApp, WearBookRepository::applyProgressFromPhone) }
                 .onFailure { Log.w("WatchReader", "Could not restore synced progress", it) }
+            // Deletes that reached the data layer while this app was not running.
+            runCatching { PendingDeletes.all(this@WatchReaderWearApp).forEach { WearBookRepository.deleteForPhone(it) } }
+                .onFailure { Log.w("WatchReader", "Could not carry out pending deletes", it) }
         }
     }
 }

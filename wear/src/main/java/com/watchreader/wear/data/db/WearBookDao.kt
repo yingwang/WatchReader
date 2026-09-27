@@ -15,6 +15,9 @@ interface WearBookDao {
     @Query("SELECT * FROM wear_book WHERE id = :id")
     suspend fun getById(id: String): WearBook?
 
+    @Query("SELECT * FROM wear_book WHERE id = :id")
+    fun observeById(id: String): Flow<WearBook?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(book: WearBook)
 

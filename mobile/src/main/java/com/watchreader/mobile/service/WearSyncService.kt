@@ -10,6 +10,7 @@ import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
 import kotlinx.coroutines.runBlocking
 
@@ -54,7 +55,11 @@ class WearSyncService : WearableListenerService() {
             }
             DataLayerPaths.BOOK_REMOVED_PATH -> {
                 if (payload.isNotBlank()) {
-                    runBlocking { BookRepository.updateSyncStatus(payload, SyncStatus.NOT_SENT) }
+                    runBlocking {
+                        BookRepository.updateSyncStatus(payload, SyncStatus.NOT_SENT)
+                        // A delete the phone left for the watch has been carried out.
+                        runCatching { PendingDeletes.clear(this@WearSyncService, payload) }
+                    }
                 }
             }
             DataLayerPaths.PROGRESS_PATH -> {

@@ -10,6 +10,7 @@ import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.service.WatchLookup
+import com.watchreader.shared.PendingDeletes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -47,41 +48,52 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
             BookRepository.delete(book.id)
             // Whatever the phone believes about the transfer, the watch may hold a copy: a receipt
             // can go missing after a send that worked. Telling a watch that has none is harmless.
+            // A watch in reach hears at once; the note left in the data layer reaches one that is
+            // not when it comes back, so the book goes from both, as the dialog promised.
             (sender.findWatch() as? WatchLookup.Ready)?.let { sender.deleteBookOnWatch(book.id, it.nodeId) }
+            runCatching { PendingDeletes.publish(getApplication(), book.id) }
         }
     }
 
     fun sendToWatch(book: Book) {
-        if (book.syncStatus == SyncStatus.SENDING) return
+        if (!BookRepository.beginSending(book.id)) return
         viewModelScope.launch {
-            val watch = when (val lookup = sender.findWatch()) {
-                is WatchLookup.Ready -> lookup
-                is WatchLookup.WithoutApp -> {
-                    _events.tryEmit(UiEvent.OfferInstall(lookup.nodeId, lookup.name))
-                    return@launch
-                }
-                WatchLookup.None -> {
-                    _events.tryEmit(UiEvent.Message(R.string.msg_watch_not_connected))
-                    return@launch
-                }
+            try {
+                send(book)
+            } finally {
+                BookRepository.endSending(book.id)
             }
-            BookRepository.updateSyncStatus(book.id, SyncStatus.SENDING)
-            val streamed = sender.sendBook(book, watch.nodeId)
-            if (!streamed) {
-                BookRepository.updateSyncStatus(book.id, SyncStatus.FAILED)
-                _events.tryEmit(UiEvent.Message(R.string.msg_send_failed))
-                return@launch
+        }
+    }
+
+    private suspend fun send(book: Book) {
+        val watch = when (val lookup = sender.findWatch()) {
+            is WatchLookup.Ready -> lookup
+            is WatchLookup.WithoutApp -> {
+                _events.tryEmit(UiEvent.OfferInstall(lookup.nodeId, lookup.name))
+                return
             }
-            // The watch answers with a receipt once the book is on its books; give it a while.
-            val settled = withTimeoutOrNull(ACK_TIMEOUT_MS) {
-                BookRepository.observeAll().first { list ->
-                    list.firstOrNull { it.id == book.id }?.syncStatus != SyncStatus.SENDING
-                }
+            WatchLookup.None -> {
+                _events.tryEmit(UiEvent.Message(R.string.msg_watch_not_connected))
+                return
             }
-            if (settled == null) {
-                BookRepository.updateSyncStatus(book.id, SyncStatus.FAILED)
-                _events.tryEmit(UiEvent.Message(R.string.msg_no_receipt))
+        }
+        BookRepository.updateSyncStatus(book.id, SyncStatus.SENDING)
+        val streamed = sender.sendBook(book, watch.nodeId)
+        if (!streamed) {
+            BookRepository.updateSyncStatus(book.id, SyncStatus.FAILED)
+            _events.tryEmit(UiEvent.Message(R.string.msg_send_failed))
+            return
+        }
+        // The watch answers with a receipt once the book is on its books; give it a while.
+        val settled = withTimeoutOrNull(ACK_TIMEOUT_MS) {
+            BookRepository.observeAll().first { list ->
+                list.firstOrNull { it.id == book.id }?.syncStatus != SyncStatus.SENDING
             }
+        }
+        if (settled == null) {
+            BookRepository.updateSyncStatus(book.id, SyncStatus.FAILED)
+            _events.tryEmit(UiEvent.Message(R.string.msg_no_receipt))
         }
     }
 

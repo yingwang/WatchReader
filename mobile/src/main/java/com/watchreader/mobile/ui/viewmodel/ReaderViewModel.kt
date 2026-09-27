@@ -29,7 +29,16 @@ sealed class ReaderUiState {
         val totalChars: Int,
         val chapters: List<Chapter>,
     ) : ReaderUiState() {
-        val fraction: Float get() = if (totalChars == 0) 0f else page.end.toFloat() / totalChars
+        /**
+         * How far through the book this page begins, and the whole book on its last page. The
+         * library shows the saved place the same way (a last page is saved as the end of the
+         * book), so the two always agree and a book read to its end reaches 100%.
+         */
+        val fraction: Float get() = when {
+            totalChars == 0 -> 0f
+            page.end >= totalChars -> 1f
+            else -> page.start.toFloat() / totalChars
+        }
     }
 }
 
@@ -55,6 +64,14 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private var lastMove: Pair<Int, Long>? = null
     private var flipsSinceSync = 0
 
+    /**
+     * The stamp of the latest reading this screen knows of, its own or one it has followed. A
+     * row carrying a later one was read on the watch while this screen sat open or in the
+     * background, and the page moves there: turning on from the page left open would stamp the
+     * old place with the time of the turn and send it back over the newer reading.
+     */
+    private var knownStamp = 0L
+
     init {
         viewModelScope.launch {
             val found = BookRepository.getById(bookId)
@@ -67,11 +84,36 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
                 _state.value = ReaderUiState.Missing
                 return@launch
             }
-            chapters = BookToc.resolve(found.tocJson, text)
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
+            // A book imported before contents were kept is scanned for headings, all of it; the
+            // first page goes up before that, and the scan runs off the main thread.
+            chapters = withContext(Dispatchers.Default) { BookToc.resolve(found.tocJson, text) }
+            publish()
+            BookRepository.observe(bookId).collect { row -> row?.let { follow(it.readOffsetChars, it.lastReadEpochMs) } }
         }
+    }
+
+    /** Moves to a place read on the other device, when it is newer than anything seen here. */
+    private fun follow(offset: Int, at: Long) {
+        if (at <= knownStamp) return
+        knownStamp = at
+        val p = paginator
+        val current = page
+        if (p == null || current == null) {
+            // Not laid out yet: the first page will open here instead.
+            restoreOffset = offset.coerceIn(0, text.length)
+            return
+        }
+        val target = offset.coerceIn(0, p.length)
+        if (target in current.start until current.end) return
+        if (target >= p.length && current.end >= p.length) return
+        page = if (target >= p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
+        lastMove = null
+        flipsSinceSync = 0
+        publish()
     }
 
     fun attachLayout(geometry: PageGeometry, measurer: LineMeasurer) {
@@ -125,16 +167,35 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         saveProgress(toWatch = flipsSinceSync >= SYNC_EVERY_FLIPS)
     }
 
+    /** Where the open page is kept: its start, or the end of the book when it is the last one. */
+    private fun savedOffset(): Int? = page?.let { if (it.end >= text.length) text.length else it.start }
+
     fun saveProgress(toWatch: Boolean = true) {
         val b = book ?: return
-        val offset = page?.start ?: return
+        val offset = savedOffset() ?: return
         val at = System.currentTimeMillis()
         lastMove = offset to at
+        knownStamp = maxOf(knownStamp, at)
         if (toWatch) flipsSinceSync = 0
         viewModelScope.launch {
             withContext(NonCancellable + Dispatchers.IO) {
                 BookRepository.saveProgress(getApplication(), b, offset, at, toWatch)
             }
+        }
+    }
+
+    /**
+     * The screen went to the background (Home, the lock button, another app). The watch is told
+     * about the pages turned since it last heard, rather than only when this screen is closed with
+     * Back, which may be never: a process in the background can be ended without warning.
+     */
+    fun flush() {
+        if (flipsSinceSync == 0) return
+        val b = book ?: return
+        val (offset, at) = lastMove ?: return
+        flipsSinceSync = 0
+        viewModelScope.launch {
+            withContext(NonCancellable + Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset, at, toWatch = true) }
         }
     }
 

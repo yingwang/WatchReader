@@ -47,6 +47,9 @@ object BookRepository {
 
     suspend fun getById(id: String): Book? = dao.getById(id)
 
+    /** One book's row as it changes, readings from the watch included. */
+    fun observe(id: String): Flow<Book?> = dao.observeById(id)
+
     /**
      * Imports a .txt or .epub picked or shared by the user. The text is decoded on the phone
      * (BOM, UTF-8, GB18030) and stored as UTF-8 so the watch never has to guess an encoding.
@@ -120,13 +123,49 @@ object BookRepository {
     }
 
     /**
+     * Books with a send under way in this process. The database says SENDING from the moment the
+     * watch is found, but a second tap, or a second library screen opened by a share from another
+     * app, reads that too late or cannot tell a live send from one whose waiter has gone.
+     */
+    private val sending: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
+
+    /** False when this book is already being sent, and the caller should leave it alone. */
+    fun beginSending(id: String): Boolean = sending.add(id)
+
+    fun endSending(id: String) {
+        sending.remove(id)
+    }
+
+    /**
      * A book still marked SENDING when nothing is waiting for its receipt is stuck: the wait lives
      * in the screen that started the send and dies with it, while the status lives in the
      * database. Such books are marked failed so they can be sent again; a receipt that turns up
-     * late still flips them to SENT. Returns how many were recovered.
+     * late still flips them to SENT. A send still running in this process is left alone. Returns
+     * how many were recovered.
      */
-    suspend fun recoverStaleTransfers(): Int =
-        dao.replaceSyncStatus(SyncStatus.SENDING, SyncStatus.FAILED, System.currentTimeMillis())
+    suspend fun recoverStaleTransfers(): Int {
+        val stale = dao.idsWithStatus(SyncStatus.SENDING).filterNot { it in sending }
+        for (id in stale) updateSyncStatus(id, SyncStatus.FAILED)
+        return stale.size
+    }
+
+    /**
+     * Android's backup carries the library to a new phone with each book's sync status, but not
+     * the books on the watch, so every book would claim to be on a watch that may have none of
+     * them. A restore is told apart by a marker kept where backup does not reach, next to a
+     * preference, which does travel, saying the marker is in use: a restored phone has the
+     * preference and no marker. There every book is marked not sent. An update from a version
+     * that kept no marker has neither, and is left as it is.
+     */
+    suspend fun resetSyncAfterRestore(context: Context) {
+        val marker = File(context.noBackupFilesDir, INSTALL_MARKER)
+        val prefs = context.getSharedPreferences(INSTALL_PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_MARKER_IN_USE, false) && !marker.exists()) {
+            dao.resetAllSyncStatus(SyncStatus.NOT_SENT, System.currentTimeMillis())
+        }
+        marker.createNewFile()
+        prefs.edit().putBoolean(KEY_MARKER_IN_USE, true).apply()
+    }
 
     /** Applies progress from either side; the older of two readings loses (see the DAO's guard). */
     suspend fun applyProgress(progress: ReadingProgress) {
@@ -272,6 +311,9 @@ object BookRepository {
     private const val USER_AGENT = "WatchReader/1.0 (Android; +https://yingwang.github.io/watchreader/)"
 
     private const val SAMPLE_ID = "sample"
+    private const val INSTALL_MARKER = "install_marker"
+    private const val INSTALL_PREFS = "install"
+    private const val KEY_MARKER_IN_USE = "marker_in_use"
     private const val SAMPLE_ASSET = "sample.txt"
     /** Bumped whenever the bundled guide is rewritten. */
     private const val SAMPLE_VERSION = 3

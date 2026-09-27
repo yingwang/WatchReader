@@ -20,6 +20,7 @@ class WatchReaderApp : Application() {
         // become a crash on every launch.
         val quietly = CoroutineExceptionHandler { _, e -> Log.w(TAG, "Start-up housekeeping failed", e) }
         CoroutineScope(SupervisorJob() + Dispatchers.IO + quietly).launch {
+            runCatching { BookRepository.resetSyncAfterRestore(this@WatchReaderApp) }.onFailure { Log.w(TAG, "Could not check for a restored backup", it) }
             // Nothing survives a process restart to wait for a receipt, so whatever was mid-send
             // when the process went is stuck until it is marked failed here.
             runCatching { BookRepository.recoverStaleTransfers() }.onFailure { Log.w(TAG, "Could not recover stale transfers", it) }

@@ -16,6 +16,9 @@ interface BookDao {
     @Query("SELECT * FROM book WHERE id = :id")
     suspend fun getById(id: String): Book?
 
+    @Query("SELECT * FROM book WHERE id = :id")
+    fun observeById(id: String): Flow<Book?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(book: Book)
 
@@ -25,8 +28,11 @@ interface BookDao {
     @Query("UPDATE book SET syncStatus = :status, lastSyncEpochMs = :epochMs, syncMessage = :message WHERE id = :id")
     suspend fun updateSyncStatus(id: String, status: SyncStatus, epochMs: Long, message: String?)
 
-    @Query("UPDATE book SET syncStatus = :to, lastSyncEpochMs = :epochMs, syncMessage = NULL WHERE syncStatus = :from")
-    suspend fun replaceSyncStatus(from: SyncStatus, to: SyncStatus, epochMs: Long): Int
+    @Query("SELECT id FROM book WHERE syncStatus = :status")
+    suspend fun idsWithStatus(status: SyncStatus): List<String>
+
+    @Query("UPDATE book SET syncStatus = :status, lastSyncEpochMs = :epochMs, syncMessage = NULL")
+    suspend fun resetAllSyncStatus(status: SyncStatus, epochMs: Long)
 
     @Query(
         "UPDATE book SET readProgress = :progress, readOffsetChars = :offset, lastReadEpochMs = :epochMs " +

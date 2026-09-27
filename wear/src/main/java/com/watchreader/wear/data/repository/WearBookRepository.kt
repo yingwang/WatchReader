@@ -77,6 +77,9 @@ object WearBookRepository {
 
     suspend fun getById(id: String): WearBook? = dao.getById(id)
 
+    /** One book's row as it changes, readings from the phone included. */
+    fun observe(id: String): Flow<WearBook?> = dao.observeById(id)
+
     suspend fun insert(book: WearBook) = dao.upsert(book)
 
     /** Removes a book locally; [tellPhone] sends the phone a note so it can show "not on watch". */
@@ -88,6 +91,15 @@ object WearBookRepository {
         runCatching { ProgressDataSync.forget(appContext, id) }
             .onFailure { Log.w(TAG, "Could not drop synced progress for $id", it) }
         if (tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
+    }
+
+    /**
+     * Carries out a delete the phone left in the data layer while the watch was away, and answers
+     * even when the book is already gone (a message got here first) so the phone drops its note.
+     */
+    suspend fun deleteForPhone(id: String) {
+        delete(id, tellPhone = false)
+        sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
     }
 
     /** [atEpochMs] is when the reading happened; a save repeated later keeps that stamp. */

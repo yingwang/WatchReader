@@ -12,6 +12,7 @@ import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.resentBookOffset
 import com.watchreader.wear.data.model.WearBook
@@ -35,6 +36,10 @@ class BookReceiverService : WearableListenerService() {
                 if (event.type != DataEvent.TYPE_CHANGED) continue
                 val item = event.dataItem
                 ProgressDataSync.decode(item.uri.path, item.data)?.let { WearBookRepository.applyProgressFromPhone(it) }
+                PendingDeletes.bookId(item.uri.path, item.data)?.let { id ->
+                    TtsService.stopIfPlaying(this@BookReceiverService, id)
+                    WearBookRepository.deleteForPhone(id)
+                }
             }
         }
     }

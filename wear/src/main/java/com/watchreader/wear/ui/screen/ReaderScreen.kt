@@ -215,10 +215,12 @@ fun ReaderScreen(
         }
     }
     // The seconds a page stays can be changed in Settings while this screen sits in the back
-    // stack, so read it again every time the page comes forward.
+    // stack, so read it again every time the page comes forward. On the way to the background the
+    // phone hears about the last pages turned.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) autoSeconds = prefs.autoTurnSeconds
+            if (event == Lifecycle.Event.ON_STOP) vm.flush()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
