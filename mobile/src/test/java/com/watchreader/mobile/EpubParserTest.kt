@@ -11,6 +11,20 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class EpubParserTest {
+    @Test fun containerAcceptsSingleQuotesAndAttributeWhitespace() {
+        val original = EpubParser.parse(epub(navBook, blob = null).inputStream())
+        for (attribute in listOf("full-path='OEBPS/content.opf'", "full-path = \"OEBPS/content.opf\"", "full-path\n = 'OEBPS/content.opf'")) {
+            val files = navBook.map { (name, text) ->
+                name to if (name == "META-INF/container.xml")
+                    text.replace("full-path=\"OEBPS/content.opf\"", attribute) else text
+            }
+            val parsed = EpubParser.parse(epub(files, blob = null).inputStream())
+            assertEquals(original.text, parsed.text)
+            assertEquals(original.title, parsed.title)
+            assertEquals(original.chapters, parsed.chapters)
+        }
+    }
+
     private fun epub(vararg files: Pair<String, String>): ByteArray = epub(files.toList(), blob = null)
 
     /** [blob] adds one more entry of that name filled with [blob].second zero bytes. */

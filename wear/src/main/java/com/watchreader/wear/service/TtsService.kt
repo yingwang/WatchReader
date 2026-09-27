@@ -23,6 +23,7 @@ import com.watchreader.wear.tts.LanguageDetector
 import com.watchreader.wear.tts.SentenceParser
 import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
+import com.watchreader.wear.tts.UtteranceSession
 import com.watchreader.wear.ui.WearActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -62,7 +63,7 @@ class TtsService : Service() {
     private var finishedBook = false
 
     /** Bumped by every play(); work left over from an earlier book checks it and stands down. */
-    @Volatile private var playSerial = 0
+    private val session = UtteranceSession()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -95,6 +96,9 @@ class TtsService : Service() {
                     finish()
                     return START_NOT_STICKY
                 }
+                if ((pendingPlay?.first == id || TtsPlayback.bookId.value == id) &&
+                    TtsPlayback.state.value == TtsState.LOADING) return START_NOT_STICKY
+                TtsPlayback.set(TtsState.LOADING, id, null)
                 goForeground(titleOrLoading(), playing = true)
                 if (engineReady) play(id, offset) else pendingPlay = id to offset
             }
@@ -106,24 +110,25 @@ class TtsService : Service() {
     }
 
     private fun play(bookId: String, offset: Int) {
-        val serial = ++playSerial
+        val serial = session.invalidate()
+        tts?.stop()
         finishedBook = false
         TtsPlayback.set(TtsState.LOADING, bookId, null)
         scope.launch {
             val loaded = WearBookRepository.getById(bookId)
             if (loaded == null) {
-                if (serial == playSerial) finish()
+                if (serial == session.generation) finish()
                 return@launch
             }
             val loadedText = WearBookRepository.loadText(loaded)
             // another play() came in while this one was reading the file; that one owns the engine now
-            if (serial != playSerial) return@launch
+            if (serial != session.generation) return@launch
             // Every character from here to the end is looked at; a novel's worth is too much for
             // the main thread, so it happens on a worker.
             val split = withContext(Dispatchers.IO) {
                 SentenceParser.ranges(loadedText, offset.coerceIn(0, loadedText.length))
             }
-            if (serial != playSerial) return@launch
+            if (serial != session.generation) return@launch
             book = loaded
             text = loadedText
             sentences = split
@@ -164,8 +169,9 @@ class TtsService : Service() {
                     currentLocale = locale
                 }
             }
-            val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "s$i") }
-            if (engine.speak(sentence, TextToSpeech.QUEUE_ADD, params, "s$i") != TextToSpeech.SUCCESS) {
+            val id = session.id(i)
+            val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, id) }
+            if (engine.speak(sentence, TextToSpeech.QUEUE_ADD, params, id) != TextToSpeech.SUCCESS) {
                 // A sentence the engine refuses to take never gets an onError, so the queue
                 // would drain and the service sit silent in PLAYING. The engine is gone; the
                 // sentence being spoken is saved on the way out, and the reader sees idle.
@@ -180,34 +186,35 @@ class TtsService : Service() {
 
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String) {
-            val index = utteranceId.removePrefix("s").toIntOrNull() ?: return
-            current = index
-            currentStartedAt = System.currentTimeMillis()
-            val range = sentences.getOrNull(index)
             scope.launch {
+                val index = session.index(utteranceId) ?: return@launch
+                val serial = session.generation
+                if (TtsPlayback.state.value != TtsState.PLAYING) return@launch
+                val range = sentences.getOrNull(index) ?: return@launch
+                current = index
+                currentStartedAt = System.currentTimeMillis()
                 TtsPlayback.sentence(range)
                 if (++sentencesSinceSave >= SAVE_EVERY) {
                     sentencesSinceSave = 0
-                    range?.let { saveProgress(it.first, toPhone = false) }
+                    saveProgress(range.first, toPhone = false)
                 }
-                topUp(index)
+                if (serial == session.generation && TtsPlayback.state.value == TtsState.PLAYING) topUp(index)
             }
         }
 
         override fun onDone(utteranceId: String) {
-            val index = utteranceId.removePrefix("s").toIntOrNull() ?: return
-            utteranceOver(index, failed = false)
+            utteranceOver(utteranceId, failed = false)
         }
 
         @Deprecated("Deprecated in Java")
         override fun onError(utteranceId: String) {
             Log.w(TAG, "Utterance $utteranceId failed; skipping")
-            utteranceId.removePrefix("s").toIntOrNull()?.let { utteranceOver(it, failed = true) }
+            utteranceOver(utteranceId, failed = true)
         }
 
         override fun onError(utteranceId: String, errorCode: Int) {
             Log.w(TAG, "Utterance $utteranceId failed with $errorCode; skipping")
-            utteranceId.removePrefix("s").toIntOrNull()?.let { utteranceOver(it, failed = true) }
+            utteranceOver(utteranceId, failed = true)
         }
     }
 
@@ -223,25 +230,28 @@ class TtsService : Service() {
      * sentence rather than at the end of the text, so an engine that fails on everything does not
      * mark a book read. Anything left over from an earlier book is ignored.
      */
-    private fun utteranceOver(index: Int, failed: Boolean) {
-        val serial = playSerial
+    private fun utteranceOver(utteranceId: String, failed: Boolean) {
         scope.launch {
-            if (serial != playSerial) return@launch
+            val index = session.index(utteranceId) ?: return@launch
+            val serial = session.generation
+            if (TtsPlayback.state.value != TtsState.PLAYING || index !in sentences.indices) return@launch
             if (failed) {
                 current = index
                 topUp(index)
             }
+            if (serial != session.generation) return@launch
             if (index >= sentences.size - 1) {
                 val offset = if (failed) sentences.getOrNull(index)?.first ?: text.length else text.length
                 if (!failed) finishedBook = true
                 saveProgress(offset, toPhone = true)
-                finish()
+                if (serial == session.generation) finish()
             }
         }
     }
 
     private fun pause() {
         if (TtsPlayback.state.value != TtsState.PLAYING) return
+        session.invalidate()
         tts?.stop()
         nextToQueue = maxOf(current, 0)
         TtsPlayback.state(TtsState.PAUSED)
@@ -259,6 +269,7 @@ class TtsService : Service() {
     }
 
     private fun finish() {
+        session.invalidate()
         // stop() waits for the engine's lock, which its connection set-up holds for seconds on a
         // cold start; before the engine has reported ready there is nothing to stop anyway.
         if (engineReady) tts?.stop()
@@ -275,6 +286,7 @@ class TtsService : Service() {
 
     @OptIn(DelicateCoroutinesApi::class)
     override fun onDestroy() {
+        session.invalidate()
         destroyed = true
         pendingPlay = null
         val b = book

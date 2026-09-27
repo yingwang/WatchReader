@@ -14,6 +14,7 @@ import com.watchreader.shared.BookMetadata
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.ProgressDataSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -98,8 +99,11 @@ class BookSender(private val context: Context) {
         }.onFailure { Log.w(TAG, "Could not tell the watch to delete $bookId", it) }
     }
 
-    /** Tells the watch where the reader on the phone got to. Silent when no watch is around. */
+    /** Persists progress for reconnection, then notifies reachable older peers by message. */
     suspend fun sendProgress(progress: ReadingProgress) {
+        runCatching { ProgressDataSync.publish(context, progress) }
+            .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
+        // Keep immediate messages for peers which have not upgraded yet.
         val watch = findWatch() as? WatchLookup.Ready ?: return
         runCatching {
             Wearable.getMessageClient(context)

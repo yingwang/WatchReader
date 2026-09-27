@@ -41,7 +41,7 @@ object EpubParser {
 
         val container = entries["META-INF/container.xml"]?.toString(Charsets.UTF_8)
             ?: throw IllegalArgumentException("Not a valid EPUB file")
-        val opfPath = Regex("""full-path="([^"]+)"""").find(container)?.groupValues?.get(1)
+        val opfPath = attr(container, "full-path")
             ?: throw IllegalArgumentException("Cannot find OPF in EPUB")
         val opfContent = entries[opfPath]?.toString(Charsets.UTF_8)
             ?: throw IllegalArgumentException("Cannot read OPF")

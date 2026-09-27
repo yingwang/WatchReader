@@ -4,12 +4,16 @@ import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
+import com.google.android.gms.wearable.DataEvent
+import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.ProgressDataSync
+import com.watchreader.shared.resentBookOffset
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
 import kotlinx.coroutines.runBlocking
@@ -24,6 +28,16 @@ private const val TAG = "WatchReader"
  * The copy runs inside the callback on purpose: the service is kept alive for exactly that long.
  */
 class BookReceiverService : WearableListenerService() {
+
+    override fun onDataChanged(events: DataEventBuffer) {
+        runBlocking {
+            for (event in events) {
+                if (event.type != DataEvent.TYPE_CHANGED) continue
+                val item = event.dataItem
+                ProgressDataSync.decode(item.uri.path, item.data)?.let { WearBookRepository.applyProgressFromPhone(it) }
+            }
+        }
+    }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         when (messageEvent.path) {
@@ -73,10 +87,15 @@ class BookReceiverService : WearableListenerService() {
                         addedEpochMs = meta.addedEpochMs,
                         totalChars = text.length,
                         // a re-sent book keeps its place, unless the text changed length
-                        readOffsetChars = existing?.readOffsetChars?.takeIf { it < text.length } ?: 0,
+                        readOffsetChars = resentBookOffset(existing?.readOffsetChars, existing?.totalChars, text.length),
                         lastReadEpochMs = existing?.lastReadEpochMs ?: 0,
                     ),
                 )
+                if (existing == null) {
+                    runCatching {
+                        ProgressDataSync.restore(this@BookReceiverService, WearBookRepository::applyProgressFromPhone)
+                    }.onFailure { Log.w(TAG, "Could not restore synced progress", it) }
+                }
             }
             Log.d(TAG, "Stored '${meta.title}' (${text.length} chars)")
             BookReceipt(bookId, ok = true, totalChars = text.length)

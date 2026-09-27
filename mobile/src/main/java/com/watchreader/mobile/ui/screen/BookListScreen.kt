@@ -202,6 +202,7 @@ fun BookListScreen(
                             book = book,
                             onClick = { onOpenBook(book.id) },
                             onLongClick = { deleteTarget = book },
+                            onRetry = { vm.sendToWatch(book) },
                         )
                     }
                 }
@@ -240,6 +241,7 @@ private fun BookCover(
     book: Book,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val bgColor = coverColors[book.id.hashCode().absoluteValue % coverColors.size]
     val art = rememberCoverArt(book.coverPath)
@@ -303,6 +305,9 @@ private fun BookCover(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (book.syncStatus == SyncStatus.FAILED) {
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.reader_retry)) }
+            }
         }
     }
 }

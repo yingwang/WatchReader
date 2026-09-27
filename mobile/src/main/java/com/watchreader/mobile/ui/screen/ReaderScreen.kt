@@ -1,6 +1,20 @@
 package com.watchreader.mobile.ui.screen
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -62,9 +76,6 @@ import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import kotlin.math.roundToInt
 
-private val FONT_SIZE = 18.sp
-private val LINE_HEIGHT = 30.sp
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
@@ -83,6 +94,11 @@ fun ReaderScreen(
     val snackbar = remember { SnackbarHostState() }
     var showContents by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
+    val prefs = remember { context.getSharedPreferences("reader_appearance", android.content.Context.MODE_PRIVATE) }
+    var fontSize by remember { mutableStateOf(prefs.getInt("font_size", 18).coerceIn(14, 30)) }
+    var showAppearance by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var toolbarVisible by rememberSaveable(bookId) { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         listVm.events.collect { event ->
@@ -105,6 +121,7 @@ fun ReaderScreen(
 
     Scaffold(
         topBar = {
+            if (toolbarVisible) {
             TopAppBar(
                 title = { Text(book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
@@ -122,18 +139,25 @@ fun ReaderScreen(
                         }
                     }
                     val onWatch = book?.syncStatus == SyncStatus.SENT
-                    IconButton(
-                        onClick = { book?.let { listVm.sendToWatch(it) } },
-                        // A book the watch already has can still be sent again: the phone hears
-                        // about a copy the watch deleted, not about one lost to a reinstall.
-                        enabled = book != null && book.syncStatus != SyncStatus.SENDING,
-                    ) {
+                    if (onWatch) {
+                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.reader_on_watch), modifier = Modifier.padding(12.dp))
+                    } else if (book?.syncStatus == SyncStatus.SENDING) {
+                        CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
+                    } else IconButton(onClick = { book?.let { listVm.sendToWatch(it) } }, enabled = book != null) {
                         Icon(
-                            if (onWatch) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(
-                                if (onWatch) R.string.reader_on_watch else R.string.reader_send,
-                            ),
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(if (book?.syncStatus == SyncStatus.FAILED) R.string.reader_retry else R.string.reader_send),
                         )
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.reader_options)) }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.reader_font_size)) }, onClick = { showMenu = false; showAppearance = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = { showMenu = false; toolbarVisible = false })
+                            if (onWatch) DropdownMenuItem(text = { Text(stringResource(R.string.reader_resend)) }, onClick = {
+                                showMenu = false; book?.let { listVm.sendToWatch(it) }
+                            })
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -143,6 +167,12 @@ fun ReaderScreen(
                     actionIconContentColor = MaterialTheme.colorScheme.primary,
                 ),
             )
+            }
+        },
+        bottomBar = {
+            if (!toolbarVisible) TextButton(onClick = { toolbarVisible = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.reader_show_controls))
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -150,8 +180,8 @@ fun ReaderScreen(
         val density = LocalDensity.current
         val measurer = rememberTextMeasurer()
         val onBackground = MaterialTheme.colorScheme.onBackground
-        val textStyle = remember(onBackground) {
-            TextStyle(color = onBackground, fontSize = FONT_SIZE, lineHeight = LINE_HEIGHT)
+        val textStyle = remember(onBackground, fontSize) {
+            TextStyle(color = onBackground, fontSize = fontSize.sp, lineHeight = (fontSize * 1.65f).sp)
         }
 
         BoxWithConstraints(
@@ -162,12 +192,13 @@ fun ReaderScreen(
                     // The two halves turn pages, the same way round as on the watch.
                     detectTapGestures(
                         onTap = { offset -> if (offset.x < size.width / 2f) vm.prevPage() else vm.nextPage() },
+                        onLongPress = { toolbarVisible = true },
                     )
                 },
         ) {
             val widthPx = with(density) { maxWidth.roundToPx() }
             val heightPx = with(density) { maxHeight.roundToPx() }
-            val lineHeightPx = with(density) { LINE_HEIGHT.toPx() }
+            val lineHeightPx = with(density) { (fontSize * 1.65f).sp.toPx() }
             val marginPx = with(density) { 24.dp.toPx() }
             val geometry = remember(widthPx, heightPx, lineHeightPx) {
                 PageGeometry.rect(widthPx, heightPx, marginPx, lineHeightPx)
@@ -194,7 +225,7 @@ fun ReaderScreen(
                 }
                 is ReaderUiState.Ready -> {
                     val page = s.page
-                    Canvas(modifier = Modifier.fillMaxSize()) {
+                    Canvas(modifier = Modifier.fillMaxSize().semantics { contentDescription = page.lines.joinToString(" ") { page.text(it) } }) {
                         for (line in page.lines) {
                             if (line.end <= line.start) continue
                             val slot = geometry.slots.getOrNull(line.slot) ?: continue
@@ -210,7 +241,7 @@ fun ReaderScreen(
                     }
                     Text(
                         text = stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
-                        color = onBackground.copy(alpha = 0.45f),
+                        color = onBackground.copy(alpha = 0.7f),
                         fontSize = 12.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                     )
@@ -223,20 +254,16 @@ fun ReaderScreen(
         ModalBottomSheet(onDismissRequest = { showContents = false }, sheetState = sheetState) {
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(chapters) { chapter ->
+                    val current = chapters.lastOrNull { it.start <= ((state as? ReaderUiState.Ready)?.page?.start ?: 0) } == chapter
                     Text(
-                        text = chapter.title,
+                        text = (if (current) "● " else "") + chapter.title,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 16.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .pointerInput(chapter.start) {
-                                detectTapGestures(
-                                    onTap = {
-                                        vm.jumpTo(chapter.start)
-                                        showContents = false
-                                    },
-                                )
-                            }
+                            .background(if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+                            .clickable { vm.jumpTo(chapter.start); showContents = false }
+                            .heightIn(min = 48.dp)
                             .padding(horizontal = 24.dp, vertical = 14.dp),
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
@@ -244,4 +271,19 @@ fun ReaderScreen(
             }
         }
     }
+    if (showAppearance) AlertDialog(
+        onDismissRequest = { showAppearance = false },
+        title = { Text(stringResource(R.string.reader_font_size)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.reader_font_preview), fontSize = fontSize.sp, lineHeight = (fontSize * 1.65f).sp)
+                Text("${fontSize} sp")
+                Slider(value = fontSize.toFloat(), onValueChange = {
+                    fontSize = it.roundToInt()
+                    prefs.edit().putInt("font_size", fontSize).apply()
+                }, valueRange = 14f..30f, steps = 15)
+            }
+        },
+        confirmButton = { TextButton(onClick = { showAppearance = false }) { Text(stringResource(R.string.reader_done)) } },
+    )
 }

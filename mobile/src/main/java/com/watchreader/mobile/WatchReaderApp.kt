@@ -2,6 +2,7 @@ package com.watchreader.mobile
 
 import android.app.Application
 import android.util.Log
+import com.watchreader.shared.ProgressDataSync
 import com.watchreader.mobile.data.repository.BookRepository
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,8 @@ class WatchReaderApp : Application() {
             // when the process went is stuck until it is marked failed here.
             runCatching { BookRepository.recoverStaleTransfers() }.onFailure { Log.w(TAG, "Could not recover stale transfers", it) }
             runCatching { BookRepository.seedSampleIfNeeded(this@WatchReaderApp) }.onFailure { Log.w(TAG, "Could not seed the sample book", it) }
+            runCatching { ProgressDataSync.restore(this@WatchReaderApp, BookRepository::applyProgress) }
+                .onFailure { Log.w(TAG, "Could not restore synced progress", it) }
         }
     }
 }

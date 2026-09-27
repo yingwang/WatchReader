@@ -53,4 +53,12 @@
     <string name="err_download_failed">Download failed</string>
     <string name="err_no_network">Could not reach that address. Check the link and your connection.</string>
     <string name="err_timeout">The server took too long to answer</string>
+    <string name="reader_options">Reading options</string>
+    <string name="reader_resend">Send to watch again</string>
+    <string name="reader_retry">Retry transfer</string>
+    <string name="reader_font_size">Text size</string>
+    <string name="reader_font_preview">A quiet page, a little time to read.</string>
+    <string name="reader_hide_controls">Hide title bar</string>
+    <string name="reader_show_controls">Show reading controls</string>
+    <string name="reader_done">Done</string>
 </resources>

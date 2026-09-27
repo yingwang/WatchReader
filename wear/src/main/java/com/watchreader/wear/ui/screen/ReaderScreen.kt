@@ -151,6 +151,17 @@ fun ReaderScreen(
     var crownTravel by remember { mutableFloatStateOf(0f) }
     var autoTurn by remember { mutableStateOf(prefs.autoTurnEnabled) }
     var autoSeconds by remember { mutableFloatStateOf(prefs.autoTurnSeconds) }
+    var boundaryMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(boundaryMessage) {
+        if (boundaryMessage != null) { delay(2200); boundaryMessage = null }
+    }
+    fun turnPage(forward: Boolean) {
+        val changed = if (forward) vm.nextPage() else vm.prevPage()
+        if (changed) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        if (state is ReaderUiState.Ready && ((!changed) || (vm.state.value as? ReaderUiState.Ready)?.atEnd == true)) {
+            boundaryMessage = context.getString(if (forward) R.string.reader_finished else R.string.reader_first_page)
+        }
+    }
     val focusRequester = remember { FocusRequester() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val measurer = rememberTextMeasurer()
@@ -177,7 +188,7 @@ fun ReaderScreen(
     LaunchedEffect(autoTurn, autoSeconds, state, showToolbar) {
         val s = state
         if (!autoTurn || showToolbar || s !is ReaderUiState.Ready) return@LaunchedEffect
-        if (s.atEnd) { autoTurn = false; return@LaunchedEffect }
+        if (s.atEnd) { autoTurn = false; boundaryMessage = context.getString(R.string.reader_finished); return@LaunchedEffect }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             delay((autoSeconds * 1000).toLong())
             if (autoTurn && !showToolbar) vm.nextPage()
@@ -233,26 +244,29 @@ fun ReaderScreen(
                 crownTravel += event.verticalScrollPixels
                 while (crownTravel >= CROWN_PIXELS_PER_PAGE) {
                     crownTravel -= CROWN_PIXELS_PER_PAGE
-                    vm.nextPage()
-                    tick()
+                    turnPage(true)
                 }
                 while (crownTravel <= -CROWN_PIXELS_PER_PAGE) {
                     crownTravel += CROWN_PIXELS_PER_PAGE
-                    vm.prevPage()
-                    tick()
+                    turnPage(false)
                 }
                 true
             }
             .focusRequester(focusRequester)
             .focusable()
-            .pointerInput(showToolbar, showHint) {
+            .pointerInput(showToolbar, showHint, ttsHere, ttsState) {
                 detectTapGestures(
                     // Nothing but a page turn on a plain tap: the toolbar was too easy to hit.
                     onTap = { offset ->
                         if (showToolbar || showHint) return@detectTapGestures
-                        if (offset.x < size.width / 2f) vm.prevPage() else vm.nextPage()
-                        tick()
+                        turnPage(offset.x >= size.width / 2f)
                     },
+                    onDoubleTap = if (ttsHere) ({
+                        if (!showToolbar && !showHint) {
+                            if (ttsState == TtsState.PLAYING) TtsService.pause(context)
+                            else if (ttsState == TtsState.PAUSED) TtsService.resume(context)
+                        }
+                    }) else null,
                     onLongPress = {
                         if (showToolbar || showHint) return@detectTapGestures
                         showToolbar = true
@@ -306,8 +320,8 @@ fun ReaderScreen(
                 Canvas(modifier = Modifier.fillMaxSize().semantics {
                     contentDescription = page.lines.joinToString(" ") { lineString(page, it, null).orEmpty() }
                     customActions = listOf(
-                        CustomAccessibilityAction(previousLabel) { vm.prevPage(); true },
-                        CustomAccessibilityAction(nextLabel) { vm.nextPage(); true },
+                        CustomAccessibilityAction(previousLabel) { turnPage(false); true },
+                        CustomAccessibilityAction(nextLabel) { turnPage(true); true },
                         CustomAccessibilityAction(controlsLabel) { showToolbar = true; true },
                     )
                 }) {
@@ -327,14 +341,18 @@ fun ReaderScreen(
 
                 // small percent at the bottom edge, inside the round bezel
                 Text(
-                    text = stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
-                    color = colors.dim,
-                    fontSize = 9.sp,
+                    text = boundaryMessage ?: stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
+                    color = colors.text.copy(alpha = 0.8f),
+                    fontSize = 11.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
-                if (ttsHere && ttsState == TtsState.PLAYING) {
+                if (ttsHere) {
                     Text(
-                        text = "♪",
+                        text = stringResource(when (ttsState) {
+                            TtsState.LOADING -> R.string.reader_preparing_short
+                            TtsState.PLAYING -> R.string.reader_playing_short
+                            else -> R.string.tts_paused
+                        }),
                         color = colors.dim,
                         fontSize = 10.sp,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
@@ -369,6 +387,13 @@ fun ReaderScreen(
                         textColor = colors.text,
                         chapters = s.chapters,
                         currentOffset = page.start,
+                        totalChars = s.totalChars,
+                        canUndoJump = s.canUndoJump,
+                        onUndoJump = {
+                            if (ttsHere) TtsService.stop(context)
+                            vm.undoJump()
+                            showToolbar = false
+                        },
                         onChapter = { chapter ->
                             if (ttsHere) TtsService.stop(context)
                             vm.jumpToChapter(chapter)
@@ -380,6 +405,7 @@ fun ReaderScreen(
                             when {
                                 ttsHere && ttsState == TtsState.PLAYING -> TtsService.pause(context)
                                 ttsHere && ttsState == TtsState.PAUSED -> TtsService.resume(context)
+                                ttsHere && ttsState == TtsState.LOADING -> return@Toolbar
                                 else -> startReadingAloud(page.start)
                             }
                             showToolbar = false
@@ -427,8 +453,15 @@ private fun Toolbar(
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onJump: (Float) -> Unit,
+    totalChars: Int,
+    canUndoJump: Boolean,
+    onUndoJump: () -> Unit,
 ) {
     var contents by remember { mutableStateOf(false) }
+    var draftFraction by remember(fraction) { mutableFloatStateOf(fraction) }
+    var jumpEdited by remember(fraction) { mutableStateOf(false) }
+    val currentChapter = chapters.lastOrNull { it.start <= currentOffset }
+    val targetChapter = chapters.lastOrNull { it.start <= (draftFraction * totalChars).toInt() }
     val listState = rememberScalingLazyListState()
     val chapterState = rememberScalingLazyListState(initialCenterItemIndex = (chapters.indexOfLast { it.start <= currentOffset } + 1).coerceAtLeast(1))
     val activeState = if (contents) chapterState else listState
@@ -446,7 +479,8 @@ private fun Toolbar(
                 items(chapters) { chapter ->
                     Chip(
                         onClick = { onChapter(chapter) },
-                        label = { Text(chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        label = { Text((if (chapter == currentChapter) "● " else "") + chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        secondaryLabel = if (chapter == currentChapter) ({ Text(stringResource(R.string.reader_current_chapter)) }) else null,
                         colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
                         modifier = Modifier.fillMaxWidth(0.84f),
                     )
@@ -461,6 +495,7 @@ private fun Toolbar(
                             color = BlueAccent,
                             label = stringResource(if (playing) R.string.reader_pause else R.string.reader_play),
                             onClick = onPlayPause,
+                            enabled = !(ttsHere && ttsState == TtsState.LOADING),
                         )
                         if (ttsHere) {
                             TransportButton(shape = Transport.STOP, color = textColor, label = stringResource(R.string.reader_stop), onClick = onStop)
@@ -469,9 +504,18 @@ private fun Toolbar(
                 }
                 item {
                     Text(
-                        stringResource(if (ttsHere && ttsState == TtsState.PLAYING) R.string.reader_pause else R.string.reader_play),
+                        stringResource(when {
+                            ttsHere && ttsState == TtsState.LOADING -> R.string.tts_loading
+                            ttsHere && ttsState == TtsState.PLAYING -> R.string.tts_reading_aloud
+                            ttsHere && ttsState == TtsState.PAUSED -> R.string.tts_paused
+                            else -> R.string.reader_play
+                        }),
                         color = textColor, fontSize = 12.sp,
                     )
+                }
+                if (ttsHere && ttsState != TtsState.LOADING) item {
+                    Text(stringResource(if (ttsState == TtsState.PLAYING) R.string.reader_double_pause else R.string.reader_double_resume),
+                        color = textColor, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                 }
                 item {
                     ToggleChip(
@@ -498,7 +542,7 @@ private fun Toolbar(
                 }
                 item {
                     Text(
-                        text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (fraction * 100).roundToInt()),
+                        text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (draftFraction * 100).roundToInt()),
                         color = textColor,
                         fontSize = 12.sp,
                     )
@@ -507,8 +551,8 @@ private fun Toolbar(
                     // One notch is a twentieth of the book: the slider only has + and -, and
                     // crossing half a book should not take fifty presses.
                     InlineSlider(
-                        value = (fraction * 20).roundToInt().toFloat(),
-                        onValueChange = { onJump(it / 20f) },
+                        value = (draftFraction * 20).roundToInt().toFloat(),
+                        onValueChange = { draftFraction = it / 20f; jumpEdited = true },
                         valueRange = 0f..20f,
                         steps = 19,
                         increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
@@ -516,6 +560,17 @@ private fun Toolbar(
                         colors = InlineSliderDefaults.colors(),
                         modifier = Modifier.fillMaxWidth(0.8f),
                     )
+                }
+                item {
+                    Text(targetChapter?.title ?: stringResource(R.string.reader_no_chapters), color = textColor, fontSize = 12.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                }
+                item {
+                    Chip(onClick = { onJump(draftFraction); jumpEdited = false; onClose() }, enabled = jumpEdited,
+                        label = { Text(stringResource(R.string.reader_confirm_jump)) }, modifier = Modifier.fillMaxWidth(0.84f))
+                }
+                if (canUndoJump) item {
+                    Chip(onClick = onUndoJump, label = { Text(stringResource(R.string.reader_undo_jump)) }, modifier = Modifier.fillMaxWidth(0.84f))
                 }
             }
             item {
@@ -538,14 +593,14 @@ private enum class Transport { PLAY, PAUSE, STOP }
  * styles on the same watch.
  */
 @Composable
-private fun TransportButton(shape: Transport, color: androidx.compose.ui.graphics.Color, label: String, onClick: () -> Unit) {
+private fun TransportButton(shape: Transport, color: androidx.compose.ui.graphics.Color, label: String, onClick: () -> Unit, enabled: Boolean = true) {
     Canvas(
         modifier = Modifier
             .size(52.dp)
             .clip(CircleShape)
             .background(color.copy(alpha = 0.22f))
             .semantics { contentDescription = label }
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
     ) {
         val w = size.width
         val mark = w * 0.36f

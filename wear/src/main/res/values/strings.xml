@@ -75,4 +75,13 @@
     <string name="tts_action_stop">Stop</string>
     <string name="tts_no_engine">No text-to-speech engine on this watch</string>
     <string name="sample_title">Start here</string>
+    <string name="reader_finished">Book complete</string>
+    <string name="reader_first_page">First page</string>
+    <string name="reader_double_pause">Double-tap to pause</string>
+    <string name="reader_double_resume">Paused · double-tap</string>
+    <string name="reader_preparing_short">Preparing</string>
+    <string name="reader_playing_short">Reading</string>
+    <string name="reader_current_chapter">Current chapter</string>
+    <string name="reader_confirm_jump">Go to this position</string>
+    <string name="reader_undo_jump">Return to before jump</string>
 </resources>

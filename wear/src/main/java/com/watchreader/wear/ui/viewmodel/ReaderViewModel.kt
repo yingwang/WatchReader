@@ -11,6 +11,7 @@ import com.watchreader.shared.Chapter
 import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
+import com.watchreader.shared.reader.JumpHistory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -30,6 +31,7 @@ sealed class ReaderUiState {
         val page: Paginator.Page,
         val totalChars: Int,
         val chapters: List<Chapter>,
+        val canUndoJump: Boolean = false,
     ) : ReaderUiState() {
         val fraction: Float get() = if (totalChars == 0) 0f else page.end.toFloat() / totalChars
         val atEnd: Boolean get() = page.end >= totalChars
@@ -59,6 +61,7 @@ class ReaderViewModel(
     private var restoreOffset = 0
     private var flipsSinceSync = 0
     private var syncJob: Job? = null
+    private val jumpHistory = JumpHistory()
 
     /** The page the reader last turned to and when; a page merely left open is not a reading. */
     private var lastMove: Pair<Int, Long>? = null
@@ -100,22 +103,24 @@ class ReaderViewModel(
         publish()
     }
 
-    fun nextPage() {
-        val p = paginator ?: return
-        val current = page ?: return
-        if (current.end >= p.length) return
+    fun nextPage(): Boolean {
+        val p = paginator ?: return false
+        val current = page ?: return false
+        if (current.end >= p.length) return false
         page = p.pageFrom(current.end)
         publish()
         flipped()
+        return true
     }
 
-    fun prevPage() {
-        val p = paginator ?: return
-        val current = page ?: return
-        if (current.start <= 0) return
+    fun prevPage(): Boolean {
+        val p = paginator ?: return false
+        val current = page ?: return false
+        if (current.start <= 0) return false
         page = p.pageEndingAt(current.start)
         publish()
         flipped()
+        return true
     }
 
     fun jumpToFraction(fraction: Float) {
@@ -134,6 +139,8 @@ class ReaderViewModel(
                 else -> target
             }
         }
+        if (target.start == current?.start) return
+        current?.let { jumpHistory.record(it.start) }
         page = target
         publish()
         saveProgress(toPhone = false)
@@ -143,7 +150,17 @@ class ReaderViewModel(
     fun jumpToChapter(chapter: Chapter) {
         val p = paginator ?: return
         if (chapter !in chapters) return
+        page?.let { jumpHistory.record(it.start) }
         page = p.pageFrom(chapter.start.coerceIn(0, p.length))
+        publish()
+        saveProgress(toPhone = false)
+        scheduleSync()
+    }
+
+    fun undoJump() {
+        val p = paginator ?: return
+        val offset = jumpHistory.take() ?: return
+        page = p.pageFrom(offset.coerceIn(0, p.length))
         publish()
         saveProgress(toPhone = false)
         scheduleSync()
@@ -166,7 +183,7 @@ class ReaderViewModel(
     private fun publish() {
         val b = book ?: return
         val current = page ?: return
-        _state.value = ReaderUiState.Ready(title = b.title, page = current, totalChars = text.length, chapters = chapters)
+        _state.value = ReaderUiState.Ready(title = b.title, page = current, totalChars = text.length, chapters = chapters, canUndoJump = jumpHistory.returnOffset != null)
     }
 
     private fun flipped() {

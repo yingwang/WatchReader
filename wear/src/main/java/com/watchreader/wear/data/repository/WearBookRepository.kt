@@ -6,6 +6,7 @@ import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
 import com.watchreader.wear.data.db.WearBookDao
@@ -94,7 +95,7 @@ object WearBookRepository {
         dao.updateProgress(progress.bookId, progress.charOffset.coerceAtLeast(0), progress.lastReadEpochMs)
     }
 
-    /** Best effort; the phone shows the percentage on the book's cover. */
+    /** Persists progress for reconnection; the phone shows it on the book's cover. */
     suspend fun sendProgressToPhone(book: WearBook, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
         val progress = ReadingProgress(
@@ -103,6 +104,8 @@ object WearBookRepository {
             percentage = (offset.toFloat() / total).coerceIn(0f, 1f),
             lastReadEpochMs = atEpochMs,
         )
+        runCatching { ProgressDataSync.publish(appContext, progress) }
+            .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
         sendToPhone(DataLayerPaths.PROGRESS_PATH, progress.toJson().toByteArray(Charsets.UTF_8))
     }
 
