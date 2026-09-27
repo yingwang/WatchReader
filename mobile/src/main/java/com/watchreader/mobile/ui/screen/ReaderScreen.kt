@@ -71,6 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -378,7 +379,13 @@ fun ReaderScreen(
                 // No shade over the page: the page behind the dialog takes each colour and is laid out
                 // again at every size, and that is the truest preview there is.
                 val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
-                SideEffect { dialogWindow?.setDimAmount(0f) }
+                val dialogView = LocalView.current
+                // While the dialog has focus its own window decides the colour of the status bar
+                // icons, so it follows the page as well: dark icons on a light page.
+                SideEffect {
+                    dialogWindow?.setDimAmount(0f)
+                    dialogWindow?.let { WindowCompat.getInsetsController(it, dialogView).isAppearanceLightStatusBars = pageTheme.isLight }
+                }
                 // Scrolls on a phone held sideways, where the largest sample and the slider do not fit.
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     PageThemeChoice(selected = pageTheme, onSelect = {
