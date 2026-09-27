@@ -334,10 +334,11 @@ fun ReaderScreen(
                 val currentIndex = chapters.indexOfLast { it.start <= pageStart }
                 // The slider stays above the list rather than scrolling with it, so it is there
                 // however far down the current chapter is.
-                var target by remember { mutableFloatStateOf(if (ready.totalChars == 0) 0f else pageStart.toFloat() / ready.totalChars) }
+                // It starts at the percentage the page shows, truncated the same way.
+                var target by remember { mutableFloatStateOf(ready.fraction) }
                 Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp)) {
                     Text(
-                        stringResource(R.string.reader_go_to, (target * 100).roundToInt()),
+                        stringResource(R.string.reader_go_to, (target * 100).toInt()),
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.titleSmall,
                     )
