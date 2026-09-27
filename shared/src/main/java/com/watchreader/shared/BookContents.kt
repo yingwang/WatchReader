@@ -3,8 +3,9 @@ package com.watchreader.shared
 import org.json.JSONObject
 
 /**
- * A book's contents on its own, sent when the watch has a book whose chapters it cannot place.
- * The text is already on the watch and never changes, so only the chapter list travels.
+ * A book's contents on its own, sent when the watch has a book whose chapters it cannot place,
+ * or right after a book whose contents were too large for the header it travelled with. The
+ * text is already on the watch and never changes, so only the chapter list travels.
  */
 data class BookContents(val bookId: String, val tocJson: String?) {
     fun toJson(): String = JSONObject()

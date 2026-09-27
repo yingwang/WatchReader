@@ -53,6 +53,7 @@
                 <data android:host="*" />
                 <data android:pathPrefix="/delete_book" />
                 <data android:pathPrefix="/progress" />
+                <data android:pathPrefix="/contents" />
             </intent-filter>
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
