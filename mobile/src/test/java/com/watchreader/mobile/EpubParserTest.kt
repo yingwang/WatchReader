@@ -235,4 +235,119 @@ class EpubParserTest {
         val parsed = EpubParser.parse(epub(singleDocumentBook, blob = null).inputStream())
         assertEquals("Chapter One\n\nBody one.\n\nChapter Two\n\nBody two.\n\nChapter Three\n\nBody three.", parsed.text)
     }
+
+    /** A book whose contents group its chapters into parts, as an NCX nests them. */
+    private val nestedNcxBook = listOf(
+        "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>""",
+        "OEBPS/content.opf" to """
+            <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+            <item id="p1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+            <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+            <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/>
+            <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"/>
+            <item id="c4" href="c4.xhtml" media-type="application/xhtml+xml"/>
+            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+            </manifest><spine toc="ncx"><itemref idref="p1"/><itemref idref="c1"/><itemref idref="c2"/>
+            <itemref idref="c3"/><itemref idref="c4"/></spine></package>
+        """.trimIndent(),
+        "OEBPS/part1.xhtml" to "<html><body><h1>Part I</h1><p>Where it begins.</p></body></html>",
+        "OEBPS/c1.xhtml" to "<html><body><h2>One</h2><p>Body one.</p></body></html>",
+        "OEBPS/c2.xhtml" to "<html><body><h2>Two</h2><p>Body two.</p></body></html>",
+        "OEBPS/c3.xhtml" to "<html><body><h2>Three</h2><p>Body three.</p></body></html>",
+        "OEBPS/c4.xhtml" to "<html><body><h2>Four</h2><p>Body four.</p></body></html>",
+        "OEBPS/toc.ncx" to """
+            <ncx><navMap>
+            <navPoint id="p1" playOrder="1"><navLabel><text>Part I</text></navLabel><content src="part1.xhtml"/>
+              <navPoint id="c1" playOrder="2"><navLabel><text>Chapter 1</text></navLabel><content src="c1.xhtml"/></navPoint>
+              <navPoint id="c2" playOrder="3"><navLabel><text>Chapter 2</text></navLabel><content src="c2.xhtml"/></navPoint>
+              <navPoint id="c3" playOrder="4"><navLabel><text>Chapter 3</text></navLabel><content src="c3.xhtml"/></navPoint>
+            </navPoint>
+            <navPoint id="c4" playOrder="5"><navLabel><text>Chapter 4</text></navLabel><content src="c4.xhtml"/></navPoint>
+            </navMap></ncx>
+        """.trimIndent(),
+    )
+
+    @Test
+    fun nestedNcxEntriesEachKeepTheirOwnLabelAndPlace() {
+        val parsed = EpubParser.parse(epub(nestedNcxBook, blob = null).inputStream())
+        assertEquals(listOf("Part I", "Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4"), parsed.chapters.map { it.title })
+        assertEquals(
+            listOf("Part I", "One", "Two", "Three", "Four").map { parsed.text.indexOf(it) },
+            parsed.chapters.map { it.start },
+        )
+    }
+
+    @Test
+    fun aDocumentOpeningWithAnchoredWrappersStartsOnItsText() {
+        val (text, anchors) = EpubParser.textWithAnchors(
+            "<html><body id=\"top\">\n  <div id=\"t\"><h1>My Book</h1>\n  <p>First.</p> <span id=\"s\"> </span> <h2 id=\"c\">Next</h2></div></body></html>",
+        )
+        assertEquals("My Book\n\nFirst.\n\nNext", text)
+        assertEquals(0, anchors["top"])
+        assertEquals(0, anchors["t"])
+        assertEquals(text.indexOf("Next"), anchors["c"])
+        assertEquals(text.indexOf("Next"), anchors["s"])
+    }
+
+    @Test
+    fun chapterOffsetsSurviveAFirstDocumentThatStartsWithWhitespace() {
+        val book = singleDocumentBook.map { (name, content) ->
+            if (name == "OEBPS/book.xhtml") {
+                name to content.replace("<body>", "<body id=\"top\">\n   <div id=\"wrap\">  ").replace("</body>", "</div></body>")
+            } else name to content
+        }
+        val parsed = EpubParser.parse(epub(book, blob = null).inputStream())
+        assertTrue(parsed.text.startsWith("Chapter One"))
+        assertTrue(parsed.chapters.all { parsed.text.startsWith(it.title, it.start) })
+    }
+
+    @Test
+    fun onlyTheRealIdAttributeNamesAnAnchor() {
+        assertEquals("real", EpubParser.attr("""<h1 data-id="decoy" id="real">""", "id"))
+        assertEquals(null, EpubParser.attr("""<h1 data-id="decoy" xml:id="other">""", "id"))
+        assertEquals("x", EpubParser.attr("""<a id='x' href="y">""", "id"))
+        val (text, anchors) = EpubParser.textWithAnchors("""<p>Intro.</p><h1 data-id="decoy" id="c2">Two</h1>""")
+        assertEquals(text.indexOf("Two"), anchors["c2"])
+        assertNull(anchors["decoy"])
+    }
+
+    @Test
+    fun rubyReadingsAreLeftOutOfTheText() {
+        assertEquals(
+            "\u543e\u8f29\u306f\u732b\u3067\u3042\u308b\u3002",
+            EpubParser.htmlToText(
+                "<p><ruby>\u543e\u8f29<rp>(</rp><rt>\u308f\u304c\u306f\u3044</rt><rp>)</rp></ruby>\u306f" +
+                    "<ruby>\u732b<RT>\u306d\u3053</RT></ruby>\u3067\u3042\u308b\u3002</p>",
+            ),
+        )
+    }
+
+    private fun withEncryption(algorithm: String, uri: String): List<Pair<String, String>> = navBook + (
+        "META-INF/encryption.xml" to """
+            <encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+              <enc:EncryptedData>
+                <enc:EncryptionMethod Algorithm="$algorithm"/>
+                <enc:CipherData><enc:CipherReference URI="$uri"/></enc:CipherData>
+              </enc:EncryptedData>
+            </encryption>
+        """.trimIndent()
+    )
+
+    @Test
+    fun aCopyProtectedBookIsRefused() {
+        val bytes = epub(withEncryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc", "OEBPS/b.xhtml"), blob = null)
+        val refusal = assertThrows(IllegalArgumentException::class.java) { EpubParser.parse(bytes.inputStream()) }
+        assertTrue(refusal.message!!.contains("copy-protected"))
+    }
+
+    @Test
+    fun obfuscatedFontsDoNotMakeABookProtected() {
+        for (algorithm in listOf("http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC")) {
+            val bytes = epub(withEncryption(algorithm, "OEBPS/fonts/serif.otf"), blob = null)
+            assertTrue(EpubParser.parse(bytes.inputStream()).text.contains("Body B."))
+        }
+        // Protection that covers only a picture leaves the text readable too.
+        val picture = epub(withEncryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc", "OEBPS/cover.jpg"), blob = null)
+        assertTrue(EpubParser.parse(picture.inputStream()).text.contains("Body A."))
+    }
 }

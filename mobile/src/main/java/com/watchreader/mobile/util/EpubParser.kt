@@ -76,6 +76,13 @@ object EpubParser {
             .mapNotNull { attr(it.value, "idref") }
             .toList()
 
+        // A shop's copy protection leaves the archive readable and scrambles the chapters inside
+        // it, which would otherwise be read as a book of noise.
+        val encrypted = encryptedPaths(entries["META-INF/encryption.xml"]?.toString(Charsets.UTF_8))
+        if (spine.mapNotNull { manifest[it] }.any { it in encrypted }) {
+            throw IllegalArgumentException("This book is copy-protected (DRM), so its text cannot be read. Only DRM-free epubs can be added.")
+        }
+
         // The book's own table of contents beats guessing from headings, when it has one.
         val navPath = Regex("""<item\b[^>]*?/?>""").findAll(opfContent)
             .mapNotNull { tag ->
@@ -135,7 +142,9 @@ object EpubParser {
             ?: images.entries.firstOrNull { (id, path) ->
                 id.contains("cover", true) || path.substringAfterLast('/').contains("cover", true)
             }?.value
-        return Epub(title, result.toString().trim(), coverPath?.let { entries[it] }, chapters)
+        // Every document's text starts on its first character, so only the separator after the
+        // last one is left to go; a trim at the front would move every chapter and anchor offset.
+        return Epub(title, result.toString().trimEnd(), coverPath?.let { entries[it] }, chapters)
     }
 
     /**
@@ -230,11 +239,68 @@ object EpubParser {
             text.append(c)
             i++
         }
-        return text.toString() to anchors
+        return tidy(text.toString(), anchors)
     }
 
     /** Stands in for an anchor while the markup around it is converted away. */
     private const val MARK = '\u0003'
+
+    /**
+     * [text] with its spacing settled the way [htmlToText] settles it, and [anchors] moved to
+     * match. A marker is not whitespace, so one standing between two spaces, between a space and
+     * a line end, or at the very start of a document kept them from being merged or trimmed while
+     * the markup was converted; a document opening `<body id="top">` and an indented heading
+     * started with a space. With the markers out, each run of spaces and line ends becomes one
+     * space, one line end or one blank line, as it would have without them, and none at either
+     * end. An anchor inside such a run lands where the text after it begins.
+     */
+    private fun tidy(text: String, anchors: Map<String, Int>): Pair<String, Map<String, Int>> {
+        val out = StringBuilder(text.length)
+        val moved = IntArray(text.length + 1)
+        var i = 0
+        while (i < text.length) {
+            if (text[i] != ' ' && text[i] != '\n') {
+                moved[i] = out.length
+                out.append(text[i])
+                i++
+                continue
+            }
+            var end = i
+            var breaks = 0
+            while (end < text.length && (text[end] == ' ' || text[end] == '\n')) {
+                if (text[end] == '\n') breaks++
+                end++
+            }
+            if (out.isNotEmpty() && end < text.length) {
+                out.append(when (breaks) { 0 -> " "; 1 -> "\n"; else -> "\n\n" })
+            }
+            for (k in i until end) moved[k] = out.length
+            i = end
+        }
+        moved[text.length] = out.length
+        return out.toString() to anchors.mapValues { moved[it.value.coerceIn(0, text.length)] }
+    }
+
+    /**
+     * The archive paths `META-INF/encryption.xml` says are enciphered. Fonts obfuscated so they
+     * cannot be lifted out of the book are listed there as well, under algorithms of their own,
+     * and they leave the text as readable as ever, so they are not counted.
+     */
+    private fun encryptedPaths(encryption: String?): Set<String> {
+        if (encryption == null) return emptySet()
+        val paths = HashSet<String>()
+        Regex("""<(?:\w+:)?EncryptedData\b.*?</(?:\w+:)?EncryptedData>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(encryption).forEach { m ->
+                val method = Regex("""<(?:\w+:)?EncryptionMethod\b[^>]*>""").find(m.value)?.let { attr(it.value, "Algorithm") }
+                if (method != null && method in FONT_OBFUSCATION) return@forEach
+                val uri = Regex("""<(?:\w+:)?CipherReference\b[^>]*>""").find(m.value)?.let { attr(it.value, "URI") }
+                    ?: return@forEach
+                paths.add(resolve("", uri))
+            }
+        return paths
+    }
+
+    private val FONT_OBFUSCATION = setOf("http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC")
 
     /**
      * Whether a spine document is the printed contents rather than a chapter of the book. Such a
@@ -254,11 +320,18 @@ object EpubParser {
 
     /** Titles and targets from an EPUB 3 nav document or an EPUB 2 NCX, in reading order. */
     private fun tocEntries(nav: String, opfDir: String): List<Pair<String, String>> {
-        val ncx = Regex("""<navPoint\b.*?</navPoint>""", RegexOption.DOT_MATCHES_ALL).findAll(nav).mapNotNull { point ->
+        // A navPoint holds its own label and target ahead of any navPoints nested in it, so each
+        // one is read only up to where the next opens or it closes. Matching a whole navPoint to
+        // its closing tag instead pairs a part's opening with its first chapter's close, and that
+        // chapter goes missing from the contents.
+        val ncx = Regex("""<navPoint\b[^>]*>""").findAll(nav).mapNotNull { open ->
+            val from = open.range.last + 1
+            val until = NAV_POINT_EDGE.find(nav, from)?.range?.first ?: nav.length
+            val own = nav.substring(from, until)
             val label = Regex("""<text[^>]*>(.*?)</text>""", RegexOption.DOT_MATCHES_ALL)
-                .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
+                .find(own)?.groupValues?.get(1) ?: return@mapNotNull null
             val src = Regex("""<content[^>]*\bsrc="([^"]+)""" + "\"")
-                .find(point.value)?.groupValues?.get(1) ?: return@mapNotNull null
+                .find(own)?.groupValues?.get(1) ?: return@mapNotNull null
             decodeEntities(label).trim().take(80) to target(opfDir, src)
         }.toList()
         if (ncx.isNotEmpty()) return ncx
@@ -272,9 +345,15 @@ object EpubParser {
             .toList()
     }
 
-    private fun attr(tag: String, name: String): String? =
-        Regex("""\b$name\s*=\s*"([^"]*)"""").find(tag)?.groupValues?.get(1)
-            ?: Regex("""\b$name\s*=\s*'([^']*)'""").find(tag)?.groupValues?.get(1)
+    private val NAV_POINT_EDGE = Regex("""<navPoint\b|</navPoint>""")
+
+    /**
+     * An attribute's value. The name must stand on its own: `id` is not the tail of `data-id`
+     * or `xml:id`, which an anchor would otherwise be placed by when it comes first in the tag.
+     */
+    internal fun attr(tag: String, name: String): String? =
+        Regex("""(?<![\w:.-])$name\s*=\s*"([^"]*)"""").find(tag)?.groupValues?.get(1)
+            ?: Regex("""(?<![\w:.-])$name\s*=\s*'([^']*)'""").find(tag)?.groupValues?.get(1)
 
     /** Joins an OPF-relative href to the OPF directory, decoding %20 and collapsing "../". */
     internal fun resolve(opfDir: String, href: String): String {
@@ -296,6 +375,9 @@ object EpubParser {
         var s = html
         s = s.replace(Regex("<(style|script|head)\\b[^>]*>.*?</(style|script|head)>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         s = s.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
+        // Ruby annotations are the small readings printed above a word. Set inline they follow
+        // every annotated word in full, so that 漢字 with its reading comes out as 漢字(かんじ).
+        s = s.replace(Regex("<(rt|rp|rtc)\\b[^>]*>.*?</\\1\\s*>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         // Mark the breaks the markup asks for, so the ones the source file merely wrapped at can
         // be flattened away: a paragraph should reach the reader as one long line, not as the
         // typesetting of whoever produced the file.
