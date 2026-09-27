@@ -554,19 +554,19 @@ private fun Toolbar(
                 }
                 item {
                     Text(
-                        text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (draftFraction * 100).roundToInt()),
+                        text = stringResource(R.string.reader_jump) + "  " + stringResource(R.string.reader_percent, (draftFraction * 100).toInt()),
                         color = textColor,
                         fontSize = 12.sp,
                     )
                 }
                 item {
-                    // One notch is a twentieth of the book: the slider only has + and -, and
-                    // crossing half a book should not take fifty presses.
+                    // One notch is one percent, as the guide says, and the position starts from
+                    // the percentage shown on the page, truncated the same way.
                     InlineSlider(
-                        value = (draftFraction * 20).roundToInt().toFloat(),
-                        onValueChange = { editedFraction = it / 20f; jumpEdited = true },
-                        valueRange = 0f..20f,
-                        steps = 19,
+                        value = (draftFraction * 100).toInt().toFloat(),
+                        onValueChange = { editedFraction = it / 100f; jumpEdited = true },
+                        valueRange = 0f..100f,
+                        steps = 99,
                         increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
                         decreaseIcon = { Text("–", color = textColor, fontSize = 16.sp) },
                         colors = InlineSliderDefaults.colors(),
