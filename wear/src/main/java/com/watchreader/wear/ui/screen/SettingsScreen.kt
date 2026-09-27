@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -59,6 +60,7 @@ import com.watchreader.wear.R
 import com.watchreader.wear.reader.Typefaces
 import com.watchreader.wear.settings.ReaderPrefs
 import com.watchreader.wear.settings.ReaderTheme
+import com.watchreader.wear.tts.BookLanguages
 import com.watchreader.wear.tts.TtsLanguages
 import com.watchreader.wear.ui.theme.BlueAccent
 import com.watchreader.wear.ui.theme.ListRowBg
@@ -304,10 +306,14 @@ fun SpeechSettingsScreen() {
     val view = LocalView.current
     var speechRate by remember { mutableFloatStateOf(prefs.speechRate) }
     var voices by remember { mutableStateOf<TtsLanguages.Availability?>(null) }
+    var needed by remember { mutableStateOf<Set<Locale>?>(null) }
     DisposableEffect(Unit) {
         val engine = TtsLanguages.probe(context) { voices = it }
         onDispose { TtsLanguages.release(engine) }
     }
+    // Chinese and English are always reported on; any other language only once a book on the
+    // watch is read aloud in it, so a watch of English books is not told it lacks Thai.
+    LaunchedEffect(Unit) { needed = BookLanguages.needed() }
     SettingsList {
         item { SectionTitle(stringResource(R.string.settings_section_speech)) }
         item {
@@ -323,7 +329,10 @@ fun SpeechSettingsScreen() {
                 )
             }
         }
-        voices?.let { v ->
+        val probed = voices
+        val books = needed
+        if (probed != null && books != null) {
+            val v = probed.only(TtsLanguages.shown(books))
             item { Caption(if (v.installed.isEmpty()) stringResource(R.string.settings_voices_none) else stringResource(R.string.settings_voices_have, v.installed.joinToString(", ") { TtsLanguages.label(it) })) }
             if (v.missing.isNotEmpty()) item { Caption(stringResource(R.string.settings_voices_missing, v.missing.joinToString(", ") { TtsLanguages.label(it) })) }
         }

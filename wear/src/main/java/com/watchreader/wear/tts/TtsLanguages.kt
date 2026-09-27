@@ -13,15 +13,24 @@ import kotlin.concurrent.thread
  * the voice for that language at all, because a missing voice is silent rather than loud.
  */
 object TtsLanguages {
-    /** In the order the settings page lists them. */
+    /**
+     * Listed on the settings page whatever books are on the watch, as they always were. Any other
+     * language is listed once a book on the watch is read aloud in it (see [shown]).
+     */
     val SUPPORTED = listOf(Locale.US, Locale.SIMPLIFIED_CHINESE)
 
-    data class Availability(val installed: List<Locale>, val missing: List<Locale>)
+    data class Availability(val installed: List<Locale>, val missing: List<Locale>) {
+        /** The same answer for [locales] alone, each list keeping its order. */
+        fun only(locales: Set<Locale>) = Availability(installed.filter { it in locales }, missing.filter { it in locales })
+    }
+
+    /** The languages the settings page reports on, given those the books on the watch need. */
+    fun shown(needed: Set<Locale>): Set<Locale> = SUPPORTED.toSet() + needed
 
     /**
-     * Asks the engine once and hands the answer back; the engine is shut down either way. A watch
-     * with no speech engine at all answers with both lists empty, which the settings screen reports
-     * rather than passing over in silence.
+     * Asks the engine once, about every language a sentence can be read in, and hands the answer
+     * back; the engine is shut down either way. A watch with no speech engine at all answers with
+     * both lists empty, which the settings screen reports rather than passing over in silence.
      */
     fun probe(context: Context, onResult: (Availability) -> Unit): TextToSpeech {
         var engine: TextToSpeech? = null
@@ -32,7 +41,7 @@ object TtsLanguages {
             }
             val installed = mutableListOf<Locale>()
             val missing = mutableListOf<Locale>()
-            for (locale in SUPPORTED) {
+            for (locale in LanguageDetector.LANGUAGES) {
                 val answer = runCatching { engine?.isLanguageAvailable(locale) }.getOrNull()
                 when (answer) {
                     TextToSpeech.LANG_AVAILABLE,
@@ -56,5 +65,6 @@ object TtsLanguages {
         thread(name = "tts-release") { runCatching { engine.shutdown() } }
     }
 
-    fun label(locale: Locale): String = if (locale.language == "zh") "Chinese" else "English"
+    /** The language's English name ("Chinese", "French"); the app's screens are in English. */
+    fun label(locale: Locale): String = locale.getDisplayLanguage(Locale.ENGLISH)
 }
