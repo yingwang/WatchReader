@@ -11,6 +11,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/**
+ * The book the library puts first under "Continue reading": the one read most recently, if any
+ * has been read at all. Opening the app goes straight into the same book, so both ask here.
+ */
+fun continueReading(books: List<WearBook>): WearBook? =
+    books.filter { it.lastReadEpochMs > 0 }.maxByOrNull { it.lastReadEpochMs }
+
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     val books: StateFlow<List<WearBook>> = WearBookRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

@@ -56,6 +56,7 @@ import com.watchreader.wear.ui.theme.ListRowText
 import com.watchreader.wear.ui.theme.ListTitle
 import com.watchreader.wear.ui.theme.BlueAccent
 import com.watchreader.wear.ui.viewmodel.LibraryViewModel
+import com.watchreader.wear.ui.viewmodel.continueReading
 
 @Composable
 fun LibraryScreen(
@@ -69,8 +70,7 @@ fun LibraryScreen(
     val listState = rememberScalingLazyListState()
     val view = LocalView.current
     var deleteTarget by remember { mutableStateOf<WearBook?>(null) }
-    val currentBook = books.filter { it.lastReadEpochMs > 0 }
-        .maxByOrNull { it.lastReadEpochMs }
+    val currentBook = continueReading(books)
     val orderedBooks = listOfNotNull(currentBook) + books.filter { it.id != currentBook?.id }
 
     Scaffold(
