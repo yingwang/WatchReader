@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="card_options">More options for %1$s</string>
+    <string name="card_send_again">Send again</string>
+    <string name="card_retry">Retry</string>
+
+    <string name="reader_appearance">Appearance</string>
+    <string name="reader_page_dark">Dark</string>
+    <string name="reader_page_light">Light</string>
+    <string name="reader_page_sepia">Sepia</string>
+    <string name="reader_go_to">Go to %1$d%%</string>
+    <string name="reader_previous_page">Previous page</string>
+    <string name="reader_next_page">Next page</string>
+    <string name="reader_show_controls">Show title bar</string>
+</resources>

@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -22,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -29,9 +32,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -46,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,11 +92,16 @@ fun BookListScreen(
     onOpenBook: (String) -> Unit,
     vm: BookListViewModel = viewModel(),
 ) {
-    val books by vm.books.collectAsState()
+    // Null until the database has answered, so "No books yet" is never shown to a library that
+    // simply has not loaded.
+    val stored by vm.books.collectAsState()
+    val books = stored.orEmpty()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
-    var deleteTarget by remember { mutableStateOf<Book?>(null) }
-    var showAbout by remember { mutableStateOf(false) }
+    // The book is kept by id, so the question survives a rotation and goes away with the book.
+    var deleteTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val deleteTarget = deleteTargetId?.let { id -> books.firstOrNull { it.id == id } }
+    var showAbout by rememberSaveable { mutableStateOf(false) }
     val uiPrefs = remember { context.getSharedPreferences("library_ui", android.content.Context.MODE_PRIVATE) }
     var showHint by remember { mutableStateOf(!uiPrefs.getBoolean("hint_dismissed", false)) }
     val currentBook = books.filter { it.lastReadEpochMs > 0 }.maxByOrNull { it.lastReadEpochMs }
@@ -101,9 +113,13 @@ fun BookListScreen(
                     if (event.arg == null) context.getString(event.text) else context.getString(event.text, event.arg),
                 )
                 is UiEvent.OfferInstall -> {
+                    // A snackbar with an action waits for it indefinitely unless told otherwise,
+                    // and holds back every message after it; this one can be closed and times out.
                     val result = snackbar.showSnackbar(
                         message = context.getString(R.string.msg_watch_without_app, event.watchName),
                         actionLabel = context.getString(R.string.msg_install_action),
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) vm.openPlayOnWatch(event.nodeId)
                 }
@@ -140,7 +156,9 @@ fun BookListScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        if (books.isEmpty()) {
+        if (stored == null) {
+            // The first read takes a moment; the page stays blank rather than claim anything.
+        } else if (books.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 32.dp),
                 contentAlignment = Alignment.Center,
@@ -153,7 +171,7 @@ fun BookListScreen(
                     )
                     Text(
                         stringResource(R.string.list_empty_hint),
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 8.dp),
@@ -201,8 +219,8 @@ fun BookListScreen(
                         BookCover(
                             book = book,
                             onClick = { onOpenBook(book.id) },
-                            onLongClick = { deleteTarget = book },
-                            onRetry = { vm.sendToWatch(book) },
+                            onDelete = { deleteTargetId = book.id },
+                            onSend = { vm.sendToWatch(book) },
                         )
                     }
                 }
@@ -219,17 +237,17 @@ fun BookListScreen(
 
     deleteTarget?.let { book ->
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
+            onDismissRequest = { deleteTargetId = null },
             title = { Text(book.title) },
             text = { Text(stringResource(R.string.delete_title) + "\n" + stringResource(R.string.delete_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteBook(book)
-                    deleteTarget = null
-                }) { Text(stringResource(R.string.delete_confirm), color = Color(0xFFEF5350)) }
+                    deleteTargetId = null
+                }) { Text(stringResource(R.string.delete_confirm), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.delete_cancel)) }
+                TextButton(onClick = { deleteTargetId = null }) { Text(stringResource(R.string.delete_cancel)) }
             },
         )
     }
@@ -240,16 +258,22 @@ fun BookListScreen(
 private fun BookCover(
     book: Book,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onRetry: () -> Unit,
+    onDelete: () -> Unit,
+    onSend: () -> Unit,
 ) {
     val bgColor = coverColors[book.id.hashCode().absoluteValue % coverColors.size]
     val art = rememberCoverArt(book.coverPath)
+    var showMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onDelete,
+                // TalkBack reads this out, so long press is no longer a gesture nobody is told about.
+                onLongClickLabel = stringResource(R.string.delete_confirm),
+            ),
     ) {
         Box(
             modifier = Modifier
@@ -285,7 +309,45 @@ private fun BookCover(
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(horizontal = 10.dp, vertical = 10.dp),
         ) {
-            Text(book.title, style = MaterialTheme.typography.titleSmall, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    book.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(top = 4.dp),
+                )
+                // Sending and deleting from the library itself: before, sending meant opening the
+                // book, and deleting was a long press with nothing on screen to suggest it. The
+                // button is nudged out so its icon lines up with the text inset, not its own.
+                Box(Modifier.offset(x = 10.dp)) {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.card_options, book.title))
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        when (book.syncStatus) {
+                                            SyncStatus.SENT -> R.string.card_send_again
+                                            SyncStatus.FAILED -> R.string.card_retry
+                                            else -> R.string.reader_send
+                                        },
+                                    ),
+                                )
+                            },
+                            enabled = book.syncStatus != SyncStatus.SENDING,
+                            onClick = { showMenu = false; onSend() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.delete_confirm)) },
+                            onClick = { showMenu = false; onDelete() },
+                        )
+                    }
+                }
+            }
             Text(
                 if (book.lastReadEpochMs > 0 || book.readProgress > 0f) stringResource(R.string.list_progress, (book.readProgress.coerceIn(0f, 1f) * 100).toInt()) else stringResource(R.string.list_new),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -306,7 +368,7 @@ private fun BookCover(
                 overflow = TextOverflow.Ellipsis,
             )
             if (book.syncStatus == SyncStatus.FAILED) {
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.reader_retry)) }
+                TextButton(onClick = onSend) { Text(stringResource(R.string.reader_retry)) }
             }
         }
     }
