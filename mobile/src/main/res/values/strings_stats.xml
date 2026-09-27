@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stats_today">Today</string>
+    <string name="stats_nothing_yet">Nothing yet</string>
+    <string name="stats_title">Reading time</string>
+    <string name="stats_last_week">Last 7 days</string>
+    <string name="stats_week_total">%1$s in the last 7 days</string>
+    <string name="stats_on_watch">On the watch</string>
+    <string name="stats_on_phone">On the phone</string>
+    <string name="stats_listening">Listening</string>
+    <string name="stats_books">Books</string>
+    <string name="stats_counted_from_now">Reading time is counted from this version on, on the watch and on the phone. A page left open counts for two minutes at most.</string>
+    <string name="details_title">Details</string>
+    <string name="details_added">Added</string>
+    <string name="details_first_opened">First opened</string>
+    <string name="details_finished">Finished</string>
+    <string name="details_not_yet">Not yet</string>
+    <string name="details_progress">Progress</string>
+    <string name="details_reading_time">Reading time</string>
+    <string name="details_time_left">Time left</string>
+    <string name="details_time_left_value">About %1$s at your pace</string>
+    <string name="details_open">Open book</string>
+    <string name="card_details">Details</string>
+</resources>

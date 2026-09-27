@@ -8,11 +8,14 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.watchreader.mobile.data.model.Book
+import com.watchreader.mobile.data.model.ReadingMilestone
+import com.watchreader.mobile.data.model.ReadingTime
 
-@Database(entities = [Book::class], version = 5, exportSchema = false)
+@Database(entities = [Book::class, ReadingTime::class, ReadingMilestone::class], version = 6, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
+    abstract fun readingStatsDao(): ReadingStatsDao
 
     companion object {
         @Volatile
@@ -44,13 +47,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Reading time arrives in tables of its own; the books are not touched. */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `reading_time` (`bookId` TEXT NOT NULL, `day` TEXT NOT NULL, " +
+                        "`source` TEXT NOT NULL, `millis` INTEGER NOT NULL, `chars` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`bookId`, `day`, `source`))",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `reading_milestone` (`bookId` TEXT NOT NULL, " +
+                        "`firstOpenedEpochMs` INTEGER NOT NULL, `finishedEpochMs` INTEGER NOT NULL, PRIMARY KEY(`bookId`))",
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "watchreader.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
             }
         }
     }

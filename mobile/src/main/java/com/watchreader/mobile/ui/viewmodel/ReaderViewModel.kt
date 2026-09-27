@@ -12,6 +12,7 @@ import com.watchreader.shared.Chapter
 import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
+import com.watchreader.shared.stats.ReadingClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
@@ -72,6 +73,10 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
      */
     private var knownStamp = 0L
 
+    /** Reading time: runs while the page is on screen. */
+    private val clock = ReadingClock()
+    private var screenUp = false
+
     init {
         viewModelScope.launch {
             val found = BookRepository.getById(bookId)
@@ -88,6 +93,8 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
             knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
+            if (screenUp) clock.start(System.currentTimeMillis())
+            withContext(NonCancellable + Dispatchers.IO) { BookRepository.markOpened(bookId) }
             // A book imported before contents were kept is scanned for headings, all of it; the
             // first page goes up before that, and the scan runs off the main thread.
             chapters = withContext(Dispatchers.Default) { BookToc.resolve(found.tocJson, text) }
@@ -111,6 +118,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (target in current.start until current.end) return
         if (target >= p.length && current.end >= p.length) return
         page = if (target >= p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
+        credit(clock.turn(System.currentTimeMillis()), 0)
         lastMove = null
         flipsSinceSync = 0
         publish()
@@ -134,7 +142,12 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         val p = paginator ?: return
         val current = page ?: return
         if (current.end >= p.length) return
+        val wasReading = clock.running
         page = p.pageFrom(current.end)
+        credit(clock.turn(System.currentTimeMillis()), if (wasReading) current.end - current.start else 0)
+        if (page?.end?.let { it >= p.length } == true) {
+            viewModelScope.launch { withContext(NonCancellable + Dispatchers.IO) { BookRepository.markFinished(bookId) } }
+        }
         publish()
         flipped()
     }
@@ -144,6 +157,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         val current = page ?: return
         if (current.start <= 0) return
         page = p.pageEndingAt(current.start)
+        credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         flipped()
     }
@@ -151,6 +165,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     fun jumpTo(offset: Int) {
         val p = paginator ?: return
         page = p.pageFrom(offset.coerceIn(0, p.length))
+        credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         // a jump is a long way to move; the watch hears about it at once
         saveProgress(toWatch = true)
@@ -184,18 +199,34 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         }
     }
 
+    /** The page is on screen again; reading time runs from now. */
+    fun onScreenResumed() {
+        screenUp = true
+        if (loaded) clock.start(System.currentTimeMillis())
+    }
+
     /**
-     * The screen went to the background (Home, the lock button, another app). The watch is told
-     * about the pages turned since it last heard, rather than only when this screen is closed with
-     * Back, which may be never: a process in the background can be ended without warning.
+     * The screen went to the background (Home, the lock button, another app). The page open until
+     * now is counted, and the watch is told about the pages turned since it last heard, rather than
+     * only when this screen is closed with Back, which may be never: a process in the background
+     * can be ended without warning.
      */
-    fun flush() {
+    fun onScreenPaused() {
+        screenUp = false
+        credit(clock.stop(System.currentTimeMillis()), 0)
         if (flipsSinceSync == 0) return
         val b = book ?: return
         val (offset, at) = lastMove ?: return
         flipsSinceSync = 0
         viewModelScope.launch {
             withContext(NonCancellable + Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset, at, toWatch = true) }
+        }
+    }
+
+    private fun credit(millis: Long, chars: Int) {
+        if (millis <= 0 && chars <= 0) return
+        viewModelScope.launch {
+            withContext(NonCancellable + Dispatchers.IO) { BookRepository.recordReading(bookId, millis, chars) }
         }
     }
 
@@ -206,6 +237,8 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         // watch's reading since then is never overwritten by a page that was merely left open.
         val b = book
         val move = lastMove
+        val earned = clock.stop(System.currentTimeMillis())
+        if (b != null && earned > 0) GlobalScope.launch(Dispatchers.IO) { BookRepository.recordReading(b.id, earned, 0) }
         if (b != null && move != null) {
             val (offset, at) = move
             GlobalScope.launch(Dispatchers.IO) { BookRepository.saveProgress(getApplication(), b, offset, at) }

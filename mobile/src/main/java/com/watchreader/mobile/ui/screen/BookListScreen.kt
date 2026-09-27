@@ -90,6 +90,8 @@ private val coverColors = listOf(
 fun BookListScreen(
     onAddBook: () -> Unit,
     onOpenBook: (String) -> Unit,
+    onStats: () -> Unit,
+    onDetails: (String) -> Unit,
     vm: BookListViewModel = viewModel(),
 ) {
     // Null until the database has answered, so "No books yet" is never shown to a library that
@@ -105,6 +107,7 @@ fun BookListScreen(
     val uiPrefs = remember { context.getSharedPreferences("library_ui", android.content.Context.MODE_PRIVATE) }
     var showHint by remember { mutableStateOf(!uiPrefs.getBoolean("hint_dismissed", false)) }
     val currentBook = books.filter { it.lastReadEpochMs > 0 }.maxByOrNull { it.lastReadEpochMs }
+    val readingTime by vm.readingTime.collectAsState()
 
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
@@ -196,6 +199,10 @@ fun BookListScreen(
                             }) { Text(stringResource(R.string.list_dismiss_hint)) }
                         }
                     }
+                    // Today's reading time, once there is any on record; a new reader sees no zeros.
+                    if (readingTime.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                        TodayLine(readingTime, onClick = onStats)
+                    }
                     currentBook?.let { book ->
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Card(
@@ -221,6 +228,7 @@ fun BookListScreen(
                             onClick = { onOpenBook(book.id) },
                             onDelete = { deleteTargetId = book.id },
                             onSend = { vm.sendToWatch(book) },
+                            onDetails = { onDetails(book.id) },
                         )
                     }
                 }
@@ -260,6 +268,7 @@ private fun BookCover(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onSend: () -> Unit,
+    onDetails: () -> Unit,
 ) {
     val bgColor = coverColors[book.id.hashCode().absoluteValue % coverColors.size]
     val art = rememberCoverArt(book.coverPath)
@@ -340,6 +349,10 @@ private fun BookCover(
                             },
                             enabled = book.syncStatus != SyncStatus.SENDING,
                             onClick = { showMenu = false; onSend() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.card_details)) },
+                            onClick = { showMenu = false; onDetails() },
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.delete_confirm)) },

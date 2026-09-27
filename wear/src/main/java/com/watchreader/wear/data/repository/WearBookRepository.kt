@@ -9,6 +9,11 @@ import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.stats.ReadingDay
+import com.watchreader.shared.stats.ReadingReport
+import com.watchreader.shared.stats.ReadingStatsSync
+import com.watchreader.shared.stats.dayOf
+import com.watchreader.wear.data.db.ReadingStatsDao
 import com.watchreader.wear.data.db.WearBookDao
 import com.watchreader.wear.data.db.WearDatabase
 import com.watchreader.wear.R
@@ -23,12 +28,14 @@ private const val TAG = "WatchReader"
 
 object WearBookRepository {
     private lateinit var dao: WearBookDao
+    private lateinit var stats: ReadingStatsDao
     private lateinit var booksDir: File
     private lateinit var appContext: Context
 
     fun init(context: Context) {
         appContext = context.applicationContext
         dao = WearDatabase.get(context).wearBookDao()
+        stats = WearDatabase.get(context).readingStatsDao()
         booksDir = File(context.filesDir, "books").also { it.mkdirs() }
     }
 
@@ -88,8 +95,11 @@ object WearBookRepository {
         File(book.filePath).delete()
         File(book.filePath + ".toc.json").delete()
         dao.deleteById(id)
+        stats.forget(id)
         runCatching { ProgressDataSync.forget(appContext, id) }
             .onFailure { Log.w(TAG, "Could not drop synced progress for $id", it) }
+        runCatching { ReadingStatsSync.forget(appContext, id) }
+            .onFailure { Log.w(TAG, "Could not drop synced reading time for $id", it) }
         if (tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
     }
 
@@ -123,6 +133,26 @@ object WearBookRepository {
             .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
     }
 
+    /** Time read on the watch ([source] watch) or listened to ([source] listen), on the day it ends. */
+    suspend fun recordTime(bookId: String, source: String, millis: Long, chars: Int, at: Long = System.currentTimeMillis()) {
+        if (millis <= 0 && chars <= 0) return
+        stats.add(bookId, dayOf(at), source, millis.coerceAtLeast(0), chars.coerceAtLeast(0))
+    }
+
+    suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) = stats.markOpened(bookId, at)
+
+    suspend fun markFinished(bookId: String, at: Long = System.currentTimeMillis()) = stats.markFinished(bookId, at)
+
+    /** The watch's whole reading history of a book, sent to the phone to show; the watch shows none. */
+    suspend fun sendStatsToPhone(bookId: String) {
+        val milestone = stats.milestoneFor(bookId)
+        val days = stats.timeFor(bookId).map { ReadingDay(it.day, it.source, it.millis, it.chars) }
+        if (milestone == null && days.isEmpty()) return
+        val report = ReadingReport(bookId, milestone?.firstOpenedEpochMs ?: 0, milestone?.finishedEpochMs ?: 0, days)
+        runCatching { ReadingStatsSync.publish(appContext, report) }
+            .onFailure { Log.w(TAG, "Could not persist reading time for sync", it) }
+    }
+
     /** Persists progress for reconnection; the phone shows it on the book's cover. */
     suspend fun sendProgressToPhone(book: WearBook, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
@@ -134,6 +164,8 @@ object WearBookRepository {
         )
         runCatching { ProgressDataSync.publish(appContext, progress) }
             .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
+        // Reading time goes with every reading sent, so the phone's figures are as fresh as its place.
+        sendStatsToPhone(book.id)
         sendToPhone(DataLayerPaths.PROGRESS_PATH, progress.toJson().toByteArray(Charsets.UTF_8))
     }
 

@@ -12,6 +12,8 @@ import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
 import com.watchreader.shared.reader.JumpHistory
+import com.watchreader.shared.stats.ReadingClock
+import com.watchreader.shared.stats.ReadingSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -83,6 +85,11 @@ class ReaderViewModel(
      */
     private var knownStamp = 0L
 
+    /** Reading time: runs while the page is on screen and the voice is not reading it aloud. */
+    private val clock = ReadingClock()
+    private var screenUp = false
+    private var listening = false
+
     init {
         viewModelScope.launch {
             val found = WearBookRepository.getById(bookId)
@@ -99,6 +106,8 @@ class ReaderViewModel(
             knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
+            if (screenUp && !listening) clock.start(System.currentTimeMillis())
+            withContext(NonCancellable + Dispatchers.IO) { WearBookRepository.markOpened(bookId) }
             // The first page goes up before the contents are known: a book without a table of
             // its own is scanned for headings, which takes a moment on a long one.
             chapters = WearBookRepository.loadChapters(found, text)
@@ -123,6 +132,7 @@ class ReaderViewModel(
         if (target in current.start until current.end) return
         if (target >= p.length && current.end >= p.length) return
         page = if (target >= p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
+        credit(clock.turn(System.currentTimeMillis()), 0)
         lastMove = null
         flipsSinceSync = 0
         publish()
@@ -147,7 +157,12 @@ class ReaderViewModel(
         val p = paginator ?: return false
         val current = page ?: return false
         if (current.end >= p.length) return false
+        val wasReading = clock.running
         page = p.pageFrom(current.end)
+        credit(clock.turn(System.currentTimeMillis()), if (wasReading) current.end - current.start else 0)
+        if (page?.end?.let { it >= p.length } == true) {
+            viewModelScope.launch { withContext(NonCancellable + Dispatchers.IO) { WearBookRepository.markFinished(bookId) } }
+        }
         publish()
         flipped()
         return true
@@ -158,6 +173,7 @@ class ReaderViewModel(
         val current = page ?: return false
         if (current.start <= 0) return false
         page = p.pageEndingAt(current.start)
+        credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         flipped()
         return true
@@ -182,6 +198,7 @@ class ReaderViewModel(
         if (target.start == current?.start) return
         current?.let { jumpHistory.record(it.start) }
         page = target
+        credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         saveProgress(toPhone = false)
         scheduleSync()
@@ -192,6 +209,7 @@ class ReaderViewModel(
         if (chapter !in chapters) return
         page?.let { jumpHistory.record(it.start) }
         page = p.pageFrom(chapter.start.coerceIn(0, p.length))
+        credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         saveProgress(toPhone = false)
         scheduleSync()
@@ -201,6 +219,7 @@ class ReaderViewModel(
         val p = paginator ?: return
         val offset = jumpHistory.take() ?: return
         page = p.pageFrom(offset.coerceIn(0, p.length))
+        credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         saveProgress(toPhone = false)
         scheduleSync()
@@ -268,18 +287,49 @@ class ReaderViewModel(
         }
     }
 
+    /** The page is on screen again; reading time runs from now unless the voice has the book. */
+    fun onScreenResumed() {
+        screenUp = true
+        if (loaded && !listening) clock.start(System.currentTimeMillis())
+    }
+
     /**
-     * The screen went to the background (the screen went off, another app came up). The phone is
-     * told about the pages turned since it last heard, rather than only when this screen closes,
-     * which may be never: a process in the background can be ended without warning.
+     * The screen went to the background (the screen went off, another app came up). The page open
+     * until now is counted, and the phone is told about the pages turned since it last heard,
+     * rather than only when this screen closes, which may be never: a process in the background
+     * can be ended without warning. The reading time goes to the phone either way.
      */
-    fun flush() {
-        if (flipsSinceSync == 0) return
+    fun onScreenPaused() {
+        screenUp = false
+        val earned = clock.stop(System.currentTimeMillis())
         val b = book ?: return
-        val (offset, at) = lastMove ?: return
-        flipsSinceSync = 0
-        syncJob?.cancel()
-        viewModelScope.launch { withContext(NonCancellable + Dispatchers.IO) { WearBookRepository.sendProgressToPhone(b, offset, at) } }
+        val move = lastMove.takeIf { flipsSinceSync > 0 }
+        if (move != null) {
+            flipsSinceSync = 0
+            syncJob?.cancel()
+        }
+        viewModelScope.launch {
+            withContext(NonCancellable + Dispatchers.IO) {
+                if (earned > 0) WearBookRepository.recordTime(b.id, ReadingSource.WATCH, earned, 0)
+                if (move != null) WearBookRepository.sendProgressToPhone(b, move.first, move.second)
+                else WearBookRepository.sendStatsToPhone(b.id)
+            }
+        }
+    }
+
+    /** The voice is reading this book aloud: that time is listening, counted by the service. */
+    fun setListening(on: Boolean) {
+        if (on == listening) return
+        listening = on
+        val now = System.currentTimeMillis()
+        if (on) credit(clock.stop(now), 0) else if (screenUp && loaded) clock.start(now)
+    }
+
+    private fun credit(millis: Long, chars: Int) {
+        if (millis <= 0 && chars <= 0) return
+        viewModelScope.launch {
+            withContext(NonCancellable + Dispatchers.IO) { WearBookRepository.recordTime(bookId, ReadingSource.WATCH, millis, chars) }
+        }
     }
 
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
@@ -290,6 +340,8 @@ class ReaderViewModel(
         // that was merely left open.
         val b = book
         val move = lastMove
+        val earned = clock.stop(System.currentTimeMillis())
+        if (b != null && earned > 0) GlobalScope.launch(Dispatchers.IO) { WearBookRepository.recordTime(b.id, ReadingSource.WATCH, earned, 0) }
         if (b != null && move != null) {
             val (offset, at) = move
             GlobalScope.launch(Dispatchers.IO) {

@@ -6,11 +6,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.watchreader.mobile.R
 import com.watchreader.mobile.data.model.Book
+import com.watchreader.mobile.data.model.ReadingMilestone
+import com.watchreader.mobile.data.model.ReadingTime
 import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.service.WatchLookup
 import com.watchreader.shared.PendingDeletes
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +35,14 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
     /** Null until the database has answered once, so a library still loading is not taken for an empty one. */
     val books: StateFlow<List<Book>?> = BookRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Every day's reading time of every book, for the library's line and the reading time page. */
+    val readingTime: StateFlow<List<ReadingTime>> = BookRepository.observeReadingTime()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun readingTimeFor(bookId: String): Flow<List<ReadingTime>> = BookRepository.observeReadingTime(bookId)
+
+    fun milestoneFor(bookId: String): Flow<ReadingMilestone?> = BookRepository.observeMilestone(bookId)
 
     private val _events = MutableSharedFlow<UiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<UiEvent> = _events.asSharedFlow()

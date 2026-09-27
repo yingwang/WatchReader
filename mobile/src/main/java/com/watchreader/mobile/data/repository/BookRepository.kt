@@ -5,6 +5,12 @@ import android.net.Uri
 import android.util.Log
 import com.watchreader.mobile.data.db.AppDatabase
 import com.watchreader.mobile.data.db.BookDao
+import com.watchreader.mobile.data.db.ReadingStatsDao
+import com.watchreader.mobile.data.model.ReadingMilestone
+import com.watchreader.mobile.data.model.ReadingTime
+import com.watchreader.shared.stats.ReadingReport
+import com.watchreader.shared.stats.ReadingSource
+import com.watchreader.shared.stats.dayOf
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.service.BookSender
@@ -39,12 +45,14 @@ object BookRepository {
     const val MAX_BOOK_BYTES = 20L * 1024 * 1024
 
     private lateinit var dao: BookDao
+    private lateinit var stats: ReadingStatsDao
     private lateinit var booksDir: File
     private lateinit var appContext: Context
 
     fun init(context: Context) {
         appContext = context.applicationContext
         dao = AppDatabase.get(context).bookDao()
+        stats = AppDatabase.get(context).readingStatsDao()
         booksDir = File(context.filesDir, "books").also { it.mkdirs() }
     }
 
@@ -137,9 +145,33 @@ object BookRepository {
         File(book.filePath).delete()
         book.coverPath?.let { File(it).delete() }
         dao.deleteById(id)
+        stats.forget(id)
         runCatching { ProgressDataSync.forget(appContext, id) }
             .onFailure { Log.w("WatchReader", "Could not drop synced progress for $id", it) }
     }
+
+    /** Time read on the phone, on the day it ends. */
+    suspend fun recordReading(bookId: String, millis: Long, chars: Int, at: Long = System.currentTimeMillis()) {
+        if (millis <= 0 && chars <= 0) return
+        stats.add(bookId, dayOf(at), ReadingSource.PHONE, millis.coerceAtLeast(0), chars.coerceAtLeast(0))
+    }
+
+    suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) = stats.markOpened(bookId, at)
+
+    suspend fun markFinished(bookId: String, at: Long = System.currentTimeMillis()) = stats.markFinished(bookId, at)
+
+    /** The watch's reading time for one book, as it last reported it. */
+    suspend fun applyWatchReport(report: ReadingReport) {
+        // A report for a book the phone no longer has would bring back time nothing can show.
+        if (dao.getById(report.bookId) == null) return
+        stats.applyWatchReport(report)
+    }
+
+    fun observeReadingTime(): Flow<List<ReadingTime>> = stats.observeAll()
+
+    fun observeReadingTime(bookId: String): Flow<List<ReadingTime>> = stats.observeFor(bookId)
+
+    fun observeMilestone(bookId: String): Flow<ReadingMilestone?> = stats.observeMilestone(bookId)
 
     /** [message] is the watch's reason when a transfer failed; the library shows it under the cover. */
     suspend fun updateSyncStatus(id: String, status: SyncStatus, message: String? = null) {

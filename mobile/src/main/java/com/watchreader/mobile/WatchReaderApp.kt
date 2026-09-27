@@ -3,6 +3,7 @@ package com.watchreader.mobile
 import android.app.Application
 import android.util.Log
 import com.watchreader.shared.ProgressDataSync
+import com.watchreader.shared.stats.ReadingStatsSync
 import com.watchreader.mobile.data.repository.BookRepository
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,8 @@ class WatchReaderApp : Application() {
             runCatching { BookRepository.seedSampleIfNeeded(this@WatchReaderApp) }.onFailure { Log.w(TAG, "Could not seed the sample book", it) }
             runCatching { ProgressDataSync.restore(this@WatchReaderApp, BookRepository::applyProgress) }
                 .onFailure { Log.w(TAG, "Could not restore synced progress", it) }
+            runCatching { ReadingStatsSync.restore(this@WatchReaderApp, BookRepository::applyWatchReport) }
+                .onFailure { Log.w(TAG, "Could not restore the watch's reading time", it) }
         }
     }
 }

@@ -10,7 +10,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.watchreader.mobile.ui.SharedIntent
 import com.watchreader.mobile.ui.screen.AddBookScreen
+import com.watchreader.mobile.ui.screen.BookDetailsScreen
 import com.watchreader.mobile.ui.screen.BookListScreen
+import com.watchreader.mobile.ui.screen.ReadingStatsScreen
 import com.watchreader.mobile.ui.screen.ReaderScreen
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
 
@@ -35,6 +37,22 @@ fun MobileNavigation(shareGeneration: Int) {
             BookListScreen(
                 vm = listVm,
                 onAddBook = { navController.navigate("add") },
+                onOpenBook = { id -> navController.navigate("read/$id") },
+                onStats = { navController.navigate("stats") },
+                onDetails = { id -> navController.navigate("details/$id") },
+            )
+        }
+        composable("stats") {
+            ReadingStatsScreen(listVm = listVm, onBack = back, onDetails = { id -> navController.navigate("details/$id") })
+        }
+        composable(
+            route = "details/{bookId}",
+            arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
+        ) { entry ->
+            BookDetailsScreen(
+                bookId = entry.arguments?.getString("bookId").orEmpty(),
+                listVm = listVm,
+                onBack = back,
                 onOpenBook = { id -> navController.navigate("read/$id") },
             )
         }

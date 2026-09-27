@@ -203,6 +203,7 @@ fun ReaderScreen(
     // switches auto page turn off and remembers that, which is also what the switch then shows.
     // Turning it back on afterwards is the reader's call, not something that happens by itself.
     LaunchedEffect(ttsHere, ttsState) {
+        vm.setListening(ttsHere && ttsState == TtsState.PLAYING)
         if (ttsHere && ttsState == TtsState.PLAYING && autoTurn) {
             autoTurn = false
             prefs.autoTurnEnabled = false
@@ -215,12 +216,15 @@ fun ReaderScreen(
         }
     }
     // The seconds a page stays can be changed in Settings while this screen sits in the back
-    // stack, so read it again every time the page comes forward. On the way to the background the
-    // phone hears about the last pages turned.
+    // stack, so read it again every time the page comes forward. Reading time runs while the
+    // page is in front, and on the way to the background the phone hears about the last pages.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) autoSeconds = prefs.autoTurnSeconds
-            if (event == Lifecycle.Event.ON_STOP) vm.flush()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                autoSeconds = prefs.autoTurnSeconds
+                vm.onScreenResumed()
+            }
+            if (event == Lifecycle.Event.ON_PAUSE) vm.onScreenPaused()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

@@ -26,6 +26,7 @@ import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.tts.UtteranceSession
 import com.watchreader.wear.ui.WearActivity
 import kotlinx.coroutines.CoroutineScope
+import com.watchreader.shared.stats.ReadingSource
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -62,6 +63,8 @@ class TtsService : Service() {
     /** What the book being read says about its languages, worked out once each time play starts. */
     private var bookLanguages = LanguageDetector.Book()
     private var sentencesSinceSave = 0
+    /** When the listening under way was last counted; 0 while nothing is playing. */
+    private var listenedSince = 0L
     private var finishedBook = false
 
     /** Bumped by every play(); work left over from an earlier book checks it and stands down. */
@@ -118,6 +121,12 @@ class TtsService : Service() {
         val left = book
         val leftAt = sentences.getOrNull(current)?.first
         val leftStamp = currentStartedAt
+        val leftListened = takeListening(stop = true)
+        if (left != null && leftListened > 0) {
+            GlobalScope.launch(Dispatchers.IO + NonCancellable) {
+                WearBookRepository.recordTime(left.id, ReadingSource.LISTEN, leftListened, 0)
+            }
+        }
         if (left != null && leftAt != null && leftStamp != 0L && !finishedBook) {
             GlobalScope.launch(Dispatchers.IO + NonCancellable) {
                 WearBookRepository.updateProgress(left.id, leftAt, leftStamp)
@@ -162,6 +171,7 @@ class TtsService : Service() {
             sentencesSinceSave = 0
             goForeground(loaded.title, playing = true)
             TtsPlayback.set(TtsState.PLAYING, bookId, null)
+            listenedSince = System.currentTimeMillis()
             queueMore()
         }
     }
@@ -215,6 +225,7 @@ class TtsService : Service() {
                 TtsPlayback.sentence(range)
                 if (++sentencesSinceSave >= SAVE_EVERY) {
                     sentencesSinceSave = 0
+                    book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, takeListening(stop = false), 0) }
                     saveProgress(range.first, toPhone = false)
                 }
                 if (serial == session.generation && TtsPlayback.state.value == TtsState.PLAYING) topUp(index)
@@ -261,7 +272,11 @@ class TtsService : Service() {
             if (serial != session.generation) return@launch
             if (index >= sentences.size - 1) {
                 val offset = if (failed) sentences.getOrNull(index)?.first ?: text.length else text.length
-                if (!failed) finishedBook = true
+                book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, takeListening(stop = true), 0) }
+                if (!failed) {
+                    finishedBook = true
+                    book?.let { WearBookRepository.markFinished(it.id) }
+                }
                 saveProgress(offset, toPhone = true)
                 if (serial == session.generation) finish()
             }
@@ -276,15 +291,32 @@ class TtsService : Service() {
         TtsPlayback.state(TtsState.PAUSED)
         goForeground(titleOrLoading(), playing = false)
         val at = currentStartedAt
-        scope.launch { sentences.getOrNull(current)?.let { saveProgress(it.first, toPhone = true, at) } }
+        val listened = takeListening(stop = true)
+        scope.launch {
+            book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, listened, 0) }
+            sentences.getOrNull(current)?.let { saveProgress(it.first, toPhone = true, at) }
+        }
     }
 
     private fun resume() {
         if (TtsPlayback.state.value != TtsState.PAUSED) return
         applyPrefs()
         TtsPlayback.state(TtsState.PLAYING)
+        listenedSince = System.currentTimeMillis()
         goForeground(titleOrLoading(), playing = true)
         queueMore()
+    }
+
+    /**
+     * The listening time since it was last counted, which is then counted from now, or no longer
+     * when [stop]. A single stretch is capped, so an engine that hangs does not run up hours.
+     */
+    private fun takeListening(stop: Boolean): Long {
+        val since = listenedSince
+        if (since == 0L) return 0
+        val now = System.currentTimeMillis()
+        listenedSince = if (stop) 0L else now
+        return (now - since).coerceIn(0, MAX_LISTEN_STRETCH_MS)
     }
 
     private fun finish() {
@@ -313,6 +345,7 @@ class TtsService : Service() {
         // The reading is stamped with the moment its sentence began, not with now: a jump the
         // reader made while it was being spoken carries a later stamp and must win at both ends.
         val at = if (finishedBook || currentStartedAt == 0L) System.currentTimeMillis() else currentStartedAt
+        val listened = takeListening(stop = true)
         // The service's own scope goes first, so no save from the listener lands after this one.
         scope.cancel()
         if (b != null && offset != null) {
@@ -320,6 +353,7 @@ class TtsService : Service() {
             // blocking onDestroy() on a database write and a message to the phone would stall the
             // main thread. It rides a job that outlives the service and finishes on its own.
             GlobalScope.launch(Dispatchers.IO + NonCancellable) {
+                WearBookRepository.recordTime(b.id, ReadingSource.LISTEN, listened, 0)
                 WearBookRepository.updateProgress(b.id, offset, at)
                 WearBookRepository.sendProgressToPhone(b, offset, at)
             }
@@ -381,6 +415,7 @@ class TtsService : Service() {
         private const val BATCH = 24
         private const val REFILL_AT = 8
         private const val SAVE_EVERY = 10
+        private const val MAX_LISTEN_STRETCH_MS = 5 * 60 * 1000L
 
         fun play(context: Context, bookId: String, offset: Int) {
             context.startForegroundService(

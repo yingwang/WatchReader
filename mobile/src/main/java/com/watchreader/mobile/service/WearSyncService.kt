@@ -12,6 +12,7 @@ import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
+import com.watchreader.shared.stats.ReadingStatsSync
 import kotlinx.coroutines.runBlocking
 
 private const val TAG = "WatchReader"
@@ -34,6 +35,7 @@ class WearSyncService : WearableListenerService() {
                 if (event.type != DataEvent.TYPE_CHANGED) continue
                 val item = event.dataItem
                 ProgressDataSync.decode(item.uri.path, item.data)?.let { BookRepository.applyProgress(it) }
+                ReadingStatsSync.decode(item.uri.path, item.data)?.let { BookRepository.applyWatchReport(it) }
             }
         }
     }

@@ -133,11 +133,15 @@ fun ReaderScreen(
     var toolbarVisible by rememberSaveable(bookId) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
-    // On the way to the background (Home, the lock button) the watch hears about the last pages
-    // turned; closing with Back is not the only way out of this screen.
+    // Reading time runs while this screen is in front. On the way to the background (Home, the
+    // lock button) the watch hears about the last pages turned; closing with Back is not the only
+    // way out of this screen.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) vm.flush() }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.onScreenResumed()
+            if (event == Lifecycle.Event.ON_PAUSE) vm.onScreenPaused()
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
