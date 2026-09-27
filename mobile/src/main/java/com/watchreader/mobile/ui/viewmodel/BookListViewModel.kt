@@ -29,8 +29,9 @@ sealed class UiEvent {
 }
 
 class BookListViewModel(application: Application) : AndroidViewModel(application) {
-    val books: StateFlow<List<Book>> = BookRepository.observeAll()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** Null until the database has answered once, so a library still loading is not taken for an empty one. */
+    val books: StateFlow<List<Book>?> = BookRepository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _events = MutableSharedFlow<UiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<UiEvent> = _events.asSharedFlow()

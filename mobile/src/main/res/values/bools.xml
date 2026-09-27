@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark icons in the status and navigation bars, over the white library. values-night turns
+         them light for the dark library. -->
+    <bool name="light_system_bars">true</bool>
+</resources>

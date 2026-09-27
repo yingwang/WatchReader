@@ -2,6 +2,6 @@
 <resources>
     <style name="Theme.WatchReader" parent="Theme.WatchReader.Base">
         <item name="android:navigationBarColor">@color/page_background</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowLightNavigationBar">@bool/light_system_bars</item>
     </style>
 </resources>

@@ -1,19 +1,32 @@
 package com.watchreader.mobile.ui.screen
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -23,7 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
@@ -48,6 +61,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
@@ -59,6 +73,7 @@ import androidx.compose.ui.window.DialogWindowProvider
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.input.pointer.pointerInput
@@ -75,6 +90,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watchreader.mobile.R
 import com.watchreader.mobile.data.model.SyncStatus
+import com.watchreader.mobile.ui.theme.PageTheme
+import com.watchreader.mobile.ui.theme.ReadingTheme
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
 import com.watchreader.mobile.ui.viewmodel.ReaderUiState
 import com.watchreader.mobile.ui.viewmodel.ReaderViewModel
@@ -97,13 +114,16 @@ fun ReaderScreen(
     )
     val state by vm.state.collectAsState()
     val books by listVm.books.collectAsState()
-    val book = books.firstOrNull { it.id == bookId }
+    val book = books?.firstOrNull { it.id == bookId }
     val snackbar = remember { SnackbarHostState() }
-    var showContents by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    var showContents by rememberSaveable { mutableStateOf(false) }
+    // Fully open, as the contents list is scrolled to the current chapter: near the end of a long
+    // book that chapter sits at the bottom of the list, below what a half-open sheet shows.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val prefs = remember { context.getSharedPreferences("reader_appearance", android.content.Context.MODE_PRIVATE) }
     var fontSize by remember { mutableStateOf(prefs.getInt("font_size", 18).coerceIn(MIN_FONT_SP, MAX_FONT_SP)) }
-    var showAppearance by remember { mutableStateOf(false) }
+    var pageTheme by remember { mutableStateOf(PageTheme.fromKey(prefs.getString("page_theme", null))) }
+    var showAppearance by rememberSaveable { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var toolbarVisible by rememberSaveable(bookId) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
@@ -115,9 +135,12 @@ fun ReaderScreen(
                     if (event.arg == null) context.getString(event.text) else context.getString(event.text, event.arg),
                 )
                 is UiEvent.OfferInstall -> {
+                    // As in the library: closable and timed, so later messages are not held back.
                     val result = snackbar.showSnackbar(
                         message = context.getString(R.string.msg_watch_without_app, event.watchName),
                         actionLabel = context.getString(R.string.msg_install_action),
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) listVm.openPlayOnWatch(event.nodeId)
                 }
@@ -127,193 +150,293 @@ fun ReaderScreen(
 
     val chapters = (state as? ReaderUiState.Ready)?.chapters.orEmpty()
 
-    Scaffold(
-        topBar = {
-            if (toolbarVisible) {
-            TopAppBar(
-                title = { Text(book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
-                    }
-                },
-                actions = {
-                    if (chapters.isNotEmpty()) {
-                        IconButton(onClick = { showContents = true }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.List,
-                                contentDescription = stringResource(R.string.reader_contents),
-                            )
-                        }
-                    }
-                    val onWatch = book?.syncStatus == SyncStatus.SENT
-                    if (onWatch) {
-                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.reader_on_watch), modifier = Modifier.padding(12.dp))
-                    } else if (book?.syncStatus == SyncStatus.SENDING) {
-                        CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
-                    } else IconButton(onClick = { book?.let { listVm.sendToWatch(it) } }, enabled = book != null) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(if (book?.syncStatus == SyncStatus.FAILED) R.string.reader_retry else R.string.reader_send),
-                        )
-                    }
-                    Box {
-                        IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.reader_options)) }
-                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.reader_font_size)) }, onClick = { showMenu = false; showAppearance = true })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
-                                showMenu = false
-                                toolbarVisible = false
-                                scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_show_controls_hint)) }
-                            })
-                            if (onWatch) DropdownMenuItem(text = { Text(stringResource(R.string.reader_resend)) }, onClick = {
-                                showMenu = false; book?.let { listVm.sendToWatch(it) }
-                            })
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                    actionIconContentColor = MaterialTheme.colorScheme.primary,
-                ),
-            )
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { padding ->
-        val density = LocalDensity.current
-        val measurer = rememberTextMeasurer()
-        val onBackground = MaterialTheme.colorScheme.onBackground
-        val textStyle = remember(onBackground, fontSize) {
-            TextStyle(color = onBackground, fontSize = fontSize.sp, lineHeight = (fontSize * 1.65f).sp)
-        }
-
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .pointerInput(Unit) {
-                    // The outer thirds turn pages, the same way round as on the watch. The middle
-                    // shows or hides the title bar, so a hidden bar needs no button of its own to
-                    // come back, and nothing is left sitting over the page.
-                    detectTapGestures(
-                        onTap = { offset ->
-                            when {
-                                offset.x < size.width / 3f -> vm.prevPage()
-                                offset.x > size.width * 2f / 3f -> vm.nextPage()
-                                else -> toolbarVisible = !toolbarVisible
+    // The page colours are chosen on this screen, so the theme is applied here rather than around
+    // it: the page, the bars and the open dialog all change the moment a colour is picked.
+    ReadingTheme(pageTheme) {
+        Scaffold(
+            topBar = {
+                if (toolbarVisible) {
+                    TopAppBar(
+                        title = { Text(book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
                             }
                         },
-                        onLongPress = { toolbarVisible = true },
+                        actions = {
+                            // Shown for every book: the sheet also jumps to a percentage, which a book
+                            // without chapters needs most.
+                            if (state is ReaderUiState.Ready) {
+                                IconButton(onClick = { showContents = true }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.List,
+                                        contentDescription = stringResource(R.string.reader_contents),
+                                    )
+                                }
+                            }
+                            val onWatch = book?.syncStatus == SyncStatus.SENT
+                            if (onWatch) {
+                                Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.reader_on_watch), modifier = Modifier.padding(12.dp))
+                            } else if (book?.syncStatus == SyncStatus.SENDING) {
+                                CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
+                            } else IconButton(onClick = { book?.let { listVm.sendToWatch(it) } }, enabled = book != null) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = stringResource(if (book?.syncStatus == SyncStatus.FAILED) R.string.reader_retry else R.string.reader_send),
+                                )
+                            }
+                            Box {
+                                IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.reader_options)) }
+                                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.reader_appearance)) }, onClick = { showMenu = false; showAppearance = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
+                                        showMenu = false
+                                        toolbarVisible = false
+                                        scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_show_controls_hint)) }
+                                    })
+                                    if (onWatch) DropdownMenuItem(text = { Text(stringResource(R.string.reader_resend)) }, onClick = {
+                                        showMenu = false; book?.let { listVm.sendToWatch(it) }
+                                    })
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background,
+                            titleContentColor = MaterialTheme.colorScheme.onBackground,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                            actionIconContentColor = MaterialTheme.colorScheme.primary,
+                        ),
                     )
-                },
-        ) {
-            val widthPx = with(density) { maxWidth.roundToPx() }
-            val heightPx = with(density) { maxHeight.roundToPx() }
-            val lineHeightPx = with(density) { (fontSize * 1.65f).sp.toPx() }
-            val marginPx = with(density) { 24.dp.toPx() }
-            val geometry = remember(widthPx, heightPx, lineHeightPx) {
-                PageGeometry.rect(widthPx, heightPx, marginPx, lineHeightPx)
-            }
-            val lineMeasurer = remember(measurer, textStyle) {
-                LineMeasurer { text, start, end, widthLimit ->
-                    measurer.measure(
-                        text = AnnotatedString(text.substring(start, end)),
-                        style = textStyle,
-                        overflow = TextOverflow.Clip,
-                        maxLines = 1,
-                        constraints = Constraints(maxWidth = widthLimit),
-                    ).getLineEnd(0, visibleEnd = false)
                 }
+            },
+            snackbarHost = { SnackbarHost(snackbar) },
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { padding ->
+            val density = LocalDensity.current
+            val measurer = rememberTextMeasurer()
+            val onBackground = MaterialTheme.colorScheme.onBackground
+            // Colour is left out of the style the pages are measured with and given when drawing, so
+            // picking another page colour repaints the page without laying the book out again.
+            val textStyle = remember(fontSize) {
+                TextStyle(fontSize = fontSize.sp, lineHeight = (fontSize * 1.65f).sp)
             }
-            LaunchedEffect(geometry, lineMeasurer) { vm.attachLayout(geometry, lineMeasurer) }
 
-            when (val s = state) {
-                ReaderUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    CircularProgressIndicator()
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .pointerInput(Unit) {
+                        // The outer thirds turn pages, the same way round as on the watch. The middle
+                        // shows or hides the title bar, so a hidden bar needs no button of its own to
+                        // come back, and nothing is left sitting over the page.
+                        detectTapGestures(
+                            onTap = { offset ->
+                                when {
+                                    offset.x < size.width / 3f -> vm.prevPage()
+                                    offset.x > size.width * 2f / 3f -> vm.nextPage()
+                                    else -> toolbarVisible = !toolbarVisible
+                                }
+                            },
+                            onLongPress = { toolbarVisible = true },
+                        )
+                    },
+            ) {
+                val widthPx = with(density) { maxWidth.roundToPx() }
+                val heightPx = with(density) { maxHeight.roundToPx() }
+                val lineHeightPx = with(density) { (fontSize * 1.65f).sp.toPx() }
+                val marginPx = with(density) { 24.dp.toPx() }
+                val geometry = remember(widthPx, heightPx, lineHeightPx) {
+                    PageGeometry.rect(widthPx, heightPx, marginPx, lineHeightPx)
                 }
-                ReaderUiState.Missing -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Text(stringResource(R.string.reader_missing), color = onBackground)
+                val lineMeasurer = remember(measurer, textStyle) {
+                    LineMeasurer { text, start, end, widthLimit ->
+                        measurer.measure(
+                            text = AnnotatedString(text.substring(start, end)),
+                            style = textStyle,
+                            overflow = TextOverflow.Clip,
+                            maxLines = 1,
+                            constraints = Constraints(maxWidth = widthLimit),
+                        ).getLineEnd(0, visibleEnd = false)
+                    }
                 }
-                is ReaderUiState.Ready -> {
-                    val page = s.page
-                    Canvas(modifier = Modifier.fillMaxSize().semantics { contentDescription = page.lines.joinToString(" ") { page.text(it) } }) {
-                        for (line in page.lines) {
-                            if (line.end <= line.start) continue
-                            val slot = geometry.slots.getOrNull(line.slot) ?: continue
-                            val layout = measurer.measure(
-                                text = AnnotatedString(page.text(line)),
-                                style = textStyle,
-                                overflow = TextOverflow.Clip,
-                                maxLines = 1,
-                                constraints = Constraints(maxWidth = slot.width),
+                LaunchedEffect(geometry, lineMeasurer) { vm.attachLayout(geometry, lineMeasurer) }
+
+                when (val s = state) {
+                    ReaderUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    ReaderUiState.Missing -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        Text(stringResource(R.string.reader_missing), color = onBackground)
+                    }
+                    is ReaderUiState.Ready -> {
+                        val page = s.page
+                        val previousLabel = stringResource(R.string.reader_previous_page)
+                        val nextLabel = stringResource(R.string.reader_next_page)
+                        val controlsLabel = stringResource(if (toolbarVisible) R.string.reader_hide_controls else R.string.reader_show_controls)
+                        // TalkBack cannot tap a third of the page, so the page offers the same three
+                        // things as actions, as the watch's page does. The page is read from its own
+                        // text: joining the drawn lines put a space at every line break, in the middle
+                        // of Chinese words.
+                        Canvas(modifier = Modifier.fillMaxSize().semantics {
+                            contentDescription = page.chars
+                            customActions = listOf(
+                                CustomAccessibilityAction(previousLabel) { vm.prevPage(); true },
+                                CustomAccessibilityAction(nextLabel) { vm.nextPage(); true },
+                                CustomAccessibilityAction(controlsLabel) { toolbarVisible = !toolbarVisible; true },
                             )
-                            drawText(layout, topLeft = Offset(slot.left, slot.top))
+                        }) {
+                            for (line in page.lines) {
+                                if (line.end <= line.start) continue
+                                val slot = geometry.slots.getOrNull(line.slot) ?: continue
+                                val layout = measurer.measure(
+                                    text = AnnotatedString(page.text(line)),
+                                    style = textStyle,
+                                    overflow = TextOverflow.Clip,
+                                    maxLines = 1,
+                                    constraints = Constraints(maxWidth = slot.width),
+                                )
+                                drawText(layout, color = onBackground, topLeft = Offset(slot.left, slot.top))
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
+                            color = onBackground.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        val ready = state as? ReaderUiState.Ready
+        if (showContents && ready != null) {
+            ModalBottomSheet(onDismissRequest = { showContents = false }, sheetState = sheetState) {
+                val pageStart = ready.page.start
+                val currentIndex = chapters.indexOfLast { it.start <= pageStart }
+                // The slider stays above the list rather than scrolling with it, so it is there
+                // however far down the current chapter is.
+                var target by remember { mutableFloatStateOf(if (ready.totalChars == 0) 0f else pageStart.toFloat() / ready.totalChars) }
+                Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp)) {
+                    Text(
+                        stringResource(R.string.reader_go_to, (target * 100).roundToInt()),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Slider(
+                        value = target,
+                        onValueChange = { target = it },
+                        // Only the release moves the book: every step of a drag is not a place read.
+                        onValueChangeFinished = {
+                            vm.jumpTo((target * ready.totalChars).roundToInt())
+                            showContents = false
+                        },
+                    )
+                }
+                if (chapters.isNotEmpty()) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    // Opens with the current chapter in view and a couple of chapters above it, for
+                    // a book of hundreds of chapters that would otherwise open at the first.
+                    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 2).coerceAtLeast(0))
+                    LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                        itemsIndexed(chapters) { index, chapter ->
+                            val current = index == currentIndex
+                            Text(
+                                text = (if (current) "● " else "") + chapter.title,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 16.sp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable { vm.jumpTo(chapter.start); showContents = false }
+                                    .heightIn(min = 48.dp)
+                                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                         }
                     }
-                    Text(
-                        text = stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
-                        color = onBackground.copy(alpha = 0.7f),
-                        fontSize = 12.sp,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                    )
                 }
             }
         }
+        if (showAppearance) AlertDialog(
+            onDismissRequest = { showAppearance = false },
+            title = { Text(stringResource(R.string.reader_appearance)) },
+            text = {
+                // No shade over the page: the page behind the dialog takes each colour and is laid out
+                // again at every size, and that is the truest preview there is.
+                val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+                SideEffect { dialogWindow?.setDimAmount(0f) }
+                // Scrolls on a phone held sideways, where the largest sample and the slider do not fit.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    PageThemeChoice(selected = pageTheme, onSelect = {
+                        pageTheme = it
+                        prefs.edit().putString("page_theme", it.key).apply()
+                    })
+                    Text(
+                        stringResource(R.string.reader_font_size),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 20.dp, bottom = 4.dp),
+                    )
+                    // The sample keeps the height of its largest size, so the slider stays under the
+                    // finger while the sample grows and wraps.
+                    Text(
+                        stringResource(R.string.reader_font_preview),
+                        fontSize = fontSize.sp,
+                        lineHeight = (fontSize * 1.65f).sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.height(with(LocalDensity.current) { (MAX_FONT_SP * 1.65f * 2).sp.toDp() }),
+                    )
+                    Text("${fontSize} sp")
+                    Slider(value = fontSize.toFloat(), onValueChange = {
+                        fontSize = it.roundToInt()
+                        prefs.edit().putInt("font_size", fontSize).apply()
+                    }, valueRange = MIN_FONT_SP.toFloat()..MAX_FONT_SP.toFloat(), steps = MAX_FONT_SP - MIN_FONT_SP - 1)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showAppearance = false }) { Text(stringResource(R.string.reader_done)) } },
+        )
     }
+}
 
-    if (showContents) {
-        ModalBottomSheet(onDismissRequest = { showContents = false }, sheetState = sheetState) {
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(chapters) { chapter ->
-                    val current = chapters.lastOrNull { it.start <= ((state as? ReaderUiState.Ready)?.page?.start ?: 0) } == chapter
-                    Text(
-                        text = (if (current) "● " else "") + chapter.title,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 16.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                            .clickable { vm.jumpTo(chapter.start); showContents = false }
-                            .heightIn(min = 48.dp)
-                            .padding(horizontal = 24.dp, vertical = 14.dp),
+/**
+ * Dark, Light and Sepia as three small pages, each in its own colours, so the choice shows what it
+ * gives. They are a radio group to TalkBack.
+ */
+@Composable
+private fun PageThemeChoice(selected: PageTheme, onSelect: (PageTheme) -> Unit) {
+    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (theme in PageTheme.entries) {
+            val isSelected = theme == selected
+            val shape = RoundedCornerShape(12.dp)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp)
+                    .clip(shape)
+                    .background(theme.colors.background)
+                    .border(
+                        width = if (isSelected) 3.dp else 1.dp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        shape = shape,
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                }
+                    .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(theme) }),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(
+                        when (theme) {
+                            PageTheme.DARK -> R.string.reader_page_dark
+                            PageTheme.LIGHT -> R.string.reader_page_light
+                            PageTheme.SEPIA -> R.string.reader_page_sepia
+                        },
+                    ),
+                    color = theme.colors.onBackground,
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
     }
-    if (showAppearance) AlertDialog(
-        onDismissRequest = { showAppearance = false },
-        title = { Text(stringResource(R.string.reader_font_size)) },
-        text = {
-            // No shade over the page: the text behind the dialog is laid out again at every step,
-            // and that is the truest preview there is.
-            val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
-            SideEffect { dialogWindow?.setDimAmount(0f) }
-            Column {
-                // The sample keeps the height of its largest size, so the slider stays under the
-                // finger while the sample grows and wraps.
-                Text(
-                    stringResource(R.string.reader_font_preview),
-                    fontSize = fontSize.sp,
-                    lineHeight = (fontSize * 1.65f).sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.height(with(LocalDensity.current) { (MAX_FONT_SP * 1.65f * 2).sp.toDp() }),
-                )
-                Text("${fontSize} sp")
-                Slider(value = fontSize.toFloat(), onValueChange = {
-                    fontSize = it.roundToInt()
-                    prefs.edit().putInt("font_size", fontSize).apply()
-                }, valueRange = MIN_FONT_SP.toFloat()..MAX_FONT_SP.toFloat(), steps = MAX_FONT_SP - MIN_FONT_SP - 1)
-            }
-        },
-        confirmButton = { TextButton(onClick = { showAppearance = false }) { Text(stringResource(R.string.reader_done)) } },
-    )
 }
 
 private const val MIN_FONT_SP = 14

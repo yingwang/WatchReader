@@ -13,7 +13,6 @@ import com.watchreader.mobile.ui.screen.AddBookScreen
 import com.watchreader.mobile.ui.screen.BookListScreen
 import com.watchreader.mobile.ui.screen.ReaderScreen
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
-import com.watchreader.mobile.ui.theme.ReadingTheme
 
 @Composable
 fun MobileNavigation(shareGeneration: Int) {
@@ -46,13 +45,12 @@ fun MobileNavigation(shareGeneration: Int) {
             route = "read/{bookId}",
             arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
         ) { entry ->
-            ReadingTheme {
-                ReaderScreen(
-                    bookId = entry.arguments?.getString("bookId").orEmpty(),
-                    listVm = listVm,
-                    onBack = back,
-                )
-            }
+            // The reader applies its own ReadingTheme, as the page colours are chosen inside it.
+            ReaderScreen(
+                bookId = entry.arguments?.getString("bookId").orEmpty(),
+                listVm = listVm,
+                onBack = back,
+            )
         }
     }
 }
