@@ -18,7 +18,7 @@ object BookToc {
         // Books imported before contents pages were recognised carry the whole list in their
         // stored contents, so the same sieve runs here and they come right without being re-added.
         val named = declared.filter { it.title.isNotBlank() && it.start in text.indices }
-        val usable = withoutContentsPage(named.distinctBy { it.start }.sortedBy { it.start })
+        val usable = withoutContentsPage(named.distinctBy { it.start }.sortedBy { it.start }).take(MAX_CHAPTERS)
         if (usable.isEmpty()) return detect(text)
         if (places(named.size, usable, text.length)) return usable
         // The stored offsets never told the chapters apart. That is how a book kept in one
@@ -55,7 +55,7 @@ object BookToc {
     fun declared(json: String?, text: String): List<Chapter> {
         val declared = parse(json) ?: return emptyList()
         val named = declared.filter { it.title.isNotBlank() && it.start in text.indices }
-        val usable = withoutContentsPage(named.distinctBy { it.start }.sortedBy { it.start })
+        val usable = withoutContentsPage(named.distinctBy { it.start }.sortedBy { it.start }).take(MAX_CHAPTERS)
         return if (places(named.size, usable, text.length)) usable else emptyList()
     }
 
@@ -93,14 +93,19 @@ object BookToc {
      * that names a division; anything longer is prose that happens to start with the word.
      */
     fun detect(text: String): List<Chapter> {
-        val named = withoutContentsPage(scan(text) { line, _, _ -> headings.any { it.matches(line) } })
+        val named = withoutContentsPage(scan(text) { line, _, _ -> headings.any { it.matches(line) } }).take(MAX_CHAPTERS)
         if (named.size >= 2 && reachesThroughBook(named, text.length)) return named
         // A book that does not name its divisions still sets them apart: a short line of its own,
         // blank above and below, ending in no full stop, closing quote or bracket.
-        val guessed = withoutContentsPage(scan(text) { line, before, after ->
+        val found = scan(text) { line, before, after ->
             before.isEmpty() && after.isEmpty() && line.isNotEmpty() && line.last() !in SENTENCE_ENDS
-        })
-        if (guessed.size < 2) return emptyList()
+        }
+        // A scan that ran into its limit stopped partway through the book, and the density below
+        // would be judged on a list cut short against the paragraphs of the whole. Lines that pass
+        // for headings in such numbers are dialogue, not chapters.
+        if (found.size >= SCAN_LIMIT) return emptyList()
+        val guessed = withoutContentsPage(found)
+        if (guessed.size < 2 || guessed.size > MAX_CHAPTERS) return emptyList()
         // Dialogue set one speech to a line looks just like a run of headings. No book has a
         // chapter every couple of paragraphs, so a list that dense is noise and the book goes without.
         val paragraphs = text.lineSequence().count { it.isNotBlank() }
@@ -134,7 +139,7 @@ object BookToc {
             pos = end + 1
         }
         for (i in lines.indices) {
-            if (found.size >= MAX_CHAPTERS * 2) break
+            if (found.size >= SCAN_LIMIT) break
             val line = lines[i]
             if (line.length !in 1..MAX_HEADING_CHARS) continue
             // A heading names something. Rules, ornaments and stray punctuation name nothing,
@@ -158,12 +163,16 @@ object BookToc {
      * whose titles the book uses again elsewhere is the contents page.
      */
     private fun withoutContentsPage(found: List<Chapter>): List<Chapter> {
-        if (found.size < MIN_CONTENTS_ENTRIES * 2) return found.take(MAX_CHAPTERS)
+        if (found.size < MIN_CONTENTS_ENTRIES * 2) return found
         val keys = found.map { key(it.title) }
+        // Where each title is last set; a web novel runs to thousands of chapters, and comparing
+        // every title with every later one would cost millions of comparisons at each opening.
+        val last = HashMap<String, Int>(keys.size * 2)
+        for (i in keys.indices) last[keys[i]] = i
         val listed = BooleanArray(found.size)
         for (i in found.indices) {
             // A title the book sets again further on is one this line merely announces,
-            if ((i + 1 until found.size).none { keys[it] == keys[i] }) continue
+            if (last.getValue(keys[i]) == i) continue
             // provided no chapter of its own follows it here, or the line above announced too.
             val bare = i + 1 < found.size && found[i + 1].start - found[i].start < MIN_CHAPTER_CHARS
             if (bare || (i > 0 && listed[i - 1])) listed[i] = true
@@ -177,7 +186,7 @@ object BookToc {
             if (end - i + 1 < MIN_CONTENTS_ENTRIES) for (k in i..end) listed[k] = false
             i = end + 1
         }
-        return found.filterIndexed { index, _ -> !listed[index] }.take(MAX_CHAPTERS)
+        return found.filterIndexed { index, _ -> !listed[index] }
     }
 
     /** A heading without the leader dots and page number a contents line trails behind it. */
@@ -201,6 +210,16 @@ object BookToc {
     /** A guessed contents list denser than one entry per this many paragraphs is dialogue, not chapters. */
     private const val MIN_PARAGRAPHS_PER_CHAPTER = 3
 
-    /** Beyond this a contents list is noise, and the book is probably not chaptered at all. */
-    private const val MAX_CHAPTERS = 500
+    /**
+     * Beyond this a contents list is noise, and the book is probably not chaptered at all. Web
+     * novels run to one to three thousand chapters, each of them a real entry, so the bound sits
+     * well past those.
+     */
+    private const val MAX_CHAPTERS = 5000
+
+    /**
+     * Where a scan stops looking. It leaves room for a contents page listing every chapter as
+     * well as the chapters themselves.
+     */
+    private const val SCAN_LIMIT = MAX_CHAPTERS * 2
 }
