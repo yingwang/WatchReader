@@ -63,7 +63,15 @@ class Paginator(
     fun pageEndingAt(end: Int): Page {
         val e = end.coerceIn(0, text.length)
         if (e == 0) return pageFrom(0)
-        var lo = maxOf(0, e - MAX_PAGE_CHARS)
+        // A phone page in a small type can hold more than any fixed distance back, and a search
+        // that starts too near finds a page cut short. Reach further back until the page from
+        // there falls short of [e], which puts the answer inside the range searched.
+        var reach = MAX_PAGE_CHARS
+        var lo = maxOf(0, e - reach)
+        while (lo > 0 && pageFrom(lo).end >= e) {
+            reach *= 2
+            lo = maxOf(0, e - reach)
+        }
         var hi = e
         // pageFrom(s).end grows with s; find the smallest s that reaches e
         if (pageFrom(lo).end < e) {
@@ -136,9 +144,10 @@ class Paginator(
     }
 
     companion object {
-        /** Bounds the backward search; far more than any watch page holds. */
+        /** Where the backward search starts looking; more than any watch page holds. */
         const val MAX_PAGE_CHARS = 1500
-        private const val MAX_LINE_CHARS = 200
+        /** Longer than a line of small type across an unfolded phone or a tablet. */
+        private const val MAX_LINE_CHARS = 500
         private const val JUMP_LOOKBACK = 400
         private const val MAX_WORD_CHARS = 40
         /** From CJK radicals on: ideographs, kana, hangul and full-width forms break anywhere. */

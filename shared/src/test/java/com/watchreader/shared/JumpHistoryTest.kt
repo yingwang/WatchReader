@@ -13,6 +13,20 @@ class JumpHistoryTest {
         assertEquals(120, history.take())
         assertNull(history.returnOffset)
     }
+    @Test fun jumpAfterReadingReturnsToWhereReadingStopped() {
+        // 7% -> 40%, read on to 46%, then 72%: going back must land on 46%, not 7%.
+        val history = JumpHistory()
+        history.record(70)
+        history.turned()
+        history.record(460)
+        assertEquals(460, history.take())
+    }
+    @Test fun readingAfterAJumpKeepsItsReturnPoint() {
+        val history = JumpHistory()
+        history.record(70)
+        history.turned()
+        assertEquals(70, history.take())
+    }
     @Test fun undoIsSingleUse() {
         val history = JumpHistory()
         history.record(0)

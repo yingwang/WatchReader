@@ -158,8 +158,10 @@ fun ReaderScreen(
     fun turnPage(forward: Boolean) {
         val changed = if (forward) vm.nextPage() else vm.prevPage()
         if (changed) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-        if (state is ReaderUiState.Ready && ((!changed) || (vm.state.value as? ReaderUiState.Ready)?.atEnd == true)) {
-            boundaryMessage = context.getString(if (forward) R.string.reader_finished else R.string.reader_first_page)
+        // Only a turn that goes nowhere says why. Arriving on the last page is not finishing it:
+        // the page has still to be read.
+        else if (state is ReaderUiState.Ready) {
+            boundaryMessage = context.getString(if (forward) R.string.reader_end else R.string.reader_first_page)
         }
     }
     val focusRequester = remember { FocusRequester() }
@@ -188,10 +190,13 @@ fun ReaderScreen(
     LaunchedEffect(autoTurn, autoSeconds, state, showToolbar) {
         val s = state
         if (!autoTurn || showToolbar || s !is ReaderUiState.Ready) return@LaunchedEffect
-        if (s.atEnd) { autoTurn = false; boundaryMessage = context.getString(R.string.reader_finished); return@LaunchedEffect }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             delay((autoSeconds * 1000).toLong())
-            if (autoTurn && !showToolbar) vm.nextPage()
+            // The last page stays its full time like any other before the turning stops.
+            if (autoTurn && !showToolbar && !vm.nextPage()) {
+                autoTurn = false
+                boundaryMessage = context.getString(R.string.reader_end)
+            }
         }
     }
     // Reading aloud turns pages by itself, so the two never run together: starting a voice
@@ -201,6 +206,12 @@ fun ReaderScreen(
         if (ttsHere && ttsState == TtsState.PLAYING && autoTurn) {
             autoTurn = false
             prefs.autoTurnEnabled = false
+        }
+        // The double tap that pauses the voice is said once, on the page where it works, the
+        // first time a voice reads here.
+        if (ttsHere && ttsState == TtsState.PLAYING && !prefs.doubleTapHintSeen) {
+            prefs.doubleTapHintSeen = true
+            boundaryMessage = context.getString(R.string.reader_double_pause)
         }
     }
     // The seconds a page stays can be changed in Settings while this screen sits in the back
@@ -261,11 +272,11 @@ fun ReaderScreen(
                         if (showToolbar || showHint) return@detectTapGestures
                         turnPage(offset.x >= size.width / 2f)
                     },
-                    onDoubleTap = if (ttsHere) ({
-                        if (!showToolbar && !showHint) {
-                            if (ttsState == TtsState.PLAYING) TtsService.pause(context)
-                            else if (ttsState == TtsState.PAUSED) TtsService.resume(context)
-                        }
+                    // A double tap pauses a voice that is reading, and does nothing else. Listening
+                    // for one makes every tap wait to see whether a second follows, and when paused
+                    // two quick taps are two pages; resuming is in the controls.
+                    onDoubleTap = if (ttsHere && ttsState == TtsState.PLAYING) ({
+                        if (!showToolbar && !showHint) TtsService.pause(context)
                     }) else null,
                     onLongPress = {
                         if (showToolbar || showHint) return@detectTapGestures
@@ -342,8 +353,8 @@ fun ReaderScreen(
                 // small percent at the bottom edge, inside the round bezel
                 Text(
                     text = boundaryMessage ?: stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
-                    color = colors.text.copy(alpha = 0.8f),
-                    fontSize = 11.sp,
+                    color = if (boundaryMessage != null) colors.text else colors.dim,
+                    fontSize = 9.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
                 if (ttsHere) {
@@ -458,8 +469,11 @@ private fun Toolbar(
     onUndoJump: () -> Unit,
 ) {
     var contents by remember { mutableStateOf(false) }
-    var draftFraction by remember(fraction) { mutableFloatStateOf(fraction) }
-    var jumpEdited by remember(fraction) { mutableStateOf(false) }
+    // The position shown follows the reading until the reader presses + or -; from then on it
+    // is theirs, and a voice turning the page underneath must not put it back.
+    var jumpEdited by remember { mutableStateOf(false) }
+    var editedFraction by remember { mutableFloatStateOf(fraction) }
+    val draftFraction = if (jumpEdited) editedFraction else fraction
     val currentChapter = chapters.lastOrNull { it.start <= currentOffset }
     val targetChapter = chapters.lastOrNull { it.start <= (draftFraction * totalChars).toInt() }
     val listState = rememberScalingLazyListState()
@@ -513,10 +527,6 @@ private fun Toolbar(
                         color = textColor, fontSize = 12.sp,
                     )
                 }
-                if (ttsHere && ttsState != TtsState.LOADING) item {
-                    Text(stringResource(if (ttsState == TtsState.PLAYING) R.string.reader_double_pause else R.string.reader_double_resume),
-                        color = textColor, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
-                }
                 item {
                     ToggleChip(
                         checked = autoTurn,
@@ -552,7 +562,7 @@ private fun Toolbar(
                     // crossing half a book should not take fifty presses.
                     InlineSlider(
                         value = (draftFraction * 20).roundToInt().toFloat(),
-                        onValueChange = { draftFraction = it / 20f; jumpEdited = true },
+                        onValueChange = { editedFraction = it / 20f; jumpEdited = true },
                         valueRange = 0f..20f,
                         steps = 19,
                         increaseIcon = { Text("+", color = textColor, fontSize = 16.sp) },
@@ -561,16 +571,20 @@ private fun Toolbar(
                         modifier = Modifier.fillMaxWidth(0.8f),
                     )
                 }
-                item {
-                    Text(targetChapter?.title ?: stringResource(R.string.reader_no_chapters), color = textColor, fontSize = 12.sp,
+                if (targetChapter != null) item {
+                    Text(targetChapter.title, color = textColor, fontSize = 12.sp,
                         maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                 }
                 item {
                     Chip(onClick = { onJump(draftFraction); jumpEdited = false; onClose() }, enabled = jumpEdited,
-                        label = { Text(stringResource(R.string.reader_confirm_jump)) }, modifier = Modifier.fillMaxWidth(0.84f))
+                        label = { Text(stringResource(R.string.reader_confirm_jump)) },
+                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        modifier = Modifier.fillMaxWidth(0.84f))
                 }
                 if (canUndoJump) item {
-                    Chip(onClick = onUndoJump, label = { Text(stringResource(R.string.reader_undo_jump)) }, modifier = Modifier.fillMaxWidth(0.84f))
+                    Chip(onClick = onUndoJump, label = { Text(stringResource(R.string.reader_undo_jump)) },
+                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        modifier = Modifier.fillMaxWidth(0.84f))
                 }
             }
             item {

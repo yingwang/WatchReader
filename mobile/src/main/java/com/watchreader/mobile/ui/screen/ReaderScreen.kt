@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.MoreVert
@@ -49,7 +50,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -95,10 +102,11 @@ fun ReaderScreen(
     var showContents by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val prefs = remember { context.getSharedPreferences("reader_appearance", android.content.Context.MODE_PRIVATE) }
-    var fontSize by remember { mutableStateOf(prefs.getInt("font_size", 18).coerceIn(14, 30)) }
+    var fontSize by remember { mutableStateOf(prefs.getInt("font_size", 18).coerceIn(MIN_FONT_SP, MAX_FONT_SP)) }
     var showAppearance by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var toolbarVisible by rememberSaveable(bookId) { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         listVm.events.collect { event ->
@@ -153,7 +161,11 @@ fun ReaderScreen(
                         IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.reader_options)) }
                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.reader_font_size)) }, onClick = { showMenu = false; showAppearance = true })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = { showMenu = false; toolbarVisible = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
+                                showMenu = false
+                                toolbarVisible = false
+                                scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_show_controls_hint)) }
+                            })
                             if (onWatch) DropdownMenuItem(text = { Text(stringResource(R.string.reader_resend)) }, onClick = {
                                 showMenu = false; book?.let { listVm.sendToWatch(it) }
                             })
@@ -167,11 +179,6 @@ fun ReaderScreen(
                     actionIconContentColor = MaterialTheme.colorScheme.primary,
                 ),
             )
-            }
-        },
-        bottomBar = {
-            if (!toolbarVisible) TextButton(onClick = { toolbarVisible = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(stringResource(R.string.reader_show_controls))
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -189,9 +196,17 @@ fun ReaderScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .pointerInput(Unit) {
-                    // The two halves turn pages, the same way round as on the watch.
+                    // The outer thirds turn pages, the same way round as on the watch. The middle
+                    // shows or hides the title bar, so a hidden bar needs no button of its own to
+                    // come back, and nothing is left sitting over the page.
                     detectTapGestures(
-                        onTap = { offset -> if (offset.x < size.width / 2f) vm.prevPage() else vm.nextPage() },
+                        onTap = { offset ->
+                            when {
+                                offset.x < size.width / 3f -> vm.prevPage()
+                                offset.x > size.width * 2f / 3f -> vm.nextPage()
+                                else -> toolbarVisible = !toolbarVisible
+                            }
+                        },
                         onLongPress = { toolbarVisible = true },
                     )
                 },
@@ -261,7 +276,7 @@ fun ReaderScreen(
                         fontSize = 16.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+                            .background(if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                             .clickable { vm.jumpTo(chapter.start); showContents = false }
                             .heightIn(min = 48.dp)
                             .padding(horizontal = 24.dp, vertical = 14.dp),
@@ -275,15 +290,31 @@ fun ReaderScreen(
         onDismissRequest = { showAppearance = false },
         title = { Text(stringResource(R.string.reader_font_size)) },
         text = {
+            // No shade over the page: the text behind the dialog is laid out again at every step,
+            // and that is the truest preview there is.
+            val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect { dialogWindow?.setDimAmount(0f) }
             Column {
-                Text(stringResource(R.string.reader_font_preview), fontSize = fontSize.sp, lineHeight = (fontSize * 1.65f).sp)
+                // The sample keeps the height of its largest size, so the slider stays under the
+                // finger while the sample grows and wraps.
+                Text(
+                    stringResource(R.string.reader_font_preview),
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.65f).sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.height(with(LocalDensity.current) { (MAX_FONT_SP * 1.65f * 2).sp.toDp() }),
+                )
                 Text("${fontSize} sp")
                 Slider(value = fontSize.toFloat(), onValueChange = {
                     fontSize = it.roundToInt()
                     prefs.edit().putInt("font_size", fontSize).apply()
-                }, valueRange = 14f..30f, steps = 15)
+                }, valueRange = MIN_FONT_SP.toFloat()..MAX_FONT_SP.toFloat(), steps = MAX_FONT_SP - MIN_FONT_SP - 1)
             }
         },
         confirmButton = { TextButton(onClick = { showAppearance = false }) { Text(stringResource(R.string.reader_done)) } },
     )
 }
+
+private const val MIN_FONT_SP = 14
+private const val MAX_FONT_SP = 30

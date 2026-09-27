@@ -166,4 +166,17 @@ class PaginatorTest {
         }
         assertTrue(pages > 10)
     }
+
+    @Test
+    fun goingBackFillsAPageThatHoldsMoreThanTheFirstReach() {
+        // Twenty lines of a hundred characters: 2,000 to a page, more than the backward search
+        // first looks. The page before must be as full as the one after.
+        val text = "字".repeat(10_000)
+        val p = Paginator(text, rect(lines = 20, charsPerLine = 100), fakeMeasurer)
+        assertTrue(p.pageFrom(0).end - p.pageFrom(0).start > Paginator.MAX_PAGE_CHARS)
+        val page = p.pageEndingAt(8_000)
+        assertEquals(8_000, page.end)
+        assertEquals(6_000, page.start)
+        assertEquals(20, page.lines.size)
+    }
 }

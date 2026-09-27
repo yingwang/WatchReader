@@ -177,6 +177,7 @@ class ReaderViewModel(
         } else {
             p.pageFrom(offset)
         }
+        jumpHistory.turned()
         publish()
     }
 
@@ -187,6 +188,7 @@ class ReaderViewModel(
     }
 
     private fun flipped() {
+        jumpHistory.turned()
         flipsSinceSync++
         val toPhone = flipsSinceSync >= SYNC_EVERY_FLIPS
         if (toPhone) flipsSinceSync = 0

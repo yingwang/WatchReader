@@ -78,19 +78,23 @@ class BookReceiverService : WearableListenerService() {
             WearBookRepository.storeContents(file, meta.tocJson)
             runBlocking {
                 val existing = WearBookRepository.getById(bookId)
-                WearBookRepository.insert(
-                    WearBook(
-                        id = meta.id,
-                        title = meta.title,
-                        filePath = file.absolutePath,
-                        sizeBytes = file.length(),
-                        addedEpochMs = meta.addedEpochMs,
-                        totalChars = text.length,
-                        // a re-sent book keeps its place, unless the text changed length
-                        readOffsetChars = resentBookOffset(existing?.readOffsetChars, existing?.totalChars, text.length),
-                        lastReadEpochMs = existing?.lastReadEpochMs ?: 0,
-                    ),
+                val stored = WearBook(
+                    id = meta.id,
+                    title = meta.title,
+                    filePath = file.absolutePath,
+                    sizeBytes = file.length(),
+                    addedEpochMs = meta.addedEpochMs,
+                    totalChars = text.length,
+                    // a re-sent book keeps its place, moved in proportion if the text changed length
+                    readOffsetChars = resentBookOffset(existing?.readOffsetChars, existing?.totalChars, text.length),
+                    lastReadEpochMs = existing?.lastReadEpochMs ?: 0,
                 )
+                WearBookRepository.insert(stored)
+                // The kept copy still holds the old offset under the same stamp, and the next
+                // start would put it back; replace it with the moved one.
+                if (existing != null && existing.totalChars != text.length && existing.lastReadEpochMs > 0) {
+                    WearBookRepository.republishProgress(stored)
+                }
                 if (existing == null) {
                     runCatching {
                         ProgressDataSync.restore(this@BookReceiverService, WearBookRepository::applyProgressFromPhone)

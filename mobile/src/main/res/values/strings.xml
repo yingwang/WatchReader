@@ -18,7 +18,6 @@
     <string name="status_not_sent">Not on watch</string>
     <string name="status_sending">Sending…</string>
     <string name="status_sent">On watch</string>
-    <string name="status_sent_progress">On watch · %1$d%%</string>
     <string name="status_failed">Failed · tap to retry</string>
     <string name="status_failed_reason">Failed · %1$s</string>
 
@@ -59,6 +58,6 @@
     <string name="reader_font_size">Text size</string>
     <string name="reader_font_preview">A quiet page, a little time to read.</string>
     <string name="reader_hide_controls">Hide title bar</string>
-    <string name="reader_show_controls">Show reading controls</string>
+    <string name="reader_show_controls_hint">Tap the middle of the page to bring it back.</string>
     <string name="reader_done">Done</string>
 </resources>

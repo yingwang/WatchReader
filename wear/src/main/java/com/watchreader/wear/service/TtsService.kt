@@ -109,7 +109,19 @@ class TtsService : Service() {
         return START_NOT_STICKY
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun play(bookId: String, offset: Int) {
+        // What was being read until now is saved only every few sentences; keep its exact place,
+        // stamped with the moment its sentence began so that a later jump still wins.
+        val left = book
+        val leftAt = sentences.getOrNull(current)?.first
+        val leftStamp = currentStartedAt
+        if (left != null && leftAt != null && leftStamp != 0L && !finishedBook) {
+            GlobalScope.launch(Dispatchers.IO + NonCancellable) {
+                WearBookRepository.updateProgress(left.id, leftAt, leftStamp)
+                WearBookRepository.sendProgressToPhone(left, leftAt, leftStamp)
+            }
+        }
         val serial = session.invalidate()
         tts?.stop()
         finishedBook = false
@@ -120,7 +132,11 @@ class TtsService : Service() {
                 if (serial == session.generation) finish()
                 return@launch
             }
-            val loadedText = WearBookRepository.loadText(loaded)
+            // A book whose file has gone (a transfer cut short, storage cleared) has nothing to read.
+            val loadedText = runCatching { WearBookRepository.loadText(loaded) }.getOrElse {
+                if (serial == session.generation) finish()
+                return@launch
+            }
             // another play() came in while this one was reading the file; that one owns the engine now
             if (serial != session.generation) return@launch
             // Every character from here to the end is looked at; a novel's worth is too much for
@@ -137,7 +153,6 @@ class TtsService : Service() {
                 return@launch
             }
             applyPrefs()
-            tts?.stop()
             nextToQueue = 0
             current = -1
             sentencesSinceSave = 0

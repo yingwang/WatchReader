@@ -70,13 +70,30 @@ fun ReadingTheme(content: @Composable () -> Unit) {
         }
     }
     MaterialTheme(
+        // Every colour a sheet, a dialog or a highlighted row reaches for is given here; one left
+        // out falls back to Material's purple baseline, which has no place on this page.
         colorScheme = darkColorScheme(
             primary = Color(0xFF9FC5FF),
+            onPrimary = Color(0xFF0F2A4D),
+            primaryContainer = Color(0xFF263447),
+            onPrimaryContainer = Color(0xFFE8E0D4),
             secondary = Color(0xFF9FC5FF),
+            onSecondary = Color(0xFF0F2A4D),
+            secondaryContainer = Color(0xFF263447),
+            onSecondaryContainer = Color(0xFFE8E0D4),
             background = Color(0xFF121210),
             surface = Color(0xFF121210),
+            surfaceVariant = Color(0xFF2E2D29),
+            surfaceContainerLowest = Color(0xFF0D0D0B),
+            surfaceContainerLow = Color(0xFF1A1A17),
+            surfaceContainer = Color(0xFF1E1E1B),
+            surfaceContainerHigh = Color(0xFF252521),
+            surfaceContainerHighest = Color(0xFF2E2D29),
             onBackground = Color(0xFFE8E0D4),
             onSurface = Color(0xFFE8E0D4),
+            onSurfaceVariant = Color(0xFFB8B0A4),
+            outline = Color(0xFF8A8378),
+            outlineVariant = Color(0xFF3A3934),
         ),
         content = content,
     )

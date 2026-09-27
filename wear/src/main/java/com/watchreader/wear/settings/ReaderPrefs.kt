@@ -56,6 +56,11 @@ class ReaderPrefs(context: Context) {
         get() = prefs.getBoolean("reader_hint_seen", false)
         set(value) = prefs.edit().putBoolean("reader_hint_seen", value).apply()
 
+    /** Whether the reader has been told, once, that a double tap pauses the voice. */
+    var doubleTapHintSeen: Boolean
+        get() = prefs.getBoolean("double_tap_hint_seen", false)
+        set(value) = prefs.edit().putBoolean("double_tap_hint_seen", value).apply()
+
     companion object {
         const val MIN_FONT = 12
         const val MAX_FONT = 22

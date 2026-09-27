@@ -27,6 +27,16 @@ object ProgressDataSync {
         client.putDataItem(request).await()
     }
 
+    /**
+     * Drops this node's progress for a book it no longer has. The other side's copy is its own
+     * and stays: that side may still have the book, and it is how a book sent again finds its place.
+     */
+    suspend fun forget(context: Context, bookId: String) = writes.withLock {
+        val node = Wearable.getNodeClient(context).localNode.await()
+        val uri = Uri.Builder().scheme("wear").authority(node.id).encodedPath(PREFIX + Uri.encode(bookId)).build()
+        Wearable.getDataClient(context).deleteDataItems(uri).await()
+    }
+
     internal fun shouldPublish(previous: ReadingProgress?, next: ReadingProgress): Boolean =
         previous == null || next.lastReadEpochMs > previous.lastReadEpochMs ||
             (next.lastReadEpochMs == previous.lastReadEpochMs && next != previous)

@@ -2,6 +2,7 @@ package com.watchreader.mobile.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.watchreader.mobile.data.db.AppDatabase
 import com.watchreader.mobile.data.db.BookDao
 import com.watchreader.mobile.data.model.Book
@@ -10,6 +11,7 @@ import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.util.EpubParser
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.TextNormalizer
 import kotlinx.coroutines.Dispatchers
@@ -33,8 +35,10 @@ object BookRepository {
 
     private lateinit var dao: BookDao
     private lateinit var booksDir: File
+    private lateinit var appContext: Context
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         dao = AppDatabase.get(context).bookDao()
         booksDir = File(context.filesDir, "books").also { it.mkdirs() }
     }
@@ -106,6 +110,8 @@ object BookRepository {
         File(book.filePath).delete()
         book.coverPath?.let { File(it).delete() }
         dao.deleteById(id)
+        runCatching { ProgressDataSync.forget(appContext, id) }
+            .onFailure { Log.w("WatchReader", "Could not drop synced progress for $id", it) }
     }
 
     /** [message] is the watch's reason when a transfer failed; the library shows it under the cover. */

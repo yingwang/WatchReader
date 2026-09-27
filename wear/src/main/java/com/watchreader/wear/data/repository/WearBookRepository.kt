@@ -55,6 +55,9 @@ object WearBookRepository {
                 // new text with the old offsets. This book is laid down rather than sent, so its
                 // chapters are read out of the text here, the once, and kept like any other.
                 storeContents(file, BookToc.toJson(BookToc.detect(text)))
+                // The same goes for the place kept for the other side: it is an offset into the
+                // old text, and the guide starts again from its first page.
+                runCatching { ProgressDataSync.forget(appContext, SAMPLE_ID) }
                 dao.upsert(
                     WearBook(
                         id = SAMPLE_ID,
@@ -82,6 +85,8 @@ object WearBookRepository {
         File(book.filePath).delete()
         File(book.filePath + ".toc.json").delete()
         dao.deleteById(id)
+        runCatching { ProgressDataSync.forget(appContext, id) }
+            .onFailure { Log.w(TAG, "Could not drop synced progress for $id", it) }
         if (tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
     }
 
@@ -93,6 +98,17 @@ object WearBookRepository {
     /** Progress read on the phone. The later of the two readings wins (see the DAO's guard). */
     suspend fun applyProgressFromPhone(progress: ReadingProgress) {
         dao.updateProgress(progress.bookId, progress.charOffset.coerceAtLeast(0), progress.lastReadEpochMs)
+    }
+
+    /**
+     * Replaces the kept copy of this book's place without a newer stamp, for a book whose text
+     * changed under it; the phone's own reading, if later, still wins.
+     */
+    suspend fun republishProgress(book: WearBook) {
+        val total = book.totalChars.takeIf { it > 0 } ?: return
+        val progress = ReadingProgress(book.id, book.readOffsetChars, (book.readOffsetChars.toFloat() / total).coerceIn(0f, 1f), book.lastReadEpochMs)
+        runCatching { ProgressDataSync.publish(appContext, progress) }
+            .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
     }
 
     /** Persists progress for reconnection; the phone shows it on the book's cover. */
