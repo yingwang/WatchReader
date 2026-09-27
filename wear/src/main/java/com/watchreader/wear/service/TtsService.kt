@@ -59,6 +59,8 @@ class TtsService : Service() {
     /** Set in onDestroy so an engine that reports ready afterwards is ignored. */
     @Volatile private var destroyed = false
     private var currentLocale: Locale? = null
+    /** What the book being read says about its languages, worked out once each time play starts. */
+    private var bookLanguages = LanguageDetector.Book()
     private var sentencesSinceSave = 0
     private var finishedBook = false
 
@@ -139,15 +141,17 @@ class TtsService : Service() {
             }
             // another play() came in while this one was reading the file; that one owns the engine now
             if (serial != session.generation) return@launch
-            // Every character from here to the end is looked at; a novel's worth is too much for
-            // the main thread, so it happens on a worker.
-            val split = withContext(Dispatchers.IO) {
-                SentenceParser.ranges(loadedText, offset.coerceIn(0, loadedText.length))
+            // Every character from here to the end is looked at, and the whole book once more for
+            // the languages it is written in; a novel's worth is too much for the main thread, so
+            // it happens on a worker.
+            val (split, languages) = withContext(Dispatchers.IO) {
+                SentenceParser.ranges(loadedText, offset.coerceIn(0, loadedText.length)) to LanguageDetector.survey(loadedText)
             }
             if (serial != session.generation) return@launch
             book = loaded
             text = loadedText
             sentences = split
+            bookLanguages = languages
             if (sentences.isEmpty()) {
                 finish()
                 return@launch
@@ -177,7 +181,7 @@ class TtsService : Service() {
             val sentence = text.substring(range.first, range.last + 1)
             // Every sentence is spoken in the language it is written in; there is nothing to
             // choose. A watch without that voice keeps the one it has rather than falling silent.
-            val locale = LanguageDetector.detect(sentence)
+            val locale = LanguageDetector.detect(sentence, bookLanguages)
             if (locale != currentLocale) {
                 val result = engine.setLanguage(locale)
                 if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
