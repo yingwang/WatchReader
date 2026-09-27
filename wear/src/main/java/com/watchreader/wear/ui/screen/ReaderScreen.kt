@@ -354,7 +354,7 @@ fun ReaderScreen(
 
                 // small percent at the bottom edge, inside the round bezel
                 Text(
-                    text = boundaryMessage ?: stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
+                    text = boundaryMessage ?: stringResource(R.string.reader_percent, (s.fraction * 100).toInt()),
                     color = if (boundaryMessage != null) colors.text else colors.dim,
                     fontSize = 9.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),

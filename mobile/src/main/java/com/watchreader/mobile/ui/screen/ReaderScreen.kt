@@ -313,7 +313,7 @@ fun ReaderScreen(
                             }
                         }
                         Text(
-                            text = stringResource(R.string.reader_percent, (s.fraction * 100).roundToInt()),
+                            text = stringResource(R.string.reader_percent, (s.fraction * 100).toInt()),
                             color = onBackground.copy(alpha = 0.7f),
                             fontSize = 12.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
