@@ -263,16 +263,22 @@ private val dateFormat = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLIS
 
 private fun date(epochMs: Long): String = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).format(dateFormat)
 
-/** The library's one line: today's reading time, for a reader who has any on record at all. */
+private val headerDateFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.ENGLISH)
+
+/**
+ * The library's first line: today's date and today's reading time, for a reader who has any on
+ * record at all. The date stands in for a "Today" label, so the line also says what day it is.
+ */
 @Composable
 fun TodayLine(rows: List<ReadingTime>, onClick: () -> Unit) {
-    val today = remember { LocalDate.now().toString() }
+    val date = remember { LocalDate.now() }
+    val today = date.toString()
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(stringResource(R.string.stats_today), style = MaterialTheme.typography.titleMedium)
+        Text(date.format(headerDateFormat), style = MaterialTheme.typography.titleMedium)
         Text(
             durationOrNothing(rows.filter { it.day == today }.sumOf { it.millis }) + "  ›",
             style = MaterialTheme.typography.titleMedium,

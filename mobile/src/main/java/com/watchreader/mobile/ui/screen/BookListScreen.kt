@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,8 +42,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -70,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.watchreader.mobile.BuildConfig
 import com.watchreader.mobile.R
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
@@ -103,7 +99,6 @@ fun BookListScreen(
     // The book is kept by id, so the question survives a rotation and goes away with the book.
     var deleteTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     val deleteTarget = deleteTargetId?.let { id -> books.firstOrNull { it.id == id } }
-    var showAbout by rememberSaveable { mutableStateOf(false) }
     val uiPrefs = remember { context.getSharedPreferences("library_ui", android.content.Context.MODE_PRIVATE) }
     var showHint by remember { mutableStateOf(!uiPrefs.getBoolean("hint_dismissed", false)) }
     val currentBook = books.filter { it.lastReadEpochMs > 0 }.maxByOrNull { it.lastReadEpochMs }
@@ -131,22 +126,6 @@ fun BookListScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(stringResource(R.string.list_title))
-                },
-                actions = {
-                    IconButton(onClick = { showAbout = true }) {
-                        Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.list_about))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                ),
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddBook,
@@ -186,7 +165,7 @@ fun BookListScreen(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -235,13 +214,6 @@ fun BookListScreen(
             }
         }
     }
-
-    if (showAbout) AlertDialog(
-        onDismissRequest = { showAbout = false },
-        title = { Text(stringResource(R.string.list_about)) },
-        text = { Text(stringResource(R.string.list_version, BuildConfig.VERSION_NAME)) },
-        confirmButton = { TextButton(onClick = { showAbout = false }) { Text(stringResource(R.string.list_dismiss_hint)) } },
-    )
 
     deleteTarget?.let { book ->
         AlertDialog(
