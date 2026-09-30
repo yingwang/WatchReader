@@ -43,6 +43,7 @@ object LanguageDetector {
     val NORWEGIAN: Locale = Locale.forLanguageTag("nb-NO")
     val FINNISH: Locale = Locale.forLanguageTag("fi-FI")
     val POLISH: Locale = Locale.forLanguageTag("pl-PL")
+    val CZECH: Locale = Locale.forLanguageTag("cs-CZ")
     val TURKISH: Locale = Locale.forLanguageTag("tr-TR")
     val VIETNAMESE: Locale = Locale.forLanguageTag("vi-VN")
     val INDONESIAN: Locale = Locale.forLanguageTag("id-ID")
@@ -72,7 +73,11 @@ object LanguageDetector {
         Script(HINDI, 0x0900..0x097F, 0xA8E0..0xA8FF),
     )
 
-    private class Latin(val locale: Locale, words: String) {
+    /**
+     * [letters] are ones this language writes and its close neighbours do not, lower case; set only
+     * for neighbours that share too many small words to be told apart by those alone.
+     */
+    private class Latin(val locale: Locale, words: String, val letters: String = "") {
         val words: Set<String> = words.split(' ').toHashSet()
     }
 
@@ -93,7 +98,8 @@ object LanguageDetector {
         Latin(DANISH, "og i at det er en til på som de med han af for ikke der var jeg har sig men et hun om den så fra kan eller når efter ud op skulle havde blev noget også bare hvor meget ham hende vi jer hans hendes sin sit dig mig hvad nu her siden end alle man under over mod uden kunne være hvordan da dette altid aldrig måske fik lidt igen nogle"),
         Latin(NORWEGIAN, "og i at det er en til på som de med han av for ikke der var jeg har seg men et hun om den så fra kan eller når etter ut opp skulle hadde ble noe også bare hvor mye ham henne vi dere hans hennes sin sitt deg meg hva nå her siden enn alle man under over mot uten kunne være hvordan da dette alltid aldri kanskje fikk litt igjen noen å"),
         Latin(FINNISH, "ja on ei se että hän oli ole mutta kun niin kuin joka jo vain sen hänen minä sinä me he ne tämä tuo mitä nyt sitten myös jos vielä ovat olla kanssa mikä siitä sitä siellä täällä minun sinun olen olet koska kaikki pois sillä jotka jonka mukaan voi eikä tai vaan ennen jälkeen aina paljon hyvin nämä"),
-        Latin(POLISH, "i w nie się na z że do to jest o jak a ale co po tak go jego jej od za już tylko czy przez dla tego był była było ze mnie ja ty on ona my oni ten ta gdy bo jeszcze tym który która które aby kiedy tu tam sobie mi mu bardzo teraz nic być może"),
+        Latin(POLISH, "i w nie się na z że do to jest o jak a ale co po tak go jego jej od za już tylko czy przez dla tego był była było ze mnie ja ty on ona my oni ten ta gdy bo jeszcze tym który która które aby kiedy tu tam sobie mi mu bardzo teraz nic być może", letters = "łąęśźż"),
+        Latin(CZECH, "a se na je v že to s z o do jako i k ale po tak by za co jeho jen už mi jsem ten ta tu pro od při jsou byl byla bylo byli není nebo když který která které také jak aby jsme jste mě mne tě ho jí jej své svůj její tam zde teď ještě velmi však protože kde kdy nic něco bude jsi mu jim nás vás", letters = "ěřů"),
         Latin(TURKISH, "ve bir bu da de için ile ne o ama gibi çok daha en ben sen biz siz onlar var yok değil mi mı mu mü ki kadar sonra şey her olan olarak ya diye bana beni sana seni onu ona şimdi hiç nasıl neden zaman kendi önce bile artık hem ise şu bunu buna böyle öyle oldu olduğu idi dedi değildi çünkü ancak eğer sadece tüm hep"),
         Latin(VIETNAMESE, "và của là có không được người một những trong cho này đã với các để khi thì cũng như đến ra nhưng tôi anh em ông bà nó họ chúng ta mình lại từ về làm đi nói biết còn sẽ vào rất nhiều nếu vì sao gì ai đây đó rồi mà năm đang chỉ đều nào lên hay sau bị thấy muốn phải"),
         Latin(INDONESIAN, "yang dan di itu dengan untuk tidak ini dari dalam akan pada juga saya ke karena tersebut bisa ada mereka lebih kami kita sudah atau hanya oleh jika seperti telah dia aku kamu apa ia tetapi masih sangat harus bahwa saat semua tak begitu lagi kalau belum sebuah setelah ketika sedang tapi hari orang"),
@@ -113,6 +119,8 @@ object LanguageDetector {
     /** Below this many common words, or this share of the words sampled, the guess is English. */
     private const val MIN_HITS = 8
     private const val MIN_SHARE = 0.1f
+    /** A neighbour's own letters the sample must hold before they outweigh the small words. */
+    private const val OWN_LETTERS = 5
     /** Ukrainian letters a book must have, beyond the Russian ones, before its Cyrillic is Ukrainian. */
     private const val UKRAINIAN_MIN = 3
     /**
@@ -204,6 +212,16 @@ object LanguageDetector {
         for (word in words) for (i in LATIN.indices) if (word in LATIN[i].words) hits[i]++
         var best = 0
         for (i in hits.indices) if (hits[i] > hits[best]) best = i
+        // Neighbours that share their small words, such as Czech and Polish, are told apart by the
+        // letters only one of them writes: a best guess whose own letters never appear gives way
+        // to a language whose letters do.
+        if (LATIN[best].letters.isNotEmpty() && words.none { word -> word.any { it in LATIN[best].letters } }) {
+            val rival = LATIN.indices.filter { i ->
+                i != best && hits[i] >= MIN_HITS &&
+                    words.sumOf { word -> word.count { it in LATIN[i].letters } } >= OWN_LETTERS
+            }.maxByOrNull { hits[it] }
+            if (rival != null) best = rival
+        }
         val sure = hits[best] >= MIN_HITS && hits[best] >= words.size * MIN_SHARE
         val own = if (system == null) -1 else LATIN.indexOfFirst { sameLanguage(it.locale, system) }
         return when {

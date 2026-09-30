@@ -75,6 +75,11 @@ class TtsService : Service() {
     /** Languages already reported as having no voice, so each is reported once per book. */
     private val warned = HashSet<Locale>()
     /**
+     * Sentences queued as silence for want of a voice. They are reported when reading reaches
+     * them, not when they are queued, which can be a page or two earlier.
+     */
+    private val skipped = HashSet<Int>()
+    /**
      * The sentence at which reading stops because a long stretch from there is in a language the
      * watch has no voice for; -1 when there is none ahead.
      */
@@ -184,6 +189,7 @@ class TtsService : Service() {
             sayable.clear()
             engineVoices = null
             warned.clear()
+            skipped.clear()
             stopAt = -1
             waitingSince = 0L
             // The voices the book needs that are not on the watch yet are asked for now, rather
@@ -242,7 +248,7 @@ class TtsService : Service() {
             } else {
                 // A sentence or two in a language the watch has no voice for is passed over, not
                 // read in the voice of another, which says it wrong or not at all.
-                noVoice(locale, pause = false)
+                skipped += i
                 engine.playSilentUtterance(SKIP_MS, TextToSpeech.QUEUE_ADD, id)
             }
             if (result != TextToSpeech.SUCCESS) {
@@ -349,6 +355,7 @@ class TtsService : Service() {
                     waitingSince = 0L
                     TtsPlayback.fetching(null)
                 }
+                if (skipped.remove(index)) noVoice(LanguageDetector.detect(sentenceAt(index), bookLanguages), pause = false)
                 current = index
                 currentStartedAt = System.currentTimeMillis()
                 TtsPlayback.sentence(range)

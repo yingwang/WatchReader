@@ -110,6 +110,21 @@ class LanguageDetectorTest {
     }
 
     @Test
+    fun czechAndPolishAreToldApart() {
+        assertEquals(LanguageDetector.CZECH, LanguageDetector.latinLanguage(PARAGRAPHS.getValue(LanguageDetector.CZECH)))
+        assertEquals(LanguageDetector.POLISH, LanguageDetector.latinLanguage(PARAGRAPHS.getValue(LanguageDetector.POLISH)))
+        // Before Czech had a list, this passage went to Polish on the small words the two share.
+        val czech = "Když jsem se ráno probudil, venku ještě byla tma. Vstal jsem, uvařil si kávu a sedl si k oknu. " +
+            "Na ulici nebyl nikdo, jen starý pes, který každý den chodí kolem našeho domu. Myslel jsem na to, co mi " +
+            "včera řekla sestra. Prý se chce odstěhovat do Prahy, protože tady pro ni není práce."
+        assertEquals(LanguageDetector.CZECH, LanguageDetector.latinLanguage(czech))
+        // Where the small words alone would tie, the letters only one of the two writes decide.
+        val shared = "a na to do ale po tak za co jak ten ta tu od ".repeat(4)
+        assertEquals(LanguageDetector.CZECH, LanguageDetector.latinLanguage(shared + "řeka město dům řeka město dům"))
+        assertEquals(LanguageDetector.POLISH, LanguageDetector.latinLanguage(shared + "łąka mąż źle łąka mąż źle"))
+    }
+
+    @Test
     fun accentsWrittenAsSeparateMarksStillMakeWords() {
         val composed = PARAGRAPHS.getValue(LanguageDetector.VIETNAMESE)
         val decomposed = java.text.Normalizer.normalize(composed, java.text.Normalizer.Form.NFD)
@@ -269,6 +284,10 @@ class LanguageDetectorTest {
                 "Ogród z latami zdziczał, a okna były ciemne od kurzu. Stała przez chwilę przy furtce i zastanawiała " +
                 "się, czy ktoś jeszcze tam mieszka, a potem poszła ścieżką w górę i zapukała dwa razy do drzwi. Nikt " +
                 "nie odpowiedział, ale słyszała gdzieś w środku muzykę, cichą i powolną, jakby grała już od bardzo dawna.",
+            LanguageDetector.CZECH to "Bylo už pozdní odpoledne, když konečně došla ke starému domu na konci cesty. " +
+                "Zahrada za ta léta zpustla a okna byla tmavá od prachu. Chvíli stála u branky a přemýšlela, jestli " +
+                "tam ještě někdo bydlí, a pak vyšla po cestičce nahoru a dvakrát zaklepala na dveře. Nikdo " +
+                "neodpověděl, ale slyšela někde uvnitř hudbu, tichou a pomalou, jako by hrála už velmi dlouho.",
             LanguageDetector.TURKISH to "Sonunda yolun sonundaki eski eve vardığında öğleden sonra geç olmuştu. Bahçe " +
                 "yıllar içinde yabanileşmiş, pencereler de tozdan kararmıştı. Bir süre kapının yanında durdu ve orada " +
                 "hâlâ birinin yaşayıp yaşamadığını merak etti, sonra patikadan yukarı çıktı ve kapıyı iki kez çaldı. " +
