@@ -18,7 +18,14 @@ import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.resentBookOffset
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
+import com.watchreader.wear.tts.BookLanguages
+import com.watchreader.wear.tts.VoiceDownloads
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.File
 
@@ -94,7 +101,7 @@ class BookReceiverService : WearableListenerService() {
             val file = File(WearBookRepository.getBooksDir(), "$bookId.txt")
             if (!tmp.renameTo(file)) throw IllegalStateException("Could not store the book")
             WearBookRepository.storeContents(file, meta.tocJson)
-            runBlocking {
+            val received = runBlocking {
                 val existing = WearBookRepository.getById(bookId)
                 val stored = WearBook(
                     id = meta.id,
@@ -118,8 +125,10 @@ class BookReceiverService : WearableListenerService() {
                         ProgressDataSync.restore(this@BookReceiverService, WearBookRepository::applyProgressFromPhone)
                     }.onFailure { Log.w(TAG, "Could not restore synced progress", it) }
                 }
+                stored
             }
             Log.d(TAG, "Stored '${meta.title}' (${text.length} chars)")
+            fetchVoices(received, text)
             BookReceipt(bookId, ok = true, totalChars = text.length)
         } catch (e: Exception) {
             Log.e(TAG, "Receiving $bookId failed", e)
@@ -137,5 +146,19 @@ class BookReceiverService : WearableListenerService() {
                 ),
             )
         }.onFailure { Log.w(TAG, "Could not send the receipt for $bookId", it) }
+    }
+
+    /**
+     * Starts fetching the voices the new book will be read aloud in, while the watch is likely
+     * still on the connection that brought it, so the first sentence in a new language does not
+     * have to wait for one.
+     */
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun fetchVoices(book: WearBook, text: String) {
+        val app = applicationContext
+        GlobalScope.launch(Dispatchers.IO) {
+            val needed = runCatching { BookLanguages.of(book, text) }.getOrNull() ?: return@launch
+            withContext(Dispatchers.Main) { VoiceDownloads.request(app, needed) }
+        }
     }
 }

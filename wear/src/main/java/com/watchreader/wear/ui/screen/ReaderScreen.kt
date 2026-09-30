@@ -100,6 +100,7 @@ import com.watchreader.wear.reader.Typefaces
 import com.watchreader.shared.reader.Paginator
 import com.watchreader.wear.service.TtsService
 import com.watchreader.wear.settings.ReaderPrefs
+import com.watchreader.wear.tts.TtsLanguages
 import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.ui.theme.pageColors
@@ -143,6 +144,7 @@ fun ReaderScreen(
     val ttsState by TtsPlayback.state.collectAsState()
     val ttsBook by TtsPlayback.bookId.collectAsState()
     val spoken by TtsPlayback.sentence.collectAsState()
+    val fetching by TtsPlayback.fetching.collectAsState()
     val ttsHere = ttsBook == bookId && ttsState != TtsState.IDLE
     val isRound = LocalConfiguration.current.isScreenRound
 
@@ -364,8 +366,11 @@ fun ReaderScreen(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
                 if (ttsHere) {
+                    val waitingFor = fetching
                     Text(
-                        text = stringResource(when (ttsState) {
+                        text = if (ttsState == TtsState.PLAYING && waitingFor != null) {
+                            stringResource(R.string.reader_fetching_short, TtsLanguages.label(waitingFor))
+                        } else stringResource(when (ttsState) {
                             TtsState.LOADING -> R.string.reader_preparing_short
                             TtsState.PLAYING -> R.string.reader_playing_short
                             else -> R.string.tts_paused
@@ -523,8 +528,12 @@ private fun Toolbar(
                     }
                 }
                 item {
+                    val fetching by TtsPlayback.fetching.collectAsState()
+                    val waitingFor = fetching
                     Text(
-                        stringResource(when {
+                        if (ttsHere && ttsState == TtsState.PLAYING && waitingFor != null) {
+                            stringResource(R.string.tts_fetching, TtsLanguages.label(waitingFor))
+                        } else stringResource(when {
                             ttsHere && ttsState == TtsState.LOADING -> R.string.tts_loading
                             ttsHere && ttsState == TtsState.PLAYING -> R.string.tts_reading_aloud
                             ttsHere && ttsState == TtsState.PAUSED -> R.string.tts_paused

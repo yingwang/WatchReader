@@ -333,8 +333,15 @@ fun SpeechSettingsScreen() {
         val books = needed
         if (probed != null && books != null) {
             val v = probed.only(TtsLanguages.shown(books))
-            item { Caption(if (v.installed.isEmpty()) stringResource(R.string.settings_voices_none) else stringResource(R.string.settings_voices_have, v.installed.joinToString(", ") { TtsLanguages.label(it) })) }
-            if (v.missing.isNotEmpty()) item { Caption(stringResource(R.string.settings_voices_missing, v.missing.joinToString(", ") { TtsLanguages.label(it) })) }
+            fun names(locales: List<Locale>) = locales.joinToString(", ") { TtsLanguages.label(it) }
+            // An engine that answers nothing at all is no engine.
+            if (probed.installed.isEmpty() && probed.download.isEmpty()) {
+                item { Caption(stringResource(R.string.settings_voices_none)) }
+            } else {
+                if (v.installed.isNotEmpty()) item { Caption(stringResource(R.string.settings_voices_have, names(v.installed))) }
+                if (v.download.isNotEmpty()) item { Caption(stringResource(R.string.settings_voices_download, names(v.download))) }
+                if (v.missing.isNotEmpty()) item { Caption(stringResource(R.string.settings_voices_missing, names(v.missing))) }
+            }
         }
     }
 }

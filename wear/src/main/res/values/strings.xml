@@ -62,7 +62,8 @@
     <string name="settings_section_speech">Read aloud</string>
     <string name="settings_speech_rate">Speed</string>
     <string name="settings_voices_have">Voice: %1$s</string>
-    <string name="settings_voices_missing">Missing voice: %1$s</string>
+    <string name="settings_voices_download">Downloaded when first read: %1$s</string>
+    <string name="settings_voices_missing">No voice on this watch: %1$s</string>
     <string name="settings_voices_none">No speech engine installed</string>
     <string name="settings_version">v%1$s</string>
 
@@ -74,11 +75,16 @@
     <string name="tts_action_resume">Resume</string>
     <string name="tts_action_stop">Stop</string>
     <string name="tts_no_engine">No text-to-speech engine on this watch</string>
+    <string name="tts_no_voice">This watch has no %1$s voice</string>
+    <string name="tts_voice_offline">Connect to Wi-Fi to get the %1$s voice</string>
+    <string name="tts_voice_failed">Couldn\'t get the %1$s voice. Try again on Wi-Fi.</string>
+    <string name="tts_fetching">Getting the %1$s voice…</string>
     <string name="sample_title">Start here</string>
     <string name="reader_first_page">First page</string>
     <string name="reader_double_pause">Double-tap to pause</string>
     <string name="reader_preparing_short">Preparing</string>
     <string name="reader_playing_short">Reading</string>
+    <string name="reader_fetching_short">Getting %1$s voice</string>
     <string name="reader_current_chapter">Current chapter</string>
     <string name="reader_confirm_jump">Go to this position</string>
     <string name="reader_undo_jump">Return to before jump</string>

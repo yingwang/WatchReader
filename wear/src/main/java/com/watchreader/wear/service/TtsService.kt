@@ -8,22 +8,28 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.widget.Toast
 import kotlin.concurrent.thread
 import androidx.core.app.NotificationCompat
 import com.watchreader.wear.R
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
 import com.watchreader.wear.settings.ReaderPrefs
+import com.watchreader.wear.tts.BookLanguages
 import com.watchreader.wear.tts.LanguageDetector
 import com.watchreader.wear.tts.SentenceParser
+import com.watchreader.wear.tts.TtsLanguages
 import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.tts.UtteranceSession
+import com.watchreader.wear.tts.VoiceDownloads
 import com.watchreader.wear.ui.WearActivity
 import kotlinx.coroutines.CoroutineScope
 import com.watchreader.shared.stats.ReadingSource
@@ -33,6 +39,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -62,6 +69,18 @@ class TtsService : Service() {
     private var currentLocale: Locale? = null
     /** What the book being read says about its languages, worked out once each time play starts. */
     private var bookLanguages = LanguageDetector.Book()
+    /** Whether the engine can say each language met while reading this book; asked once per language. */
+    private val sayable = HashMap<Locale, Boolean>()
+    private var engineVoices: List<TtsLanguages.VoiceInfo>? = null
+    /** Languages already reported as having no voice, so each is reported once per book. */
+    private val warned = HashSet<Locale>()
+    /**
+     * The sentence at which reading stops because a long stretch from there is in a language the
+     * watch has no voice for; -1 when there is none ahead.
+     */
+    private var stopAt = -1
+    /** When reading began waiting for a voice the engine is fetching; 0 when it is not waiting. */
+    private var waitingSince = 0L
     private var sentencesSinceSave = 0
     /** When the listening under way was last counted; 0 while nothing is playing. */
     private var listenedSince = 0L
@@ -154,13 +173,25 @@ class TtsService : Service() {
             // the languages it is written in; a novel's worth is too much for the main thread, so
             // it happens on a worker.
             val (split, languages) = withContext(Dispatchers.IO) {
-                SentenceParser.ranges(loadedText, offset.coerceIn(0, loadedText.length)) to LanguageDetector.survey(loadedText)
+                SentenceParser.ranges(loadedText, offset.coerceIn(0, loadedText.length)) to
+                    LanguageDetector.survey(loadedText, Locale.getDefault())
             }
             if (serial != session.generation) return@launch
             book = loaded
             text = loadedText
             sentences = split
             bookLanguages = languages
+            sayable.clear()
+            engineVoices = null
+            warned.clear()
+            stopAt = -1
+            waitingSince = 0L
+            // The voices the book needs that are not on the watch yet are asked for now, rather
+            // than when the first sentence in each comes up and fails for want of it.
+            scope.launch {
+                val needed = withContext(Dispatchers.IO) { runCatching { BookLanguages.of(loaded, loadedText) }.getOrNull() }
+                if (needed != null && !destroyed) VoiceDownloads.request(this@TtsService, needed)
+            }
             if (sentences.isEmpty()) {
                 finish()
                 return@launch
@@ -185,22 +216,36 @@ class TtsService : Service() {
     /** Keeps the engine fed a batch at a time; a whole novel queued at once makes some engines stall. */
     private fun queueMore() {
         val engine = tts ?: return
+        // Reading is to stop at a stretch the watch cannot say; nothing goes in after it.
+        if (stopAt >= 0) return
         val end = minOf(sentences.size, nextToQueue + BATCH)
         for (i in nextToQueue until end) {
-            val range = sentences[i]
-            val sentence = text.substring(range.first, range.last + 1)
-            // Every sentence is spoken in the language it is written in; there is nothing to
-            // choose. A watch without that voice keeps the one it has rather than falling silent.
+            val sentence = sentenceAt(i)
+            // Every sentence is spoken in the language it is written in; there is nothing to choose.
             val locale = LanguageDetector.detect(sentence, bookLanguages)
-            if (locale != currentLocale) {
-                val result = engine.setLanguage(locale)
-                if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
+            val id = session.id(i)
+            val result = if (canSay(engine, locale)) {
+                if (locale != currentLocale) {
+                    engine.setLanguage(locale)
                     currentLocale = locale
                 }
+                val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, id) }
+                engine.speak(sentence, TextToSpeech.QUEUE_ADD, params, id)
+            } else if (unsayableStretch(engine, i)) {
+                // A long run of a language the watch has no voice for, or the rest of the book:
+                // racing through it in silence would lose the reader's place and could mark the
+                // book read. Reading pauses where it begins, once what is queued before it is said.
+                stopAt = i
+                nextToQueue = i + 1
+                if (engine.playSilentUtterance(0, TextToSpeech.QUEUE_ADD, id) != TextToSpeech.SUCCESS) finish()
+                return
+            } else {
+                // A sentence or two in a language the watch has no voice for is passed over, not
+                // read in the voice of another, which says it wrong or not at all.
+                noVoice(locale, pause = false)
+                engine.playSilentUtterance(SKIP_MS, TextToSpeech.QUEUE_ADD, id)
             }
-            val id = session.id(i)
-            val params = Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, id) }
-            if (engine.speak(sentence, TextToSpeech.QUEUE_ADD, params, id) != TextToSpeech.SUCCESS) {
+            if (result != TextToSpeech.SUCCESS) {
                 // A sentence the engine refuses to take never gets an onError, so the queue
                 // would drain and the service sit silent in PLAYING. The engine is gone; the
                 // sentence being spoken is saved on the way out, and the reader sees idle.
@@ -213,6 +258,79 @@ class TtsService : Service() {
         nextToQueue = end
     }
 
+    private fun sentenceAt(index: Int): String = sentences[index].let { text.substring(it.first, it.last + 1) }
+
+    /**
+     * Whether the engine has, or can fetch, a voice for [locale]. A language it can fetch counts:
+     * the first sentence in it waits for the voice (see [voiceNotReady]).
+     */
+    private fun canSay(engine: TextToSpeech, locale: Locale): Boolean = sayable.getOrPut(locale) {
+        val voices = engineVoices ?: TtsLanguages.voices(engine).also { engineVoices = it }
+        TtsLanguages.stateOf(engine, locale, voices) != TtsLanguages.State.NONE
+    }
+
+    /** Whether the sentences from [from] on, as many as make a long stretch, are all ones the watch cannot say. */
+    private fun unsayableStretch(engine: TextToSpeech, from: Int): Boolean {
+        for (j in from until minOf(sentences.size, from + UNSAYABLE_STRETCH)) {
+            if (canSay(engine, LanguageDetector.detect(sentenceAt(j), bookLanguages))) return false
+        }
+        return true
+    }
+
+    /** Tells the reader, once per language per book, that the watch has no voice for [locale]. */
+    private fun noVoice(locale: Locale, pause: Boolean) {
+        if (!pause && !warned.add(locale)) return
+        Log.w(TAG, "No voice for ${locale.toLanguageTag()}; ${if (pause) "pausing" else "skipping"}")
+        toast(getString(R.string.tts_no_voice, TtsLanguages.label(locale)))
+    }
+
+    /**
+     * The engine could not say sentence [index] because the voice for its language is not on the
+     * watch yet; the first sentence in a language new to the watch fails this way while the engine
+     * fetches the voice. The rest of the batch would fail the same way, so it is dropped, and the
+     * sentence is tried again every few seconds until the voice has come. Without a connection, or
+     * after too long, reading pauses at that sentence instead and says why.
+     */
+    private fun voiceNotReady(index: Int) {
+        val engine = tts ?: return
+        if (index !in sentences.indices) return
+        val locale = LanguageDetector.detect(sentenceAt(index), bookLanguages)
+        session.invalidate()
+        engine.stop()
+        stopAt = -1
+        current = index
+        nextToQueue = index
+        currentLocale = null
+        val now = System.currentTimeMillis()
+        if (waitingSince == 0L) waitingSince = now
+        val connected = online()
+        if (!connected || now - waitingSince > VOICE_WAIT_MS) {
+            Log.w(TAG, "No ${locale.toLanguageTag()} voice after ${now - waitingSince} ms; connected=$connected")
+            waitingSince = 0L
+            pause()
+            val language = TtsLanguages.label(locale)
+            toast(getString(if (connected) R.string.tts_voice_failed else R.string.tts_voice_offline, language))
+            return
+        }
+        TtsPlayback.fetching(locale)
+        val serial = session.generation
+        scope.launch {
+            delay(VOICE_RETRY_MS)
+            if (serial == session.generation && TtsPlayback.state.value == TtsState.PLAYING) queueMore()
+        }
+    }
+
+    private fun online(): Boolean {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return true
+        val capabilities = runCatching { connectivity.getNetworkCapabilities(connectivity.activeNetwork) }.getOrNull()
+            ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String) {
             scope.launch {
@@ -220,6 +338,17 @@ class TtsService : Service() {
                 val serial = session.generation
                 if (TtsPlayback.state.value != TtsState.PLAYING) return@launch
                 val range = sentences.getOrNull(index) ?: return@launch
+                if (index == stopAt) {
+                    // The long stretch without a voice has come: pause at its start and say why.
+                    current = index
+                    pause()
+                    noVoice(LanguageDetector.detect(sentenceAt(index), bookLanguages), pause = true)
+                    return@launch
+                }
+                if (waitingSince != 0L) {
+                    waitingSince = 0L
+                    TtsPlayback.fetching(null)
+                }
                 current = index
                 currentStartedAt = System.currentTimeMillis()
                 TtsPlayback.sentence(range)
@@ -243,6 +372,14 @@ class TtsService : Service() {
         }
 
         override fun onError(utteranceId: String, errorCode: Int) {
+            if (errorCode in VOICE_NOT_READY) {
+                Log.w(TAG, "Utterance $utteranceId failed with $errorCode; waiting for the voice")
+                scope.launch {
+                    val index = session.index(utteranceId) ?: return@launch
+                    if (TtsPlayback.state.value == TtsState.PLAYING) voiceNotReady(index)
+                }
+                return
+            }
             Log.w(TAG, "Utterance $utteranceId failed with $errorCode; skipping")
             utteranceOver(utteranceId, failed = true)
         }
@@ -287,6 +424,8 @@ class TtsService : Service() {
         if (TtsPlayback.state.value != TtsState.PLAYING) return
         session.invalidate()
         tts?.stop()
+        stopAt = -1
+        waitingSince = 0L
         nextToQueue = maxOf(current, 0)
         TtsPlayback.state(TtsState.PAUSED)
         goForeground(titleOrLoading(), playing = false)
@@ -416,6 +555,22 @@ class TtsService : Service() {
         private const val REFILL_AT = 8
         private const val SAVE_EVERY = 10
         private const val MAX_LISTEN_STRETCH_MS = 5 * 60 * 1000L
+        /** Silence standing in for a sentence the watch has no voice for, so its place still passes. */
+        private const val SKIP_MS = 150L
+        /** Sentences in a row without a voice that make reading pause rather than pass them over. */
+        private const val UNSAYABLE_STRETCH = 12
+        /** How often a sentence waiting for its voice is tried again, and for how long in all. */
+        private const val VOICE_RETRY_MS = 3_000L
+        private const val VOICE_WAIT_MS = 60_000L
+        /**
+         * What Google's engine answers for a sentence whose voice it is still fetching: it tries
+         * the voice over the network first, which times out or fails, or says it is not installed yet.
+         */
+        private val VOICE_NOT_READY = setOf(
+            TextToSpeech.ERROR_NOT_INSTALLED_YET,
+            TextToSpeech.ERROR_NETWORK_TIMEOUT,
+            TextToSpeech.ERROR_NETWORK,
+        )
 
         fun play(context: Context, bookId: String, offset: Int) {
             context.startForegroundService(

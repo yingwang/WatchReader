@@ -1,5 +1,6 @@
 package com.watchreader.wear.tts
 
+import java.text.Normalizer
 import java.util.Locale
 
 /**
@@ -13,7 +14,12 @@ import java.util.Locale
  * Latin letters do not say which language they spell, and one sentence is too little to tell
  * French from Italian, so the book's Latin language is worked out once, from the small words that
  * make up much of any page ("the", "le", "der", "och"), and every Latin sentence in the book is read
- * in it. A book with too few of those words to be sure is read in English, as every book was before.
+ * in it. A book with too few of those words to be sure is read in English, as every book was before,
+ * unless the watch itself is set to one of those languages: then that is the better guess, and it
+ * also settles a close call between neighbours such as Danish and Norwegian.
+ *
+ * Cyrillic is Russian unless the book uses the letters only Ukrainian has (і, ї, є, ґ) more than
+ * the ones only Russian has (ы, э, ъ, ё); that too is decided once for the whole book.
  */
 object LanguageDetector {
     val ENGLISH: Locale = Locale.US
@@ -37,12 +43,21 @@ object LanguageDetector {
     val NORWEGIAN: Locale = Locale.forLanguageTag("nb-NO")
     val FINNISH: Locale = Locale.forLanguageTag("fi-FI")
     val POLISH: Locale = Locale.forLanguageTag("pl-PL")
+    val TURKISH: Locale = Locale.forLanguageTag("tr-TR")
+    val VIETNAMESE: Locale = Locale.forLanguageTag("vi-VN")
+    val INDONESIAN: Locale = Locale.forLanguageTag("id-ID")
+    val UKRAINIAN: Locale = Locale.forLanguageTag("uk-UA")
 
     /**
      * What is decided once for a whole book before any of it is read: the language its Latin
      * sentences are in, and whether its Han characters are Japanese kanji rather than Chinese.
      */
-    data class Book(val latin: Locale = ENGLISH, val kanjiIsJapanese: Boolean = false)
+    data class Book(
+        val latin: Locale = ENGLISH,
+        val kanjiIsJapanese: Boolean = false,
+        /** The language of the book's Cyrillic sentences. */
+        val cyrillic: Locale = RUSSIAN,
+    )
 
     private class Script(val locale: Locale, vararg val ranges: IntRange)
 
@@ -79,10 +94,14 @@ object LanguageDetector {
         Latin(NORWEGIAN, "og i at det er en til på som de med han av for ikke der var jeg har seg men et hun om den så fra kan eller når etter ut opp skulle hadde ble noe også bare hvor mye ham henne vi dere hans hennes sin sitt deg meg hva nå her siden enn alle man under over mot uten kunne være hvordan da dette alltid aldri kanskje fikk litt igjen noen å"),
         Latin(FINNISH, "ja on ei se että hän oli ole mutta kun niin kuin joka jo vain sen hänen minä sinä me he ne tämä tuo mitä nyt sitten myös jos vielä ovat olla kanssa mikä siitä sitä siellä täällä minun sinun olen olet koska kaikki pois sillä jotka jonka mukaan voi eikä tai vaan ennen jälkeen aina paljon hyvin nämä"),
         Latin(POLISH, "i w nie się na z że do to jest o jak a ale co po tak go jego jej od za już tylko czy przez dla tego był była było ze mnie ja ty on ona my oni ten ta gdy bo jeszcze tym który która które aby kiedy tu tam sobie mi mu bardzo teraz nic być może"),
+        Latin(TURKISH, "ve bir bu da de için ile ne o ama gibi çok daha en ben sen biz siz onlar var yok değil mi mı mu mü ki kadar sonra şey her olan olarak ya diye bana beni sana seni onu ona şimdi hiç nasıl neden zaman kendi önce bile artık hem ise şu bunu buna böyle öyle oldu olduğu idi dedi değildi çünkü ancak eğer sadece tüm hep"),
+        Latin(VIETNAMESE, "và của là có không được người một những trong cho này đã với các để khi thì cũng như đến ra nhưng tôi anh em ông bà nó họ chúng ta mình lại từ về làm đi nói biết còn sẽ vào rất nhiều nếu vì sao gì ai đây đó rồi mà năm đang chỉ đều nào lên hay sau bị thấy muốn phải"),
+        Latin(INDONESIAN, "yang dan di itu dengan untuk tidak ini dari dalam akan pada juga saya ke karena tersebut bisa ada mereka lebih kami kita sudah atau hanya oleh jika seperti telah dia aku kamu apa ia tetapi masih sangat harus bahwa saat semua tak begitu lagi kalau belum sebuah setelah ketika sedang tapi hari orang"),
     )
 
     /** Every language a sentence can be read in, in the order the settings page lists them. */
-    val LANGUAGES: List<Locale> = (listOf(ENGLISH, CHINESE, JAPANESE) + SCRIPTS.map { it.locale } + LATIN.map { it.locale }).distinct()
+    val LANGUAGES: List<Locale> =
+        (listOf(ENGLISH, CHINESE, JAPANESE) + SCRIPTS.map { it.locale } + UKRAINIAN + LATIN.map { it.locale }).distinct()
 
     private const val SHARE = 0.3f
     /** The share of a book's letters that must be Latin before its Latin language is guessed. */
@@ -94,6 +113,13 @@ object LanguageDetector {
     /** Below this many common words, or this share of the words sampled, the guess is English. */
     private const val MIN_HITS = 8
     private const val MIN_SHARE = 0.1f
+    /** Ukrainian letters a book must have, beyond the Russian ones, before its Cyrillic is Ukrainian. */
+    private const val UKRAINIAN_MIN = 3
+    /**
+     * The watch's own Latin language wins when its words come to at least this share of the best
+     * language's: close enough that the lists cannot tell the two apart with any confidence.
+     */
+    private const val CLOSE = 0.8f
     /** A language the settings page asks a voice for must carry at least this share of a book. */
     private const val NEEDED_SHARE = 0.01f
 
@@ -123,7 +149,9 @@ object LanguageDetector {
         if (han.toFloat() / total > SHARE) return if (book.kanjiIsJapanese) JAPANESE else CHINESE
         var best = -1
         for (i in scripts.indices) if (scripts[i] > 0 && (best < 0 || scripts[i] > scripts[best])) best = i
-        if (best >= 0 && scripts[best].toFloat() / total > SHARE) return SCRIPTS[best].locale
+        if (best >= 0 && scripts[best].toFloat() / total > SHARE) {
+            return if (SCRIPTS[best].locale == RUSSIAN) book.cyrillic else SCRIPTS[best].locale
+        }
         return book.latin
     }
 
@@ -136,12 +164,16 @@ object LanguageDetector {
      * book with a real share of another script the Latin words are mostly English (names of things,
      * quotations, the odd term) or words spelt out, such as pinyin, whose "de", "le" and "ma" look
      * like French to the word lists; they are read in English, as they always were.
+     *
+     * [system] is the language the watch is set to, which helps only with a Latin-script book.
      */
-    fun survey(text: CharSequence): Book {
+    fun survey(text: CharSequence, system: Locale? = null): Book {
         var letters = 0
         var latin = 0
         var han = 0
         var kana = 0
+        var ukrainian = 0
+        var russian = 0
         for (c in text) {
             if (!c.isLetter()) continue
             letters++
@@ -150,24 +182,44 @@ object LanguageDetector {
                 isLatinLetter(c) -> latin++
                 isHan(code) -> han++
                 isKana(code) -> kana++
+                c in UKRAINIAN_ONLY -> ukrainian++
+                c in RUSSIAN_ONLY -> russian++
             }
         }
         return Book(
-            latin = if (letters > 0 && latin >= letters * LATIN_BOOK) latinLanguage(text) else ENGLISH,
+            latin = if (letters > 0 && latin >= letters * LATIN_BOOK) latinLanguage(text, system) else ENGLISH,
             kanjiIsJapanese = kana > 0 && kana * 3 >= han + kana,
+            cyrillic = if (ukrainian >= UKRAINIAN_MIN && ukrainian > russian) UKRAINIAN else RUSSIAN,
         )
     }
 
-    /** The language of the book's Latin-script text, or English when there is too little to tell. */
-    fun latinLanguage(text: CharSequence): Locale {
+    /**
+     * The language of the book's Latin-script text. When there is too little to tell, it is the
+     * watch's own language if that is one of the Latin ones listed here, and English otherwise;
+     * the watch's language also wins when its words come close to the best.
+     */
+    fun latinLanguage(text: CharSequence, system: Locale? = null): Locale {
         val words = latinSample(text)
         val hits = IntArray(LATIN.size)
         for (word in words) for (i in LATIN.indices) if (word in LATIN[i].words) hits[i]++
         var best = 0
         for (i in hits.indices) if (hits[i] > hits[best]) best = i
         val sure = hits[best] >= MIN_HITS && hits[best] >= words.size * MIN_SHARE
-        return if (sure) LATIN[best].locale else ENGLISH
+        val own = if (system == null) -1 else LATIN.indexOfFirst { sameLanguage(it.locale, system) }
+        return when {
+            own < 0 -> if (sure) LATIN[best].locale else ENGLISH
+            !sure || hits[own] >= hits[best] * CLOSE -> LATIN[own].locale
+            else -> LATIN[best].locale
+        }
     }
+
+    /**
+     * Whether two locales name the same language, whatever the region. Compared by the three-letter
+     * code, because Android still reports some languages by their old two-letter ones ("in" for
+     * Indonesian, "iw" for Hebrew) where a tag says "id" and "he".
+     */
+    fun sameLanguage(a: Locale, b: Locale): Boolean =
+        runCatching { a.isO3Language == b.isO3Language }.getOrDefault(a.language == b.language)
 
     /**
      * About [LATIN_SAMPLE] letters' worth of Latin words, lower case, taken in equal parts from
@@ -182,7 +234,7 @@ object LanguageDetector {
             var i = (n.toLong() * k / WINDOWS).toInt()
             val end = (n.toLong() * (k + 1) / WINDOWS).toInt()
             // A word cut in two by the start of the window was the window before's to take.
-            if (i > 0 && isLatinLetter(text[i - 1])) while (i < n && isLatinLetter(text[i])) i++
+            if (i > 0 && isWordPart(text[i - 1])) while (i < n && isWordPart(text[i])) i++
             var letters = 0
             while (i < end && letters < LATIN_SAMPLE / WINDOWS) {
                 if (!isLatinLetter(text[i])) {
@@ -190,9 +242,16 @@ object LanguageDetector {
                     continue
                 }
                 word.setLength(0)
-                while (i < n && isLatinLetter(text[i])) word.append(text[i++].lowercaseChar())
+                var marked = false
+                while (i < n && isWordPart(text[i])) {
+                    val c = text[i++]
+                    if (!isLatinLetter(c)) marked = true
+                    word.append(c.lowercaseChar())
+                }
                 letters += word.length
-                words += word.toString()
+                // Vietnamese in particular may come with its accents as separate marks; the word
+                // lists hold them composed.
+                words += if (marked) Normalizer.normalize(word, Normalizer.Form.NFC) else word.toString()
             }
         }
         return words
@@ -203,8 +262,8 @@ object LanguageDetector {
      * at least [NEEDED_SHARE] of the book's letters would be spoken in, so that a stray foreign
      * word does not ask for a voice of its own.
      */
-    fun languagesIn(text: String): Set<Locale> {
-        val book = survey(text)
+    fun languagesIn(text: String, system: Locale? = null): Set<Locale> {
+        val book = survey(text, system)
         val letters = HashMap<Locale, Int>()
         var total = 0
         for (range in SentenceParser.ranges(text)) {
@@ -228,4 +287,11 @@ object LanguageDetector {
         val code = c.code
         return (code < 0x0250 || code in 0x1E00..0x1EFF) && c.isLetter()
     }
+
+    /** A Latin letter, or an accent written as a separate mark after one. */
+    private fun isWordPart(c: Char): Boolean =
+        isLatinLetter(c) || Character.getType(c) == Character.NON_SPACING_MARK.toInt()
+
+    private const val UKRAINIAN_ONLY = "іїєґІЇЄҐ"
+    private const val RUSSIAN_ONLY = "ыэъёЫЭЪЁ"
 }

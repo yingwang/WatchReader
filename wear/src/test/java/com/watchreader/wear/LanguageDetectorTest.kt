@@ -82,12 +82,59 @@ class LanguageDetectorTest {
         assertEquals(LanguageDetector.ENGLISH, LanguageDetector.latinLanguage("Merci."))
         assertEquals(LanguageDetector.ENGLISH, LanguageDetector.latinLanguage("他说了很多话，可是没有人听。"))
         // A language the reader has no list for does not borrow a neighbour's voice on a few words.
-        val indonesian = "Hari sudah sore ketika dia akhirnya sampai di rumah tua di ujung jalan. Kebun itu " +
-            "sudah menjadi liar selama bertahun-tahun, dan jendelanya gelap karena debu. Dia berdiri sebentar " +
-            "di dekat pagar, bertanya-tanya apakah masih ada orang yang tinggal di sana, lalu dia berjalan " +
-            "menyusuri jalan setapak dan mengetuk pintu dua kali. Tidak ada yang menjawab, tetapi dia bisa " +
-            "mendengar musik di suatu tempat di dalam rumah, pelan dan lambat."
-        assertEquals(LanguageDetector.ENGLISH, LanguageDetector.latinLanguage(indonesian))
+        assertEquals(LanguageDetector.ENGLISH, LanguageDetector.latinLanguage(HUNGARIAN))
+    }
+
+    @Test
+    fun theWatchsOwnLanguageDecidesWhatTheWordsCannot() {
+        val french = Locale.FRANCE
+        // Too little to go on: the watch's language rather than English.
+        assertEquals(LanguageDetector.FRENCH, LanguageDetector.latinLanguage("Merci.", french))
+        assertEquals(LanguageDetector.FRENCH, LanguageDetector.latinLanguage(HUNGARIAN, french))
+        // A clear answer stands whatever the watch is set to.
+        for ((locale, paragraph) in PARAGRAPHS) {
+            assertEquals(locale.toString(), locale, LanguageDetector.latinLanguage(paragraph, french))
+            assertEquals(locale.toString(), locale, LanguageDetector.latinLanguage(paragraph, Locale.US))
+        }
+        // Danish and Norwegian share most of their small words; a Norwegian watch reads a Danish
+        // book in Norwegian, which is closer than either would be to English.
+        val danish = PARAGRAPHS.getValue(LanguageDetector.DANISH)
+        assertEquals(LanguageDetector.DANISH, LanguageDetector.latinLanguage(danish))
+        assertEquals(LanguageDetector.NORWEGIAN, LanguageDetector.latinLanguage(danish, Locale.forLanguageTag("nb-NO")))
+        // Region and old language codes do not matter.
+        assertEquals(LanguageDetector.FRENCH, LanguageDetector.latinLanguage("Merci.", Locale.CANADA_FRENCH))
+        assertEquals(LanguageDetector.INDONESIAN, LanguageDetector.latinLanguage("Terima.", Locale("in", "ID")))
+        // A watch set to a language of another script changes nothing.
+        assertEquals(LanguageDetector.ENGLISH, LanguageDetector.latinLanguage("Merci.", Locale.SIMPLIFIED_CHINESE))
+        assertEquals(LanguageDetector.ENGLISH, LanguageDetector.survey("我今天读了很多书。", french).latin)
+    }
+
+    @Test
+    fun accentsWrittenAsSeparateMarksStillMakeWords() {
+        val composed = PARAGRAPHS.getValue(LanguageDetector.VIETNAMESE)
+        val decomposed = java.text.Normalizer.normalize(composed, java.text.Normalizer.Form.NFD)
+        assertTrue(composed != decomposed)
+        assertEquals(LanguageDetector.VIETNAMESE, LanguageDetector.latinLanguage(decomposed))
+        assertEquals(LanguageDetector.latinSample(composed), LanguageDetector.latinSample(decomposed))
+    }
+
+    @Test
+    fun ukrainianBooksAreReadInUkrainianAndRussianOnesInRussian() {
+        val ukrainian = "Усі щасливі родини схожі одна на одну, кожна нещаслива родина нещаслива по-своєму. " +
+            "Все змішалося в домі Облонських. Дружина дізналася, що чоловік мав зв'язок з гувернанткою-француженкою."
+        val russian = "Все счастливые семьи похожи друг на друга, каждая несчастливая семья несчастлива по-своему. " +
+            "Всё смешалось в доме Облонских. Жена узнала, что муж был в связи с бывшею в их доме француженкою-гувернанткой."
+        assertEquals(LanguageDetector.UKRAINIAN, LanguageDetector.survey(ukrainian).cyrillic)
+        assertEquals(LanguageDetector.RUSSIAN, LanguageDetector.survey(russian).cyrillic)
+        assertEquals(setOf(LanguageDetector.UKRAINIAN), LanguageDetector.languagesIn(ukrainian))
+        assertEquals(setOf(LanguageDetector.RUSSIAN), LanguageDetector.languagesIn(russian))
+        // A Ukrainian word quoted in a Russian book leaves the book Russian.
+        assertEquals(LanguageDetector.RUSSIAN, LanguageDetector.survey(russian + " Він сказав: «Дякую, їжте». " + russian).cyrillic)
+        // Too few letters to go on is Russian, as all Cyrillic was before.
+        assertEquals(LanguageDetector.RUSSIAN, LanguageDetector.survey("Київ").cyrillic)
+        val book = LanguageDetector.survey(ukrainian)
+        assertEquals(LanguageDetector.UKRAINIAN, LanguageDetector.detect("Все змішалося в домі.", book))
+        assertEquals(LanguageDetector.ENGLISH, LanguageDetector.detect("It was the best of times.", book))
     }
 
     @Test
@@ -149,12 +196,19 @@ class LanguageDetectorTest {
         val picked = PARAGRAPHS.keys + setOf(
             LanguageDetector.CHINESE, LanguageDetector.JAPANESE, LanguageDetector.KOREAN, LanguageDetector.RUSSIAN,
             LanguageDetector.GREEK, LanguageDetector.ARABIC, LanguageDetector.HEBREW, LanguageDetector.THAI, LanguageDetector.HINDI,
+            LanguageDetector.UKRAINIAN,
         )
         assertEquals(picked, LanguageDetector.LANGUAGES.toSet())
         assertEquals(listOf(LanguageDetector.ENGLISH, LanguageDetector.CHINESE), LanguageDetector.LANGUAGES.take(2))
     }
 
     private companion object {
+        /** The same passage in a language the reader has no list for. */
+        const val HUNGARIAN = "Késő délután volt már, amikor végre odaért a régi házhoz az út végén. A kert az évek " +
+            "során elvadult, az ablakok sötétek voltak a portól. Egy darabig a kapunál állt, és azon tűnődött, " +
+            "lakik-e még ott valaki, aztán felment az ösvényen, és kétszer bekopogott az ajtón. Senki sem " +
+            "válaszolt, de valahol bentről zenét hallott, halkat és lassút, mintha már nagyon régóta szólna."
+
         val PARAGRAPHS = linkedMapOf(
             LanguageDetector.ENGLISH to "It was late in the afternoon when she finally reached the old house at the end of the lane. " +
                 "The garden had grown wild over the years, and the windows were dark with dust. She stood for a while " +
@@ -215,6 +269,20 @@ class LanguageDetectorTest {
                 "Ogród z latami zdziczał, a okna były ciemne od kurzu. Stała przez chwilę przy furtce i zastanawiała " +
                 "się, czy ktoś jeszcze tam mieszka, a potem poszła ścieżką w górę i zapukała dwa razy do drzwi. Nikt " +
                 "nie odpowiedział, ale słyszała gdzieś w środku muzykę, cichą i powolną, jakby grała już od bardzo dawna.",
+            LanguageDetector.TURKISH to "Sonunda yolun sonundaki eski eve vardığında öğleden sonra geç olmuştu. Bahçe " +
+                "yıllar içinde yabanileşmiş, pencereler de tozdan kararmıştı. Bir süre kapının yanında durdu ve orada " +
+                "hâlâ birinin yaşayıp yaşamadığını merak etti, sonra patikadan yukarı çıktı ve kapıyı iki kez çaldı. " +
+                "Kimse cevap vermedi, ama içeride bir yerden müzik duyabiliyordu, çok uzun zamandır çalıyormuş gibi " +
+                "hafif ve yavaş bir müzik. Bu ev için ne kadar zaman geçtiğini bilmiyordu, ama artık bir önemi yoktu.",
+            LanguageDetector.VIETNAMESE to "Trời đã về chiều khi cuối cùng cô cũng đến được ngôi nhà cũ ở cuối con đường. " +
+                "Khu vườn đã mọc hoang theo năm tháng, và những ô cửa sổ tối đen vì bụi. Cô đứng một lúc bên cổng, " +
+                "tự hỏi liệu còn ai sống ở đó không, rồi cô đi lên lối nhỏ và gõ cửa hai lần. Không ai trả lời, " +
+                "nhưng cô có thể nghe thấy tiếng nhạc ở đâu đó trong nhà, khẽ và chậm, như thể nó đã được chơi từ rất lâu rồi.",
+            LanguageDetector.INDONESIAN to "Hari sudah sore ketika dia akhirnya sampai di rumah tua di ujung jalan. Kebun itu " +
+                "sudah menjadi liar selama bertahun-tahun, dan jendelanya gelap karena debu. Dia berdiri sebentar " +
+                "di dekat pagar, bertanya-tanya apakah masih ada orang yang tinggal di sana, lalu dia berjalan " +
+                "menyusuri jalan setapak dan mengetuk pintu dua kali. Tidak ada yang menjawab, tetapi dia bisa " +
+                "mendengar musik di suatu tempat di dalam rumah, pelan dan lambat.",
         )
     }
 }
