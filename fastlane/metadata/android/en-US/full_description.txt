@@ -4,7 +4,7 @@ Add a .txt or .epub on the phone, tap it, and it is on the watch a moment later.
 
 Or let the page turn itself, at a pace you set.
 
-Long-press a page to have the watch read the book aloud. Reading continues with the screen off and after you leave the app, with a pause and stop control in the notification. Chinese and English text are detected sentence by sentence and spoken with the matching voice.
+Long-press a page to have the watch read the book aloud. Reading continues with the screen off and after you leave the app, with a pause and stop control in the notification. Each sentence is read in the voice of its own language, across 26 languages from Chinese and English to Japanese, Russian, French, German and Czech; a voice the watch is missing is downloaded the first time a book needs it, wherever the speech engine offers one.
 
 The phone also keeps a quiet note of how long you read: today's total at the top of the library, the last seven days on a page of their own, and for each book when you added it, first opened it and finished it, how long you have spent on it and, once there is enough to go on, roughly how long is left. Watch, phone and listening are counted separately. There are no goals, streaks or reminders, and the numbers stay on your devices.
 
