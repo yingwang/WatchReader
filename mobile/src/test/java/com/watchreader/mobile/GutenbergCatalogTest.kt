@@ -127,15 +127,15 @@ class GutenbergCatalogTest {
 
     @Test
     fun searchesAndLanguagesGoInOneQuerySortedByDownloads() {
-        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads", GutenbergCatalog.searchUrl("  ", null))
-        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?query=l.sv&sort_order=downloads", GutenbergCatalog.searchUrl("", "sv"))
+        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?query=%21cat.audio&sort_order=downloads", GutenbergCatalog.searchUrl("  ", null))
+        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?query=l.sv+%21cat.audio&sort_order=downloads", GutenbergCatalog.searchUrl("", "sv"))
         assertEquals(
-            "https://www.gutenberg.org/ebooks/search.opds/?query=tolstoy+war&sort_order=downloads",
+            "https://www.gutenberg.org/ebooks/search.opds/?query=tolstoy+war+%21cat.audio&sort_order=downloads",
             GutenbergCatalog.searchUrl(" tolstoy   war ", null),
         )
-        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?query=alice+l.fr&sort_order=downloads", GutenbergCatalog.searchUrl("alice", "fr"))
+        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?query=alice+l.fr+%21cat.audio&sort_order=downloads", GutenbergCatalog.searchUrl("alice", "fr"))
         assertEquals(
-            "https://www.gutenberg.org/ebooks/search.opds/?query=%E7%BA%A2%E6%A5%BC%E6%A2%A6+l.zh&sort_order=downloads",
+            "https://www.gutenberg.org/ebooks/search.opds/?query=%E7%BA%A2%E6%A5%BC%E6%A2%A6+l.zh+%21cat.audio&sort_order=downloads",
             GutenbergCatalog.searchUrl("红楼梦", "zh"),
         )
         assertEquals("https://www.gutenberg.org/ebooks/11.opds", GutenbergCatalog.bookUrl(11))

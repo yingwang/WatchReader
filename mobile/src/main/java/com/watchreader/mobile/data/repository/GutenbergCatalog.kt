@@ -43,14 +43,16 @@ internal object GutenbergCatalog {
     /**
      * The first page of the most downloaded books, or of those matching [search], in [language]
      * or in every language when it is null. The language is a word of Gutenberg's own query
-     * language, "l.sv", so a search and a filter go in the same query.
+     * language, "l.sv", so a search and a filter go in the same query; so is "!cat.audio", which
+     * keeps the recordings out of the list, since none of them can be read here.
      */
     fun searchUrl(search: String, language: String?): String {
         val words = search.trim().replace(WHITESPACE, " ")
-        val query = listOfNotNull(words.ifEmpty { null }, language?.let { "l.$it" }).joinToString(" ")
-        return if (query.isEmpty()) "$SEARCH?sort_order=downloads"
-        else "$SEARCH?query=${URLEncoder.encode(query, "UTF-8")}&sort_order=downloads"
+        val query = listOfNotNull(words.ifEmpty { null }, language?.let { "l.$it" }, NO_RECORDINGS).joinToString(" ")
+        return "$SEARCH?query=${URLEncoder.encode(query, "UTF-8")}&sort_order=downloads"
     }
+
+    private const val NO_RECORDINGS = "!cat.audio"
 
     /** A book's own feed, with its language, subjects, rights and files. */
     fun bookUrl(id: Int) = "$SITE/ebooks/$id.opds"
