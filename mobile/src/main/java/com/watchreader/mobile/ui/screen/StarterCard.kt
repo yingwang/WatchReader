@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.watchreader.mobile.R
@@ -63,13 +64,15 @@ fun StarterCard(
     }
     Card(
         modifier = modifier,
-        // A shade off the page, so the covers' own placeholder still shows against it.
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        // The Add book cards' own shade and serif heading: off the warm page enough to read as a
+        // card, with the covers' placeholder a shade darker still.
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Column(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
             Text(
                 stringResource(R.string.starter_title),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
+                fontFamily = FontFamily.Serif,
                 modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
             )
             when (starters) {
