@@ -77,6 +77,158 @@ class TextNormalizerTest {
         assertEquals(text, decoded.text)
     }
 
+    /** [text] saved in [charset] and read back with no label on it. */
+    private fun assertDetected(text: String, charset: String) {
+        val decoded = TextNormalizer.decode(text.toByteArray(charset(charset)))
+        assertEquals(text.take(40), charset, decoded.charset)
+        assertEquals(text, decoded.text)
+    }
+
+    private val czech = "Ráno bylo chladné a nad řekou ležela mlha. Starý převozník Jiří vytáhl loďku na břeh, " +
+        "sedl si na převrácený kbelík a dlouho se díval, jak se světlo pomalu prodírá mezi stromy. Věděl, že dnes " +
+        "nikdo nepřijde, ale přesto čekal, protože čekání bylo to jediné, co mu ještě zůstalo. Když se slunce " +
+        "konečně ukázalo nad kopcem, vstal, oprášil si kalhoty a vydal se k vesnici, kde už voněl čerstvý chléb " +
+        "a ze dvorů se ozýval štěkot psů. Šťastný ten, kdo má kam jít."
+
+    private val polish = "Wieczorem nad jeziorem zapadła cisza. Stary rybak Józef usiadł na pomoście, zapalił fajkę " +
+        "i patrzył, jak księżyc powoli wyłania się zza drzew. Żona wołała go już dwa razy, ale udawał, że nie słyszy, " +
+        "bo właśnie w takich chwilach czuł się naprawdę szczęśliwy. Łódź kołysała się łagodnie przy brzegu, a gdzieś " +
+        "daleko szczekał pies. Gdy w końcu wstał, było już zupełnie ciemno i tylko światło w oknie chaty wskazywało " +
+        "mu drogę do domu."
+
+    private val slovak = "Ráno bolo chladné a nad riekou ležala hmla. Starý prievozník Ľudovít vytiahol loďku na breh, " +
+        "sadol si na prevrátené vedro a dlho sa díval, ako sa svetlo pomaly prediera pomedzi stromy. Vedel, že dnes " +
+        "nikto nepríde, ale aj tak čakal, pretože čakanie bolo to jediné, čo mu ešte zostalo. Potom vstal a pomaly " +
+        "kráčal k dedine, kde už voňal chlieb."
+
+    private val hungarian = "Reggel hideg volt, és köd ült a folyó fölött. Az öreg révész kihúzta a csónakot a partra, " +
+        "leült egy felfordított vödörre, és sokáig nézte, ahogy a fény lassan átszűrődik a fák között. Tudta, hogy " +
+        "ma már senki sem jön, mégis várt, mert a várakozás volt az egyetlen, ami még megmaradt neki. Később " +
+        "felállt, és a hűvös szélben hazaindult a falu felé, ahol már égtek a lámpák az ablakokban."
+
+    private val russian = "Вечером над рекой поднялся туман. Старый лодочник Степан вытащил лодку на берег, сел на " +
+        "перевёрнутое ведро и долго смотрел, как в окнах деревни один за другим зажигаются огни. Он знал, что " +
+        "сегодня уже никто не придёт, но всё равно ждал, потому что ожидание было единственным, что у него ещё " +
+        "осталось. Когда стало совсем темно, он поднялся, отряхнул штаны и медленно пошёл домой, где его ждали " +
+        "горячий чай и старая кошка, спавшая на печи. «Завтра будет лучше», — подумал он."
+
+    private val ukrainian = "Увечері над річкою піднявся туман. Старий човняр Степан витягнув човен на берег, сів на " +
+        "перевернуте відро і довго дивився, як у вікнах села одне за одним запалюються вогні. Він знав, що " +
+        "сьогодні вже ніхто не прийде, але все одно чекав, бо чекання було єдиним, що в нього ще залишилося. Коли " +
+        "стало зовсім темно, він підвівся, обтрусив штани і повільно пішов додому, де на нього чекали гарячий чай, " +
+        "свіжий хліб і стара кішка, що спала на печі. Їй було байдуже до ґанку й до гостей, бо єдине, що її цікавило, " +
+        "був теплий куток."
+
+    private val bulgarian = "Вечерта над реката се вдигна мъгла. Старият лодкар Стефан изтегли лодката на брега, " +
+        "седна на обърнатата кофа и дълго гледа как в прозорците на селото една след друга светват лампите. " +
+        "Знаеше, че днес никой няма да дойде, но въпреки това чакаше, защото чакането беше единственото, което " +
+        "му беше останало."
+
+    @Test
+    fun centralEuropeanBooksAreReadAsWindows1250() {
+        for (text in listOf(czech, polish, slovak, hungarian)) assertDetected(text, "windows-1250")
+    }
+
+    @Test
+    fun cyrillicBooksAreReadAsWindows1251() {
+        for (text in listOf(russian, ukrainian, bulgarian)) assertDetected(text, "windows-1251")
+    }
+
+    /** KOI8 has no guillemets or long dash; books saved in it make do with plain quotes and hyphens. */
+    private fun koi8(text: String) = text.replace('«', '"').replace('»', '"').replace('—', '-')
+
+    @Test
+    fun russianAndBulgarianInKoi8AreReadAsKoi8R() {
+        assertDetected(koi8(russian), "KOI8-R")
+        assertDetected(bulgarian, "KOI8-R")
+    }
+
+    @Test
+    fun ukrainianInKoi8IsReadAsKoi8U() {
+        // KOI8-R has box-drawing characters where KOI8-U keeps і, ї, є and ґ.
+        assertDetected(ukrainian, "KOI8-U")
+    }
+
+    @Test
+    fun aLongerCyrillicBookKeepsItsLinesAndChapters() {
+        val book = "Глава первая\n\n" + russian + "\n\n" + "Глава вторая\n\n" + russian
+        assertDetected(book, "windows-1251")
+        assertDetected(koi8(book), "KOI8-R")
+    }
+
+    @Test
+    fun shortLinesAnEastAsianDecoderAlsoAcceptsAreStillReadInTheirCodePage() {
+        // GB18030 and Big5 take every one of these without complaint, as a handful of odd characters.
+        assertDetected("Řekni mi, kde je tvůj dům.", "windows-1250")
+        assertDetected("Он сказал: да.", "windows-1251")
+        assertDetected("Он сказал: да.", "KOI8-R")
+        // So does GB18030 a book whose only curly marks are its apostrophes, each followed by a letter.
+        assertDetected("Mr. Darcy’s letter was Elizabeth’s first thought, and Jane’s second.", "windows-1252")
+    }
+
+    /** One paragraph each in the Western languages Windows-1252 and ISO-8859-1 were made for. */
+    private val western = listOf(
+        "Le soir tombait sur la rivière et le vieux passeur tirait sa barque sur la rive. Il s’assit sur un seau " +
+            "renversé et regarda longtemps les lumières du village s’allumer une à une. « Où est passé l’été ? » " +
+            "se demanda-t-il, en écoutant les chiens aboyer derrière les fenêtres déjà éclairées. Ça ne finirait jamais.",
+        "Am Abend lag Nebel über dem Fluss. Der alte Fährmann zog sein Boot ans Ufer, setzte sich auf einen " +
+            "umgedrehten Eimer und sah lange zu, wie in den Fenstern des Dorfes ein Licht nach dem anderen anging. " +
+            "Später ging er müde über die Brücke nach Hause, wo schon der Ofen glühte und es nach Gebäck roch.",
+        "Al atardecer, la niebla cubría el río. El viejo barquero arrastró su bote hasta la orilla, se sentó sobre " +
+            "un cubo volcado y miró durante mucho tiempo cómo se encendían las luces del pueblo. ¿Quién recordaría " +
+            "su nombre mañana? ¡Nadie, pensó, y sonrió en la penumbra del 2º piso!",
+        "Ao entardecer, a névoa cobria o rio. O velho barqueiro puxou o barco para a margem, sentou-se num balde " +
+            "virado e ficou muito tempo a olhar as luzes da aldeia. Não havia pressa: a noite é longa e o coração, " +
+            "às vezes, também. Ninguém viria mais, mas ele esperava, porque a espera é a única coisa que lhe restava.",
+        "Al tramonto la nebbia copriva il fiume. Il vecchio traghettatore tirò la barca sulla riva, si sedette su " +
+            "un secchio rovesciato e guardò a lungo le luci del villaggio. Così passò un’altra sera, e la città " +
+            "laggiù sembrò più lontana che mai. Perché nessuno veniva? Era già notte, e lui non sapeva più cosa fare.",
+        "På kvällen låg dimman över älven. Den gamle färjkarlen drog upp båten på stranden, satte sig på en " +
+            "uppochnedvänd hink och såg länge på hur ljusen tändes i byns fönster. Snart blev det mörkt, och han " +
+            "gick långsamt hem över den frusna ängen.",
+        "Om aftenen lå tågen over åen. Den gamle færgemand trak båden op på bredden, satte sig på en væltet spand " +
+            "og så længe på, hvordan lysene blev tændt i landsbyens vinduer. Til sidst gik han hjem over den kolde " +
+            "mark, hvor køerne stod og sov, og døren knirkede, da han åbnede den.",
+        "Um kvöldið lá þokan yfir ánni. Gamli ferjumaðurinn dró bátinn upp á bakkann, settist á fötu sem sneri " +
+            "öfugt og horfði lengi á ljósin kvikna í gluggum þorpsins, hvert á fætur öðru. Hann vissi að enginn " +
+            "myndi koma í dag, en hann beið samt, því biðin var það eina sem hann átti eftir.",
+        "Het was een koude avond en de oude veerman zag hoe de lichtjes één voor één aangingen. Hij dacht aan " +
+            "zijn café in Brussel, aan de geïnteresseerde blikken van de reünie, en aan zijn zoon die naar Zürich " +
+            "was vertrokken.",
+    )
+
+    @Test
+    fun westernBooksAreStillReadAsWindows1252() {
+        for (text in western) assertDetected(text, "windows-1252")
+        // ISO-8859-1 has the same letters in the same places.
+        for (text in western.filter { it.all { c -> c.code < 0x100 } }) {
+            val decoded = TextNormalizer.decode(text.toByteArray(Charsets.ISO_8859_1))
+            assertEquals("windows-1252", decoded.charset)
+            assertEquals(text, decoded.text)
+        }
+    }
+
+    @Test
+    fun anEnglishBookWithAFewStraySignsIsStillWindows1252() {
+        // Each of these reads as a Polish or Czech letter in Windows-1250 (m³ as mł, £ as Ł), but
+        // a handful in a whole book is no Polish.
+        val book = (1..6).flatMap { paragraphs }.joinToString("\n\n") +
+            "\n\nThe room measured 40 m³ and cost £ 12 a week, ½ of it paid in advance.¹"
+        val decoded = TextNormalizer.decode(book.toByteArray(charset("windows-1252")))
+        assertEquals("windows-1252", decoded.charset)
+        assertEquals(book, decoded.text)
+    }
+
+    @Test
+    fun eastAsianBooksAreNotTakenForCodePages() {
+        val chineseBook = "第一章 风雨\n\n" + chinese.repeat(30) + "\n\nChapter 2, with some ASCII in it.\n\n" + chinese.repeat(30)
+        assertEquals("GB18030", TextNormalizer.decode(chineseBook.toByteArray(charset("GBK"))).charset)
+        val traditional = "處處聞啼鳥。夜來風雨聲，花落知多少。春眠不覺曉，這是一個很好的早晨，我們都在這裡。"
+        assertEquals("Big5", TextNormalizer.decode(traditional.repeat(20).toByteArray(charset("Big5"))).charset)
+        val japanese = "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。"
+        assertEquals("Shift_JIS", TextNormalizer.decode(japanese.repeat(20).toByteArray(charset("Shift_JIS"))).charset)
+    }
+
     @Test
     fun aDeclaredLatin1IsReadAsWindows1252() {
         val text = "It\u2019s the caf\u00E9 on the corner."
