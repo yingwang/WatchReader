@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="add_free_books">Free books</string>
+    <string name="add_free_books_hint">Public-domain classics from Project Gutenberg</string>
+
+    <string name="free_title">Free books</string>
+    <string name="free_search">Search by title or author</string>
+    <string name="free_clear_search">Clear search</string>
+    <string name="free_all_languages">All languages</string>
+    <string name="free_language_choice">Language, %1$s</string>
+    <string name="free_legal">Project Gutenberg books are public domain in the US. Elsewhere, check your local copyright laws.</string>
+    <string name="free_popular">Popular</string>
+    <string name="free_slow">Still looking. A search the free library has not seen lately can take it a few minutes.</string>
+    <string name="free_empty_title">No books found</string>
+    <string name="free_empty_hint">Try another spelling.</string>
+    <string name="free_empty_hint_language">Try another spelling, or all languages.</string>
+    <string name="free_offline_title">No connection</string>
+    <string name="free_offline_hint">Free books are found and downloaded over the internet. Check your connection and try again.</string>
+    <string name="free_slow_title">The free library is taking too long</string>
+    <string name="free_unavailable_title">The free library is not answering</string>
+    <string name="free_try_later_hint">It may be busy. Try again in a moment.</string>
+    <string name="free_retry">Try again</string>
+    <string name="free_more_failed">Could not load more books</string>
+    <string name="free_unknown_author">Unknown author</string>
+    <string name="free_language_label">Language</string>
+    <string name="free_subjects_label">Subjects</string>
+    <string name="free_add">Add to library</string>
+    <string name="free_adding">Downloading…</string>
+    <string name="free_add_no_network">Could not reach Project Gutenberg. Check your connection.</string>
+</resources>
