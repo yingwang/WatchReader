@@ -1,40 +1,44 @@
 Start here
 
-This short guide comes with the app, on the phone and on the watch. It explains both, and it doubles as something to try every control on. When you are done with it, you can delete it at any time.
-
-Reading on the phone
-
-Tap a book in the library and it opens here, laid out a page at a time. Tap the right third of the page to go forward, the left third to go back, and the middle third to show or hide the title bar. A long press on the page also brings the title bar back. Your place is kept, so the book opens where you left it.
-
-Three controls sit in the top right of the title bar. Contents opens a sheet with a percentage slider, and the chapter list appears when the book has chapters; this guide's own sections are listed there. Send to watch copies the book to your watch; once sent, a tick appears, and the watch reads its own copy without needing the phone nearby. The three dots menu lets you open Appearance to choose a dark, light or sepia page colour and adjust text size, or hide the title bar.
-
-Reading on the watch
-
-Opening WatchReader on the watch takes you straight back into the book you are reading. Tap the right half of the screen to go forward and the left half to go back. The crown does the same thing: turn it away from you to go forward, towards you to go back, one page for each notch.
-
-Press and hold anywhere on the page to open the reading controls. They stay open while you use them. Here you can switch on auto page turn, which turns pages by itself at a pace chosen in Settings. Scroll down and tap Back to book when you are ready to carry on.
-
-Your place travels with you. Read a few pages on the watch and the phone opens at the same spot, and the other way round, so you can put the phone down and carry on from your wrist.
-
-Reading aloud
-
-Press and hold the page to open the reading controls, then tap the triangle to have the watch read to you with the system speech engine. The sentence being spoken is highlighted and pages turn automatically to follow the voice. Reading carries on when the screen turns off and when you leave the app. Double-tap the page to pause, or use the pause button in the reading controls or notification. To resume, tap the triangle in the controls or Resume in the notification. To stop, tap the square in the controls or Stop in the notification.
-
-You never have to choose a voice. Each sentence is spoken in the language it is written in, across 26 languages, so a book in English and a book in Chinese both read correctly, and a book that mixes the two switches as it goes. If the watch is missing a voice for a language, the speech engine downloads it automatically over Wi-Fi the first time a book needs it, wherever the speech engine offers one. You can check voice status and adjust reading speed in Settings under Read aloud.
-
-Contents and jumps
-
-Open Contents in the reading controls to jump straight to a chapter. Chapters are taken from an EPUB table of contents, FB2 sections, or headings detected in plain text. Below Contents, you can jump by percentage: each press of plus or minus moves one percent, then tap Go to this position to jump. After jumping, Return to before jump takes you back to where you were. Jumping stops any active read aloud session.
-
-Settings
-
-Open Settings from the bottom of the watch library. Appearance has separate controls for text size, font, page colour (dark or sepia), top and bottom margin, and side margin, each with a live preview. Changing the text size or margins re-flows the pages against the actual screen. Settings also lets you keep the screen awake while reading, set the pace for auto page turn, and adjust read aloud speed.
+This short guide comes with WatchReader on your phone and on your watch. It shows you how to use the app and gives you a few pages to try the controls on.
 
 Adding books
 
-The watch cannot download books by itself. In the phone library, tap the plus button to open Add book. You will find three cards: From a file (with a Choose file button), From a link, and Free books. Free books lets you search Project Gutenberg classics by title or author with a language filter; these books are public domain in the US, and readers elsewhere should check local copyright laws. While you have no books of your own, a Start with a free classic card offers three classics that download and send to your watch with a single tap.
+Add books on your phone. Tap the plus button in the library to open Add book, then choose from a file, a link, or Free books. Common formats are txt, epub and fb2. You can also share a book to WatchReader from another app.
 
-WatchReader supports EPUB, FB2, .fb2.zip, and plain text files, and you can also share a book to WatchReader from other apps. On the phone, plain text encodings are detected automatically, including UTF-8, UTF-16, GB18030, Big5, Shift_JIS, and European and Cyrillic code pages. To send a book to your watch, open it and tap Send in the title bar, or use the three dots menu on the book cover and choose Send to watch.
+Tap Free books to browse classics from Project Gutenberg, searchable by title, author, and language; they are public domain in the US. If you have no books of your own yet, tap any of the three free classics offered in your library to add it and send it to your watch.
+
+Sending a book to the watch
+
+Open the book on your phone and tap the send button at the top. You can also tap the three dots on the cover in your library and choose Send to watch.
+
+Once sent, the watch has its own copy and reads it without the phone nearby.
+
+Reading on the watch
+
+Tap the book in the watch library to open it. Next time, opening the app on the watch goes straight back into the book you were reading.
+
+Tap the right half of the page to go forward, or the left half to go back. Turn the crown to move one page per notch: turn it away from you to go forward, towards you to go back.
+
+Press and hold the page to open the reading controls. Switch on Auto page turn to let pages turn by themselves at a pace set in Settings. Scroll down and tap "Back to book" to close the controls.
+
+Listening
+
+Press and hold the page and tap the triangle to start reading aloud from the page you are on. The watch reads the book to you, each sentence in the language it is written in, highlighting the sentence and turning the pages as it goes. Reading keeps going with the screen off or after you leave the app.
+
+Double-tap the page while reading to pause; to carry on, press and hold the page and tap the triangle again. Open the reading controls and tap the square to stop, or use pause and stop in the notification.
+
+Jumping to a chapter
+
+Press and hold the page to open the reading controls, then tap Contents to list the chapters. Tap any chapter to jump straight there.
+
+Pick a percentage with plus and minus, then tap "Go to this position" to jump there. Tap "Return to before jump" to go back.
+
+Reading on the phone
+
+Tap a book in the phone library to read it there. Tap the right side of the page to go forward, the left side to go back, and the middle to show or hide the bar at the top.
+
+Tap the list icon at the top to open the contents and jump to a chapter or slider position. Your reading place is kept in step with the watch.
 
 Below is a passage in the public domain, so you have real typesetting to look at and a few paragraphs to hear read aloud.
 
@@ -68,4 +72,4 @@ This was invitation enough.
 
 "Oh! single, my dear, to be sure! A single man of large fortune; four or five thousand a year. What a fine thing for our girls!"
 
-That is the end of the sample. To delete it on the watch, long press the book in the watch library and choose Delete, which removes only the watch copy. To delete it on the phone, long press its cover or tap the three dots and choose Delete, which removes it from both the phone and the watch.
+That is the end of the sample. To delete it on the watch, press and hold the book in the library and choose Delete, which removes only the watch's copy. On the phone, press and hold the book's cover, or tap the three dots on it, and choose Delete, which removes it from the phone and the watch. Now add a book you want to read.
