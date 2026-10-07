@@ -48,6 +48,15 @@ object FreeBookRepository {
     /** The most downloaded books, or those whose title or author matches [search]. */
     suspend fun firstPage(search: String, language: String?): FreeBookPage = page(GutenbergCatalog.searchUrl(search, language))
 
+    /**
+     * The few classics the library offers while it holds none of the reader's own books. Most
+     * languages have theirs chosen by hand and ask Gutenberg for nothing; any other language's
+     * fiction comes through the same cache of pages as the free library's lists, so going back
+     * to the library asks for it only once.
+     */
+    suspend fun starterPicks(language: String?): List<FreeBook> =
+        StarterShelf.picks(language) { firstPage(StarterShelf.FICTION, it).books }
+
     /** The page at [url], a page's next link. */
     suspend fun page(url: String): FreeBookPage {
         pages.get(url)?.let { return it }
@@ -99,7 +108,8 @@ object FreeBookRepository {
         for (file in details.files) {
             try {
                 // An epub brings its own title, properly cased; plain text has the catalogue's.
-                return BookRepository.addFromUrl(file.url, if (file.isEpub) "" else book.title)
+                // The catalogue names the author in display order, which every file is given.
+                return BookRepository.addFromUrl(file.url, if (file.isEpub) "" else book.title, book.author)
             } catch (e: ImportException) {
                 if (refused == null) refused = e
             }

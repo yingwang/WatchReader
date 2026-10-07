@@ -21,7 +21,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
@@ -72,6 +74,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watchreader.mobile.R
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
+import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
 import com.watchreader.mobile.ui.viewmodel.UiEvent
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +93,7 @@ fun BookListScreen(
     onOpenBook: (String) -> Unit,
     onStats: () -> Unit,
     onDetails: (String) -> Unit,
+    onFreeBooks: () -> Unit,
     vm: BookListViewModel = viewModel(),
 ) {
     // Null until the database has answered, so "No books yet" is never shown to a library that
@@ -105,6 +109,23 @@ fun BookListScreen(
     var showHint by remember { mutableStateOf(!uiPrefs.getBoolean("hint_dismissed", false)) }
     val currentBook = books.filter { it.lastReadEpochMs > 0 }.maxByOrNull { it.lastReadEpochMs }
     val readingTime by vm.readingTime.collectAsState()
+    val starters by vm.starters.collectAsState()
+    val pick by vm.pick.collectAsState()
+    // Until the reader has a book of their own, the guide aside, the library offers free classics.
+    val offerStarters = stored != null && !BookRepository.hasOwnBooks(books)
+    LaunchedEffect(offerStarters) {
+        if (offerStarters) vm.loadStarters()
+    }
+    val starterCard: @Composable (Modifier) -> Unit = { modifier ->
+        StarterCard(
+            starters = starters,
+            pick = pick,
+            onPick = vm::addStarter,
+            onMore = onFreeBooks,
+            onRetry = vm::loadStarters,
+            modifier = modifier,
+        )
+    }
 
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
@@ -144,10 +165,14 @@ fun BookListScreen(
             // The first read takes a moment; the page stays blank rather than claim anything.
         } else if (books.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 32.dp),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Scrolls only where the classics do not fit, on a small phone turned sideways.
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Text(
                         stringResource(R.string.list_empty_title),
                         color = MaterialTheme.colorScheme.onBackground,
@@ -158,8 +183,9 @@ fun BookListScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier.padding(top = 8.dp).padding(horizontal = 16.dp),
                     )
+                    if (offerStarters) starterCard(Modifier.fillMaxWidth().padding(top = 32.dp))
                 }
             }
         } else {
@@ -207,6 +233,9 @@ fun BookListScreen(
                                 }
                             }
                         }
+                    }
+                    if (offerStarters) item(span = { GridItemSpan(maxLineSpan) }) {
+                        starterCard(Modifier.fillMaxWidth())
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(stringResource(R.string.list_books), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))

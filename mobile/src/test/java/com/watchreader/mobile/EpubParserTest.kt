@@ -701,4 +701,56 @@ class EpubParserTest {
         val parsed = EpubParser.parse(epub(book, blob = null).inputStream())
         assertEquals(listOf(0, parsed.text.indexOf("Chapter Two"), parsed.text.indexOf("Chapter Three")), parsed.chapters.map { it.start })
     }
+
+    @Test
+    fun theAuthorComesFromThePackagesCreator() {
+        val files = navBook.map { (name, text) ->
+            name to if (name == "OEBPS/content.opf") text.replace(
+                "<dc:title>Probe</dc:title>",
+                """<dc:title>Probe</dc:title><dc:creator opf:role="aut" opf:file-as="Austen, Jane">Jane Austen</dc:creator>""",
+            ) else text
+        }
+        assertEquals("Jane Austen", EpubParser.parse(epub(files, blob = null).inputStream()).author)
+        // A book that names nobody has no author.
+        assertEquals("", EpubParser.parse(epub(navBook, blob = null).inputStream()).author)
+    }
+
+    @Test
+    fun severalAuthorsAreJoinedAndOtherRolesLeftOut() {
+        // EPUB 2: the role is the element's own opf:role, under whatever prefix the tool chose.
+        val epub2 = """
+            <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+              <dc:creator opf:role="aut">Jane Austen</dc:creator>
+              <dc:creator opf:role="ill">Hugh Thomson</dc:creator>
+              <dc:creator ns0:role='AUT'>Anna Austen</dc:creator>
+              <dc:contributor opf:role="edt">An Editor</dc:contributor>
+            </metadata>
+        """
+        assertEquals("Jane Austen, Anna Austen", EpubParser.authors(epub2))
+        // EPUB 3: a meta refines the creator's id; a creator with no role is the author.
+        val epub3 = """
+            <metadata>
+              <dc:creator id="a1">Лев Толстой</dc:creator>
+              <meta refines="#a1" property="role" scheme="marc:relators">aut</meta>
+              <dc:creator id="t1">Constance Garnett</dc:creator>
+              <meta property="role" refines="#t1" scheme="marc:relators">trl</meta>
+              <meta refines="#t1" property="file-as">Garnett, Constance</meta>
+              <dc:creator id="a2">Second
+                 Author</dc:creator>
+              <meta name="cover" content="cover-image"/>
+            </metadata>
+        """
+        assertEquals("Лев Толстой, Second Author", EpubParser.authors(epub3))
+    }
+
+    @Test
+    fun authorsAreReadAsText() {
+        assertEquals("Smith & Sons", EpubParser.authors("<metadata><creator>Smith &amp; Sons</creator></metadata>"))
+        // The same name twice, and an empty creator, are not repeated or kept.
+        assertEquals(
+            "Multatuli",
+            EpubParser.authors("<metadata><dc:creator>Multatuli</dc:creator><dc:creator/><dc:creator> </dc:creator><dc:creator>Multatuli</dc:creator></metadata>"),
+        )
+        assertEquals("", EpubParser.authors("<metadata><dc:title>No one</dc:title></metadata>"))
+    }
 }

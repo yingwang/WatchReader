@@ -1,6 +1,8 @@
 package com.watchreader.mobile.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.watchreader.mobile.R
@@ -174,7 +176,7 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
     fun add() {
         val book = _selected.value ?: return
         val details = (_details.value as? Details.Loaded)?.details ?: return
-        if (!details.publicDomain || details.files.isEmpty()) return
+        if (refusalOf(details) != null) return
         if (_adding.value == Adding.Busy || _adding.value == Adding.Done) return
         _adding.value = Adding.Busy
         addJob = viewModelScope.launch {
@@ -184,7 +186,7 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Adding.Failed(describe(e))
+                Adding.Failed(describeAddFailure(getApplication(), e))
             }
         }
     }
@@ -196,17 +198,26 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
         else -> Problem.UNAVAILABLE
     }
 
-    private fun describe(e: Exception): String {
-        val app = getApplication<Application>()
-        return when (e) {
-            is ImportException -> e.message ?: app.getString(R.string.err_add_failed)
-            is UnknownHostException, is SocketException -> app.getString(R.string.free_add_no_network)
-            is SocketTimeoutException -> app.getString(R.string.err_timeout)
-            else -> e.message?.takeIf { it.isNotBlank() } ?: app.getString(R.string.err_download_failed)
-        }
-    }
-
     private companion object {
         val SPACES = Regex("\\s+")
     }
+}
+
+/**
+ * Why a book cannot be added from the free library, in the words its details give; null when it
+ * can. The library's own picks are held to the same: public domain in the US, and something to read.
+ */
+@StringRes
+internal fun refusalOf(details: FreeBookDetails): Int? = when {
+    !details.publicDomain -> R.string.free_not_public_domain
+    details.files.isEmpty() -> R.string.free_nothing_to_read
+    else -> null
+}
+
+/** A free book's download that failed, worded the same wherever it was started. */
+internal fun describeAddFailure(context: Context, e: Exception): String = when (e) {
+    is ImportException -> e.message ?: context.getString(R.string.err_add_failed)
+    is UnknownHostException, is SocketException -> context.getString(R.string.free_add_no_network)
+    is SocketTimeoutException -> context.getString(R.string.err_timeout)
+    else -> e.message?.takeIf { it.isNotBlank() } ?: context.getString(R.string.err_download_failed)
 }
