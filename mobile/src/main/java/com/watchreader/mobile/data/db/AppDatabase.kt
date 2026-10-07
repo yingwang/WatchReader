@@ -11,7 +11,7 @@ import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.ReadingMilestone
 import com.watchreader.mobile.data.model.ReadingTime
 
-@Database(entities = [Book::class, ReadingTime::class, ReadingMilestone::class], version = 6, exportSchema = false)
+@Database(entities = [Book::class, ReadingTime::class, ReadingMilestone::class], version = 7, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
@@ -62,13 +62,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Books keep their author. Every book already in the library stays as it is, author
+         * unknown, since neither its file nor its row says who wrote it without importing again.
+         * The statement is a constant so the migration test runs exactly what the app runs.
+         */
+        internal const val ADD_AUTHOR = "ALTER TABLE book ADD COLUMN author TEXT"
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(ADD_AUTHOR)
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "watchreader.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .build().also { instance = it }
             }
         }
     }

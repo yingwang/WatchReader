@@ -130,6 +130,17 @@ fun BookDetailsScreen(bookId: String, listVm: BookListViewModel, onBack: () -> U
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // The author under the title, as a byline: several names run longer than a row's value has room for.
+            book.author?.let { author ->
+                Text(
+                    author,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
             val progress = book.readProgress.coerceIn(0f, 1f)
             StatRow(stringResource(R.string.details_added), date(book.addedEpochMs))
             StatRow(stringResource(R.string.details_first_opened), milestone?.firstOpenedEpochMs?.takeIf { it > 0 }?.let(::date) ?: stringResource(R.string.details_not_yet))

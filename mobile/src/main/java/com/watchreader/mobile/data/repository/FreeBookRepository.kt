@@ -108,7 +108,8 @@ object FreeBookRepository {
         for (file in details.files) {
             try {
                 // An epub brings its own title, properly cased; plain text has the catalogue's.
-                return BookRepository.addFromUrl(file.url, if (file.isEpub) "" else book.title)
+                // The catalogue names the author in display order, which every file is given.
+                return BookRepository.addFromUrl(file.url, if (file.isEpub) "" else book.title, book.author)
             } catch (e: ImportException) {
                 if (refused == null) refused = e
             }

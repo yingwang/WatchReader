@@ -19,7 +19,8 @@ import java.util.Locale
  * spine names, and archives a stream reader cannot step through.
  */
 object EpubParser {
-    class Epub(val title: String, val text: String, val cover: ByteArray?, val chapters: List<Chapter>)
+    /** [author] is empty when the book names none. */
+    class Epub(val title: String, val author: String, val text: String, val cover: ByteArray?, val chapters: List<Chapter>)
 
     fun looksLikeEpub(bytes: ByteArray): Boolean =
         bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
@@ -164,7 +165,7 @@ object EpubParser {
             }?.value?.path
         // Every document's text starts on its first character, so only the separator after the
         // last one is left to go; a trim at the front would move every chapter and anchor offset.
-        return Epub(title, result.toString().trimEnd(), coverPath?.let { archive[it] }, chapters)
+        return Epub(title, authors(opfContent), result.toString().trimEnd(), coverPath?.let { archive[it] }, chapters)
     }
 
     /** A file the manifest lists: where it is in the archive, what it says it is, and its roles. */
@@ -587,6 +588,37 @@ object EpubParser {
         put("shy", "")
         for (space in listOf("ensp", "emsp", "thinsp")) put(space, " ")
     }
+
+    /**
+     * The book's authors from its package's dc:creator entries, in their order, several joined
+     * with ", " as an FB2 book's are. A creator in another role, an illustrator, a translator or
+     * an editor, is left out: EPUB 2 gives the role in the element's opf:role, EPUB 3 in a meta
+     * that refines the element's id. A creator with no role at all is taken for an author, as
+     * most books name only their author and give no role. Empty when the package names nobody.
+     */
+    internal fun authors(opf: String): String {
+        val refinedRoles = REFINES.findAll(opf).mapNotNull { m ->
+            val tag = m.groupValues[1]
+            if (attr(tag, "property")?.trim()?.equals("role", ignoreCase = true) != true) return@mapNotNull null
+            val id = attr(tag, "refines")?.trim()?.removePrefix("#") ?: return@mapNotNull null
+            id to m.groupValues[2].trim()
+        }.toMap()
+        return CREATOR.findAll(opf).mapNotNull { m ->
+            val attributes = m.groupValues[1]
+            val role = ROLE.find(attributes)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+                ?: attr(attributes, "id")?.trim()?.let { refinedRoles[it] }
+            if (role != null && !role.trim().equals("aut", ignoreCase = true)) return@mapNotNull null
+            decodeEntities(m.groupValues[2].replace(TAG, "")).replace(SPACES, " ").trim().ifEmpty { null }
+        }.distinct().joinToString(", ")
+    }
+
+    /** An element with content; an empty one written as `<x/>` must not run on into the next. */
+    private val CREATOR = Regex("""<(?:\w+:)?creator\b([^>]*)(?<!/)>(.*?)</(?:\w+:)?creator\s*>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val REFINES = Regex("""<(?:\w+:)?meta\b([^>]*\brefines\s*=[^>]*)(?<!/)>(.*?)</(?:\w+:)?meta\s*>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    /** opf:role, or the role under any other prefix a tool bound the OPF namespace to. */
+    private val ROLE = Regex("""(?<![\w.-])(?:[\w.-]+:)?role\s*=\s*(?:"([^"]*)"|'([^']*)')""", RegexOption.IGNORE_CASE)
+    private val TAG = Regex("<[^>]*>")
+    private val SPACES = Regex("\\s+")
 
     internal fun decodeEntities(input: String): String =
         Regex("&(#[xX][0-9a-fA-F]+|#\\d+|[a-zA-Z][a-zA-Z0-9]*);").replace(input) { m ->

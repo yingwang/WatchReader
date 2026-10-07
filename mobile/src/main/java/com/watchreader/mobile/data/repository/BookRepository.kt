@@ -76,15 +76,18 @@ object BookRepository {
             val imported = withinMemory {
                 val bytes = resolver.openInputStream(uri)?.use { readLimited(it) }
                     ?: throw ImportException("Cannot open the selected file")
-                importBytes(bytes, mimeType, title, fallbackTitle, declaredCharset = null)
+                importBytes(bytes, mimeType, title, fallbackTitle, declaredCharset = null, author = null)
             }
             // A screen left while the file was read has given up on it, and it stays out of the library.
             coroutineContext.ensureActive()
             store(imported)
         }
 
-    /** Downloads a .txt, .epub or .fb2 from [url]; web pages are refused rather than saved as books. */
-    suspend fun addFromUrl(url: String, title: String): Book = withContext(Dispatchers.IO) {
+    /**
+     * Downloads a .txt, .epub or .fb2 from [url]; web pages are refused rather than saved as books.
+     * [author], when given, is a catalogue's word on who wrote it and stands in for the book's own.
+     */
+    suspend fun addFromUrl(url: String, title: String, author: String? = null): Book = withContext(Dispatchers.IO) {
         val address = secureAddress(url)
         val parsed = runCatching { URL(address) }.getOrElse { throw ImportException("That is not a valid URL") }
         if (parsed.protocol != "https") {
@@ -116,7 +119,7 @@ object BookRepository {
                 if (mime == "text/html" || (mime.isEmpty() && looksLikeHtml(bytes))) {
                     throw ImportException("That link is a web page, not a text, epub or fb2 file")
                 }
-                importBytes(bytes, mime, title, nameFromUrl, charset)
+                importBytes(bytes, mime, title, nameFromUrl, charset, author)
             }
             // A screen left while the book downloaded has given up on it, and it stays out of the library.
             coroutineContext.ensureActive()
@@ -305,7 +308,7 @@ object BookRepository {
 
     // ---- internals ----
 
-    private class Imported(val title: String, val text: String, val cover: ByteArray?, val chapters: List<Chapter>)
+    private class Imported(val title: String, val author: String?, val text: String, val cover: ByteArray?, val chapters: List<Chapter>)
 
     private fun importBytes(
         bytes: ByteArray,
@@ -313,6 +316,8 @@ object BookRepository {
         title: String,
         fallbackTitle: String,
         declaredCharset: String?,
+        /** Who wrote it as a catalogue says, ahead of the book's own word; null to go by the book. */
+        author: String?,
     ): Imported {
         if (bytes.isEmpty()) throw ImportException("The file is empty")
         // An FB2 book is told by its root element, or zipped on its own by the name inside the
@@ -326,7 +331,7 @@ object BookRepository {
             if (fb2.text.isBlank()) throw ImportException("No readable text found in this FB2 book")
             // A book whose sections carry no titles is scanned for headings, as a plain-text one is.
             val chapters = fb2.chapters.ifEmpty { BookToc.detect(fb2.text) }
-            return Imported(title.ifBlank { fb2.title.ifBlank { fallbackTitle } }, fb2.text, fb2.cover, chapters)
+            return Imported(title.ifBlank { fb2.title.ifBlank { fallbackTitle } }, author ?: fb2.author, fb2.text, fb2.cover, chapters)
         }
         val isEpub = mimeType == "application/epub+zip" || EpubParser.looksLikeEpub(bytes)
         return if (isEpub) {
@@ -337,7 +342,7 @@ object BookRepository {
                 throw ImportException(e.message ?: "This epub could not be read")
             }
             if (epub.text.isBlank()) throw ImportException("No readable text found in this epub")
-            Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, epub.text, epub.cover, epub.chapters)
+            Imported(title.ifBlank { epub.title.ifBlank { fallbackTitle } }, author ?: epub.author, epub.text, epub.cover, epub.chapters)
         } else {
             // The picker offers files by their generic type as well, since some providers label
             // every .txt, .epub and .fb2 that way, and a Kindle book or a PDF comes in by the same door.
@@ -349,7 +354,7 @@ object BookRepository {
             }
             val decoded = TextNormalizer.decode(bytes, declaredCharset)
             if (decoded.text.isBlank()) throw ImportException("No readable text found in this file")
-            Imported(title.ifBlank { fallbackTitle }, decoded.text, cover = null, chapters = BookToc.detect(decoded.text))
+            Imported(title.ifBlank { fallbackTitle }, author, decoded.text, cover = null, chapters = BookToc.detect(decoded.text))
         }
     }
 
@@ -365,6 +370,7 @@ object BookRepository {
             val book = Book(
                 id = id,
                 title = imported.title.trim().ifBlank { "Untitled" },
+                author = imported.author?.trim()?.ifBlank { null },
                 filePath = destFile.absolutePath,
                 sizeBytes = destFile.length(),
                 addedEpochMs = System.currentTimeMillis(),

@@ -20,4 +20,10 @@ data class Book(
     val tocJson: String? = null,
     /** Why the last transfer failed, in the watch's words; null otherwise. */
     val syncMessage: String? = null,
+    /**
+     * Who wrote it, several joined with ", ", as the book or its catalogue names them. Null for
+     * plain text, for a book that names nobody, and for every book added before authors were kept.
+     * The phone keeps it for itself; the watch is sent the book without it.
+     */
+    val author: String? = null,
 )

@@ -117,4 +117,6 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    // A real SQLite on the JVM, for running the database's migrations against an older schema.
+    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
 }
