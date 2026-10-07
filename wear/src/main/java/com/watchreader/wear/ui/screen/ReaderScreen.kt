@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -479,6 +480,7 @@ private fun Toolbar(
     canUndoJump: Boolean,
     onUndoJump: () -> Unit,
 ) {
+    val controlBg = textColor.copy(alpha = 0.10f).compositeOver(background)
     var contents by remember { mutableStateOf(false) }
     // The position shown follows the reading until the reader presses + or -; from then on it
     // is theirs, and a voice turning the page underneath must not put it back.
@@ -506,18 +508,18 @@ private fun Toolbar(
                         onClick = { onChapter(chapter) },
                         label = { Text((if (chapter == currentChapter) "● " else "") + chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                         secondaryLabel = if (chapter == currentChapter) ({ Text(stringResource(R.string.reader_current_chapter)) }) else null,
-                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
                         modifier = Modifier.fillMaxWidth(0.84f),
                     )
                 }
-                item { Chip(onClick = { contents = false }, label = { Text(stringResource(R.string.reader_controls)) }, colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText), modifier = Modifier.fillMaxWidth(0.84f)) }
+                item { Chip(onClick = { contents = false }, label = { Text(stringResource(R.string.reader_controls)) }, colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor), modifier = Modifier.fillMaxWidth(0.84f)) }
             } else {
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         val playing = ttsHere && ttsState == TtsState.PLAYING
                         TransportButton(
                             shape = if (playing) Transport.PAUSE else Transport.PLAY,
-                            color = BlueAccent,
+                            color = textColor,
                             label = stringResource(if (playing) R.string.reader_pause else R.string.reader_play),
                             onClick = onPlayPause,
                             enabled = !(ttsHere && ttsState == TtsState.LOADING),
@@ -549,10 +551,10 @@ private fun Toolbar(
                         label = { Text(stringResource(R.string.settings_auto_turn), fontSize = 14.sp) },
                         toggleControl = { Switch(checked = autoTurn) },
                         colors = ToggleChipDefaults.toggleChipColors(
-                            checkedStartBackgroundColor = ListRowBg,
-                            checkedEndBackgroundColor = ListRowBg,
-                            uncheckedStartBackgroundColor = ListRowBg,
-                            uncheckedEndBackgroundColor = ListRowBg,
+                            checkedStartBackgroundColor = controlBg,
+                            checkedEndBackgroundColor = controlBg,
+                            uncheckedStartBackgroundColor = controlBg,
+                            uncheckedEndBackgroundColor = controlBg,
                         ),
                         modifier = Modifier.fillMaxWidth(0.84f),
                     )
@@ -561,7 +563,7 @@ private fun Toolbar(
                     Chip(
                         onClick = { contents = true },
                         label = { Text(stringResource(R.string.reader_contents)) },
-                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
                         modifier = Modifier.fillMaxWidth(0.84f),
                     )
                 }
@@ -593,12 +595,12 @@ private fun Toolbar(
                 item {
                     Chip(onClick = { onJump(draftFraction); jumpEdited = false; onClose() }, enabled = jumpEdited,
                         label = { Text(stringResource(R.string.reader_confirm_jump)) },
-                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
                         modifier = Modifier.fillMaxWidth(0.84f))
                 }
                 if (canUndoJump) item {
                     Chip(onClick = onUndoJump, label = { Text(stringResource(R.string.reader_undo_jump)) },
-                        colors = ChipDefaults.chipColors(backgroundColor = ListRowBg, contentColor = ListRowText),
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
                         modifier = Modifier.fillMaxWidth(0.84f))
                 }
             }
