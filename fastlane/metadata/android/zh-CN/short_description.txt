@@ -1,1 +1,1 @@
-在 Wear OS 手表上读 txt 和 epub，也可以让手表读给你听。
+在 Wear OS 手表上读 txt、epub 与 fb2 电子书，也可以让手表念给你听。

@@ -1,23 +1,20 @@
-WatchReader turns a Wear OS watch into a small, quiet e-book reader.
+WatchReader turns your Wear OS watch into a book reader.
 
-Add a .txt or .epub on the phone, tap it, and it is on the watch a moment later. Pages are laid out for the round screen with a real measurement of your font and size, so nothing is cut off at the edges. Turn the crown or tap the sides to flip pages; your place is kept and shown on the phone as well.
+How it works
+Add a book on the phone: tap the plus button in the library, then a file, a link, or free books from Project Gutenberg, or share a book to WatchReader from another app. A new reader is also offered three free classics in the library, which one tap adds and sends to the watch.
 
-Or let the page turn itself, at a pace you set.
+Send it to the watch: open the book on the phone and tap the send button at the top, or the three dots on the cover and Send to watch. The watch then has its own copy.
 
-Long-press a page to have the watch read the book aloud. Reading continues with the screen off and after you leave the app, with a pause and stop control in the notification. Each sentence is read in the voice of its own language, across 26 languages from Chinese and English to Japanese, Russian, French, German and Czech; a voice the watch is missing is downloaded the first time a book needs it, wherever the speech engine offers one.
-
-The phone also keeps a quiet note of how long you read: today's total at the top of the library, the last seven days on a page of their own, and for each book when you added it, first opened it and finished it, how long you have spent on it and, once there is enough to go on, roughly how long is left. Watch, phone and listening are counted separately. There are no goals, streaks or reminders, and the numbers stay on your devices.
+Open it on the watch: tap the book in the watch library (next time, opening the app on the watch goes straight back into it). Turn pages with a tap (right half forward, left half back) or the crown. Press and hold the page for the reading controls. Tap the triangle to listen (a double tap on the page pauses, the square stops). Tap Contents in the controls to jump to a chapter. To delete a book, press and hold it in the library.
 
 Features
-• .txt and .epub, in UTF-8, GBK or GB18030 - encoding is detected on the phone
-• Pagination measured against the actual screen, with breaks at sentences and paragraphs
-• Rotary crown and tap navigation, jump to any percentage
-• Automatic page turning at a pace you set
-• Read aloud as a background service, with sentence highlighting
-• Sans, serif, and a bundled Kai calligraphic face, dark or sepia page
-• Share a file to WatchReader from any app, or paste a link
-• No account, no ads, no analytics; books never leave your devices
-• Read on the phone as well, with your place kept in step between phone and watch
-• Reading time on the phone: today, the last seven days and each book, with watch, phone and listening counted apart
+• Read on your watch, turning pages with the crown or a tap
+• Read aloud in the book's own language, carrying on with the screen off
+• Auto page turn at a pace you set
+• Add books from a file, a link, or by sharing, in txt, epub and fb2
+• Free classics from Project Gutenberg
+• Read on your phone as well, with your place kept in step
+• See how long you have read on your phone
+• No account and no ads
 
 Requires a phone running the companion app and a watch on Wear OS 3 or later.
