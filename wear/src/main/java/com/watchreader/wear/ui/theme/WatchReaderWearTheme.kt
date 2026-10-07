@@ -6,20 +6,20 @@ import androidx.wear.compose.material.Colors
 import androidx.wear.compose.material.MaterialTheme
 import com.watchreader.wear.settings.ReaderTheme
 
-val BlueAccent = Color(0xFF9FC5FF)
-val WarmBlack = Color(0xFF121210)
-val WarmWhite = Color(0xFFE8E0D4)
-val DimText = Color(0xFF8A8278)
+val BlueAccent = Color(0xFFC6B69A)
+val WarmBlack = Color(0xFF111114)
+val WarmWhite = Color(0xFFEAE5DC)
+val DimText = Color(0xFFB1AAA0)
 
-val SepiaBg = Color(0xFFF1E4C8)
+val SepiaBg = Color(0xFFF4ECD8)
 val SepiaText = Color(0xFF3B2E1E)
 val SepiaDim = Color(0xFF8B7355)
 
 /** The rows of the library and settings lists share one look. */
-val ListRowBg = Color(0xFF1B222D)
-val ListRowText = Color(0xFFE5EBF4)
-val ListRowSub = Color(0xFFAAB6C7)
-val ListTitle = BlueAccent
+val ListRowBg = Color(0xFF242429)
+val ListRowText = Color(0xFFEAE5DC)
+val ListRowSub = Color(0xFFBEB7AE)
+val ListTitle = WarmWhite
 
 /** Colours of the reading page for a [ReaderTheme]. */
 class PageColors(val background: Color, val text: Color, val dim: Color, val highlight: Color)
@@ -31,14 +31,14 @@ fun pageColors(theme: ReaderTheme): PageColors = when (theme) {
 
 private val WatchReaderColors = Colors(
     primary = BlueAccent,
-    primaryVariant = Color(0xFF608AC4),
+    primaryVariant = Color(0xFF958570),
     secondary = BlueAccent,
     background = WarmBlack,
     surface = ListRowBg,
     onPrimary = Color.Black,
     onSecondary = Color.Black,
-    onBackground = Color(0xFFDDDDDD),
-    onSurface = Color(0xFFDDDDDD),
+    onBackground = Color(0xFFEAE5DC),
+    onSurface = Color(0xFFEAE5DC),
     error = Color(0xFFEF5350),
     onError = Color.White,
 )

@@ -180,7 +180,7 @@ private fun BookRow(
         modifier = Modifier
             .fillMaxWidth(0.84f)
             .clip(RoundedCornerShape(24.dp))
-            .background(if (featured) Color(0xFF243A56) else ListRowBg)
+            .background(if (featured) Color(0xFF35312D) else ListRowBg)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
