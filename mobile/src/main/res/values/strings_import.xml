@@ -2,4 +2,11 @@
 <resources>
     <string name="add_clear_file">Clear the chosen file</string>
     <string name="add_share_needs_file_or_link">To add a book, share a .txt, .epub or .fb2 file, or a link to one.</string>
+    <string name="add_from_file">From a file</string>
+    <string name="add_file_formats">EPUB, FB2 and TXT books</string>
+    <string name="add_choose_file">Choose file</string>
+    <string name="add_change_file">Change file</string>
+    <string name="add_from_link">From a link</string>
+    <string name="add_link_hint">Paste a direct link to an EPUB, FB2 or TXT file.</string>
+    <string name="add_link_remove_file">Remove the selected file to use a link instead.</string>
 </resources>

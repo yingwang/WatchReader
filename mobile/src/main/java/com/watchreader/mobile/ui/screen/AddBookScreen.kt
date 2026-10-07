@@ -4,7 +4,12 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -130,7 +135,7 @@ fun AddBookScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.add_title)) },
+                title = { Text(stringResource(R.string.add_title), fontFamily = FontFamily.Serif) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
@@ -164,58 +169,71 @@ fun AddBookScreen(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
-                    onClick = {
-                        filePicker.launch(BOOK_TYPES)
-                    },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) {
-                    // Compose here has no ellipsis in the middle of a line, so a long name loses its
-                    // end, extension and all, rather than wrapping out of the button.
-                    Text(
-                        if (selectedUri != null) selectedFileName else stringResource(R.string.add_pick_file),
-                        fontSize = 16.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // Once a file is chosen the link field is shut, and this is the way back to it.
-                if (selectedUri != null) {
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = { clearFile() }, enabled = !isLoading) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.add_clear_file))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(stringResource(R.string.add_from_file), style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif)
+                    Text(stringResource(R.string.add_file_formats), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp, bottom = 16.dp))
+                    if (selectedUri != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(selectedFileName, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            IconButton(onClick = { clearFile() }, enabled = !isLoading) {
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.add_clear_file))
+                            }
+                        }
+                        TextButton(
+                            onClick = { filePicker.launch(BOOK_TYPES) },
+                            enabled = !isLoading,
+                        ) { Text(stringResource(R.string.add_change_file)) }
+                    } else {
+                        OutlinedButton(
+                            onClick = { filePicker.launch(BOOK_TYPES) },
+                            enabled = !isLoading,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                        ) { Text(stringResource(R.string.add_choose_file)) }
                     }
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f))
-            Text(
-                stringResource(R.string.add_or),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
+            Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                Text(stringResource(R.string.add_or), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp))
+                HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+            }
 
-            OutlinedTextField(
-                value = url,
-                onValueChange = { url = it; needsFileOrLink = false; vm.clearError() },
-                label = { Text(stringResource(R.string.add_url_label)) },
-                placeholder = { Text(stringResource(R.string.add_url_placeholder)) },
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = selectedUri == null,
-                // An address, not a sentence: no capital at the front and no correcting it into words.
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Uri,
-                ),
-            )
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(stringResource(R.string.add_from_link), style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif)
+                    Text(stringResource(if (selectedUri != null) R.string.add_link_remove_file else R.string.add_link_hint),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 16.dp))
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { url = it; needsFileOrLink = false; vm.clearError() },
+                        label = { Text(stringResource(R.string.add_url_label)) },
+                        placeholder = { Text(stringResource(R.string.add_url_placeholder)) },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        enabled = selectedUri == null && !isLoading,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false, keyboardType = KeyboardType.Uri),
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
 
             OutlinedTextField(
+                enabled = !isLoading,
                 value = title,
                 onValueChange = { title = it },
                 label = { Text(stringResource(R.string.add_book_title_label)) },
@@ -240,37 +258,39 @@ fun AddBookScreen(
                         if (uri != null) vm.addFromUri(uri, title, fallbackTitle)
                         else if (url.isNotBlank()) vm.addFromUrl(url, title)
                     },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     enabled = selectedUri != null || url.isNotBlank(),
                 ) {
                     Text(stringResource(if (fromUrl) R.string.add_submit_download else R.string.add_submit))
                 }
             }
 
-            // The free library is a way in of its own, below the two that start from a book in hand.
+            // The free library is a way in of its own, below the two that start from a book in hand,
+            // drawn as the same kind of card.
             Spacer(Modifier.height(32.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = !isLoading, onClick = onFreeBooks)
-                    .padding(vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Card(
+                onClick = onFreeBooks,
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.add_free_books), style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        stringResource(R.string.add_free_books_hint),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp),
+                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.add_free_books), style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif)
+                        Text(
+                            stringResource(R.string.add_free_books_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
             Spacer(Modifier.height(24.dp))
         }

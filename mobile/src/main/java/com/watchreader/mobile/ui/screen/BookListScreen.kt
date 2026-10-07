@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +64,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -215,11 +217,19 @@ fun BookListScreen(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(stringResource(R.string.list_continue), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                                    Text(book.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text(stringResource(R.string.list_progress, (book.readProgress.coerceIn(0f, 1f) * 100).toInt()), style = MaterialTheme.typography.bodyMedium)
-                                    LinearProgressIndicator(progress = { book.readProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                                val cover = rememberCoverArt(book.coverPath)
+                                Row(Modifier.padding(18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (cover != null) {
+                                        Image(bitmap = cover, contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.width(76.dp).aspectRatio(0.7f).clip(RoundedCornerShape(6.dp)))
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(stringResource(R.string.list_continue), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(book.title, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                        Text(stringResource(R.string.list_progress, (book.readProgress.coerceIn(0f, 1f) * 100).toInt()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        LinearProgressIndicator(progress = { book.readProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                                    }
                                 }
                             }
                         }
