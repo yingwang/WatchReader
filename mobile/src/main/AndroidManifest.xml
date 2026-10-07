@@ -21,15 +21,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- "Share to WatchReader" from file managers, browsers and mail clients. A browser
-                 shares a link as text/plain, and that link goes to the add screen's link field. -->
+                 shares a link as text/plain, and that link goes to the add screen's link field.
+                 A zipped .fb2 is shared as a plain ZIP. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/x-fictionbook+xml" />
+                <data android:mimeType="application/x-fictionbook" />
+                <data android:mimeType="application/x-zip-compressed-fb2" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
-            <!-- "Open with WatchReader" for downloaded .txt / .epub files -->
+            <!-- "Open with WatchReader" for downloaded .txt / .epub / .fb2 files -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -38,6 +43,9 @@
                 <data android:scheme="file" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/x-fictionbook+xml" />
+                <data android:mimeType="application/x-fictionbook" />
+                <data android:mimeType="application/x-zip-compressed-fb2" />
             </intent-filter>
         </activity>
 

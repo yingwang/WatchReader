@@ -27,6 +27,9 @@ class ImportLinkTest {
         assertEquals("Untitled", BookRepository.titleFromPath("/"))
         // A stray percent sign is kept rather than losing the name.
         assertEquals("100% true", BookRepository.titleFromPath("/100% true.txt"))
+        // A zipped FB2 book loses both of its extensions.
+        assertEquals("Tolstoy. War and Peace", BookRepository.titleFromPath("/get/Tolstoy.%20War%20and%20Peace.fb2.zip"))
+        assertEquals("book.v2", BookRepository.titleFromPath("/book.v2.zip"))
     }
 
     @Test

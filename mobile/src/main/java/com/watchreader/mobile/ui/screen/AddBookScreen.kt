@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watchreader.mobile.R
+import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.ui.SharedIntent
 import com.watchreader.mobile.ui.viewmodel.AddBookViewModel
 import kotlinx.coroutines.Dispatchers
@@ -121,7 +122,7 @@ fun AddBookScreen(
         if (done) onBack()
     }
 
-    val fallbackTitle = selectedFileName.substringBeforeLast(".").ifBlank { selectedFileName }
+    val fallbackTitle = BookRepository.bareName(selectedFileName).ifBlank { selectedFileName }
 
     Scaffold(
         topBar = {
@@ -163,7 +164,7 @@ fun AddBookScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(
                     onClick = {
-                        filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream"))
+                        filePicker.launch(BOOK_TYPES)
                     },
                     modifier = Modifier.weight(1f).height(56.dp),
                 ) {
@@ -246,6 +247,17 @@ fun AddBookScreen(
         }
     }
 }
+
+/**
+ * What the file picker offers. Few providers know .fb2 by name: most call it octet-stream, some
+ * XML, and a zipped one is just a ZIP, so the generic types are asked for alongside the proper
+ * ones and the import tells the books apart by what is in them.
+ */
+private val BOOK_TYPES = arrayOf(
+    "text/plain", "application/epub+zip", "application/octet-stream",
+    "application/x-fictionbook+xml", "application/x-fictionbook", "application/x-zip-compressed-fb2",
+    "text/xml", "application/xml", "application/zip", "application/x-zip-compressed",
+)
 
 /** The name the document provider gives the file, or null when it gives none. */
 private fun displayName(context: android.content.Context, uri: Uri): String? = runCatching {

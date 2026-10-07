@@ -12,9 +12,10 @@ import java.nio.charset.CodingErrorAction
  * Detection order: byte-order mark, or the zero bytes of UTF-16 saved without one, then strict
  * UTF-8, then UTF-8 with a stray bad byte or two, then the East Asian encodings with GB18030 (a
  * superset of GBK, which is what most Chinese .txt files in the wild are saved as) preferred,
- * then Windows-1252 as a last resort so that nothing is ever rejected. Line endings become "\n",
- * runs of blank lines collapse to one, and lines a Latin-script book was broken at for a fixed
- * width are joined back into paragraphs.
+ * then the single-byte code pages of Europe, Windows-1252 unless another reads clearly better,
+ * so that nothing is ever rejected. Line endings become "\n", runs of blank lines collapse to
+ * one, and lines a Latin-script book was broken at for a fixed width are joined back into
+ * paragraphs.
  */
 object TextNormalizer {
     data class Decoded(val text: String, val charset: String)
@@ -22,6 +23,15 @@ object TextNormalizer {
     fun decode(bytes: ByteArray, declaredCharset: String? = null): Decoded {
         val (text, charset) = read(bytes, declaredCharset)
         return Decoded(unwrap(normalize(text)), charset)
+    }
+
+    /**
+     * [bytes] decoded the way [decode] decodes them, with nothing else done: for a file whose
+     * text is markup, where line ends, blank runs and control codes are the parser's business.
+     */
+    fun decodeAsIs(bytes: ByteArray, declaredCharset: String? = null): Decoded {
+        val (text, charset) = read(bytes, declaredCharset)
+        return Decoded(text, charset)
     }
 
     private fun read(bytes: ByteArray, declaredCharset: String?): Pair<String, String> {
@@ -43,9 +53,28 @@ object TextNormalizer {
             val text = if (declared == WINDOWS_1252) String(bytes, declared) else strict(bytes, declared)
             text?.let { return it to declared.name() }
         }
-        eastAsian(bytes)?.let { return it }
-        return String(bytes, WINDOWS_1252) to WINDOWS_1252.name()
+        // A book in one of Europe's code pages fails every East Asian decoder on its first
+        // accented letter followed by a space, but a short one can slip through GB18030 or
+        // Shift_JIS, which then make a few odd characters of its accented letters. Such a reading
+        // has hardly any everyday characters in it, and the single-byte reading wins when it
+        // makes sense or when the East Asian one makes none.
+        val eastAsian = eastAsian(bytes)
+        if (eastAsian != null && eastAsian.score >= EVERYDAY_FLOOR) return eastAsian.text to eastAsian.charset
+        val codePage = singleByte(bytes)
+        if (eastAsian == null || codePage.convincing || eastAsian.score < EVERYDAY_NOISE) {
+            return String(bytes, codePage.charset) to codePage.charset.name()
+        }
+        return eastAsian.text to eastAsian.charset
     }
+
+    /** A reading by one of the East Asian encodings, and the share of everyday characters in it. */
+    private class EastAsianReading(val text: String, val charset: String, val score: Double)
+
+    /** An East Asian reading this full of everyday characters is taken without trying the code pages. */
+    private const val EVERYDAY_FLOOR = 0.1
+
+    /** Below this share an East Asian reading is noise: real Chinese or Japanese never gets this low. */
+    private const val EVERYDAY_NOISE = 0.01
 
     /**
      * Web servers and old editors label Windows-1252 as ISO-8859-1, and browsers have long read
@@ -99,18 +128,14 @@ object TextNormalizer {
      * scored by how much of it is made of everyday characters, and another encoding displaces
      * GB18030 only when it reads clearly better, as a traditional Chinese or Japanese file does.
      */
-    private fun eastAsian(bytes: ByteArray): Pair<String, String>? {
-        var best: Pair<String, String>? = null
-        var bestScore = -1.0
+    private fun eastAsian(bytes: ByteArray): EastAsianReading? {
+        var best: EastAsianReading? = null
         for ((index, name) in EAST_ASIAN.withIndex()) {
             val charset = runCatching { Charset.forName(name) }.getOrNull() ?: continue
             val text = strict(bytes, charset) ?: continue
             val score = everyday(text)
             val margin = if (index == 0) 0.0 else CHALLENGER_MARGIN
-            if (score > bestScore + margin || best == null) {
-                best = text to charset.name()
-                bestScore = score
-            }
+            if (best == null || score > best.score + margin) best = EastAsianReading(text, charset.name(), score)
         }
         return best
     }
@@ -153,6 +178,193 @@ object TextNormalizer {
         "裡義處變聲數氣認電條區隊書華際達員讓馬爾勢調風運車門東線遠總結決識標題務論給話統應戰" +
         "場計劃資許則聽權難稱為爲聞鳥"
     ).toHashSet()
+
+    /** The code page a single-byte book was found to be in, and whether its reading makes sense. */
+    private class SingleByteReading(val charset: Charset, val convincing: Boolean)
+
+    /**
+     * The single-byte code page a book reads best in. Every one of them decodes any bytes, so
+     * each reading is judged instead, on its letters outside ASCII: in a book of the right code
+     * page they are letters its language uses, set in words the way that language sets them; in
+     * a wrong one they are symbols, letters from a neighbouring alphabet, or capitals in the
+     * middle of words. Windows-1252 was the only fallback before the others were looked at, and
+     * it stays first: another code page takes over only where it reads clearly better.
+     *
+     * Two code pages are compared only where they disagree: on the characters they read
+     * differently, and on those they read alike but judge differently. Czech in Windows-1252
+     * keeps its á, é and í, which every Western language has too, and loses ř, ě and č to ø, ì
+     * and è, which no Western language writes together; judged on the whole book, the letters
+     * both readings share would make the two look much alike. Slovene loses only its č, to the
+     * è of French, and what gives it away is that French has no use for the š and ž around it.
+     */
+    private fun singleByte(bytes: ByteArray): SingleByteReading {
+        // One byte is one character in all of these, so the readings line up position by position.
+        val sample = if (bytes.size > SAMPLE_CHARS) bytes.copyOf(SAMPLE_CHARS) else bytes
+        val readings = SINGLE_BYTE.mapNotNull { (name, alphabets) ->
+            val charset = runCatching { Charset.forName(name) }.getOrNull() ?: return@mapNotNull null
+            val text = String(sample, charset)
+            CodePageReading(charset, text, if (alphabets == null) cyrillicVerdicts(text) else latinVerdicts(text, alphabets))
+        }
+        var best = readings.first()
+        for (challenger in readings.drop(1)) {
+            var bestFor = 0
+            var bestAgainst = 0
+            var challengerFor = 0
+            var challengerAgainst = 0
+            for (i in sample.indices) {
+                if (best.text[i] == challenger.text[i] && best.verdicts[i] == challenger.verdicts[i]) continue
+                when (best.verdicts[i]) { FOR -> bestFor++; AGAINST -> bestAgainst++ }
+                when (challenger.verdicts[i]) { FOR -> challengerFor++; AGAINST -> challengerAgainst++ }
+            }
+            // A few stray symbols in an English book are no reason to read it as Polish: the
+            // letters a code page is chosen for turn up all through a book written in it.
+            val letters = challenger.text.count { it.isLetter() }
+            if (challengerFor * MIN_EVIDENCE_SHARE < letters) continue
+            if (share(challengerFor, challengerAgainst) > share(bestFor, bestAgainst) + CODE_PAGE_MARGIN) best = challenger
+        }
+        val inFavour = best.verdicts.count { it == FOR }
+        val against = best.verdicts.count { it == AGAINST }
+        val letters = best.text.count { it.isLetter() }
+        val convincing = share(inFavour, against) >= CONVINCING && inFavour * MIN_EVIDENCE_SHARE >= letters
+        return SingleByteReading(best.charset, convincing)
+    }
+
+    private class CodePageReading(val charset: Charset, val text: String, val verdicts: ByteArray)
+
+    private fun share(inFavour: Int, against: Int): Double =
+        if (inFavour + against == 0) 0.0 else inFavour.toDouble() / (inFavour + against)
+
+    /** What a character says about the reading it came from. */
+    private const val NEUTRAL: Byte = 0
+    private const val FOR: Byte = 1
+    private const val AGAINST: Byte = 2
+
+    /** How much better another code page has to read before it is believed. */
+    private const val CODE_PAGE_MARGIN = 0.1
+
+    /** At most one letter in this many need be a code page's own for it to count as one in use. */
+    private const val MIN_EVIDENCE_SHARE = 500
+
+    /** A single-byte reading this sound is preferred to an East Asian one with few everyday characters. */
+    private const val CONVINCING = 0.8
+
+    /**
+     * The code pages tried, each with the alphabets of the languages written in it; null stands
+     * for Cyrillic, whose code pages differ in where they put the same letters rather than in
+     * which letters they have. KOI8-U is KOI8-R with the letters Ukrainian adds, and a Russian
+     * book reads the same in either, so the earlier keeps it.
+     */
+    private val SINGLE_BYTE: List<Pair<String, List<String>?>> = listOf(
+        "windows-1252" to listOf(
+            // French, German, Spanish, Portuguese, Italian, Dutch, Swedish, Danish and Norwegian,
+            // Finnish, Icelandic, Catalan, Estonian
+            "àâæçéèêëîïôœùûüÿ", "äöüß", "áéíñóúü", "áâãàçéêíóôõúü", "àèéìíîòóù", "éèëïöü",
+            "åäöé", "æøåé", "äöåšž", "áðéíóúýþæö", "àçèéíïòóúü", "õäöüšž",
+        ),
+        "windows-1250" to listOf(
+            // Czech, Slovak, Polish, Hungarian, Slovene and Croatian, Romanian
+            "áčďéěíňóřšťúůýž", "áäčďéíĺľňóôŕšťúýž", "ąćęłńóśźż", "áéíóöőúüű", "čćđšž", "ăâîşţ",
+        ),
+        "windows-1251" to null,
+        "KOI8-R" to null,
+        "KOI8-U" to null,
+    )
+
+    /**
+     * A Latin-script reading judged letter by letter against the one language among [alphabets]
+     * that accounts for most of it. A letter outside ASCII counts for the reading when that
+     * language has it and it stands in a word with plain letters beside it, as accented letters
+     * do; the few words made of one or two such letters alone, French à and Hungarian ő among
+     * them, count too when they are lower case. A Cyrillic book read this way is words made of
+     * nothing but accented letters, and every one of them counts against it.
+     */
+    private fun latinVerdicts(text: String, alphabets: List<String>): ByteArray {
+        val eligible = BooleanArray(text.length)
+        forEachWord(text) { start, end ->
+            var plain = false
+            for (k in start until end) if (text[k].code < 0x80) plain = true
+            val alone = !plain && end - start <= 2 &&
+                (start == 0 || !text[start - 1].isDigit()) && (end == text.length || !text[end].isDigit())
+            for (k in start until end) {
+                if (text[k].code >= 0x80 && (plain || (alone && text[k].isLowerCase()))) eligible[k] = true
+            }
+        }
+        val counts = IntArray(alphabets.size)
+        for (i in text.indices) {
+            if (!eligible[i]) continue
+            val lower = text[i].lowercaseChar()
+            for (n in alphabets.indices) if (lower in alphabets[n]) counts[n]++
+        }
+        val alphabet = alphabets[counts.indices.maxByOrNull { counts[it] } ?: 0]
+        return ByteArray(text.length) { i ->
+            val c = text[i]
+            when {
+                c.code < 0x80 -> NEUTRAL
+                !isWordLetter(c) -> if (neutral(c)) NEUTRAL else AGAINST
+                eligible[i] && c.lowercaseChar() in alphabet -> FOR
+                else -> AGAINST
+            }
+        }
+    }
+
+    /**
+     * A Cyrillic reading judged by its case. The Cyrillic code pages hold the same letters in
+     * different places, Windows-1251 and KOI8 even swapping capitals for small letters, so a book
+     * read in the wrong one is still all Cyrillic but runs in capitals from end to end. A letter
+     * counts for the reading when it is small or opens its word, and when the word has no Latin
+     * letters in it; a Czech or Polish book read this way has its accented letters turned
+     * Cyrillic in the middle of Latin words.
+     */
+    private fun cyrillicVerdicts(text: String): ByteArray {
+        val verdicts = ByteArray(text.length)
+        for (i in text.indices) {
+            val c = text[i]
+            if (c.code >= 0x80 && !isWordLetter(c) && !neutral(c)) verdicts[i] = AGAINST
+        }
+        forEachWord(text) { start, end ->
+            var latin = false
+            for (k in start until end) if (Character.UnicodeScript.of(text[k].code) == Character.UnicodeScript.LATIN) latin = true
+            for (k in start until end) {
+                val c = text[k]
+                if (c.code < 0x80) continue
+                val cyrillic = Character.UnicodeScript.of(c.code) == Character.UnicodeScript.CYRILLIC
+                verdicts[k] = if (cyrillic && !latin && (c.isLowerCase() || k == start)) FOR else AGAINST
+            }
+        }
+        return verdicts
+    }
+
+    /** Calls [block] with the bounds of every run of letters in [text]. */
+    private inline fun forEachWord(text: String, block: (start: Int, end: Int) -> Unit) {
+        var i = 0
+        while (i < text.length) {
+            if (!isWordLetter(text[i])) {
+                i++
+                continue
+            }
+            var end = i + 1
+            while (end < text.length && isWordLetter(text[end])) end++
+            block(i, end)
+            i = end
+        }
+    }
+
+    /** The ordinal signs of 1º and 2ª are letters to Unicode, but they belong with the numbers. */
+    private fun isWordLetter(c: Char): Boolean = c.isLetter() && c != 'ª' && c != 'º'
+
+    /**
+     * Spaces, punctuation and the few signs prose is set with, which every code page has in much
+     * the same places and which say nothing for or against a reading. Other symbols do: box
+     * drawing, mathematical signs, superscript figures and loose accents are what a wrong code
+     * page makes of letters.
+     */
+    private fun neutral(c: Char): Boolean = when (Character.getType(c).toByte()) {
+        Character.SPACE_SEPARATOR, Character.FORMAT, Character.DASH_PUNCTUATION,
+        Character.START_PUNCTUATION, Character.END_PUNCTUATION, Character.CONNECTOR_PUNCTUATION,
+        Character.OTHER_PUNCTUATION, Character.INITIAL_QUOTE_PUNCTUATION,
+        Character.FINAL_QUOTE_PUNCTUATION, Character.CURRENCY_SYMBOL -> true
+        else -> c in "°©®™№ªº"
+    }
 
     /**
      * Collapses line endings and blank runs; also strips control characters that TTS engines
