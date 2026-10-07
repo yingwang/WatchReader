@@ -41,6 +41,7 @@ fun MobileNavigation(shareGeneration: Int) {
                 onOpenBook = { id -> navController.navigate("read/$id") },
                 onStats = { navController.navigate("stats") },
                 onDetails = { id -> navController.navigate("details/$id") },
+                onFreeBooks = { navController.navigate("free") { launchSingleTop = true } },
             )
         }
         composable("stats") {

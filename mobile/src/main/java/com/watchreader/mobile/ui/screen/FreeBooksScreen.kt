@@ -87,6 +87,7 @@ import com.watchreader.mobile.ui.viewmodel.FreeBooksViewModel.Adding
 import com.watchreader.mobile.ui.viewmodel.FreeBooksViewModel.Details
 import com.watchreader.mobile.ui.viewmodel.FreeBooksViewModel.Listing
 import com.watchreader.mobile.ui.viewmodel.FreeBooksViewModel.Problem
+import com.watchreader.mobile.ui.viewmodel.refusalOf
 import java.util.Locale
 
 /**
@@ -366,11 +367,7 @@ private fun LoadedDetails(details: FreeBookDetails, adding: Adding, onAdd: () ->
             details.subjects.take(MAX_SUBJECTS).joinToString("\n") { it.replace(" -- ", " – ") },
         )
     }
-    val note = when {
-        !details.publicDomain -> R.string.free_not_public_domain
-        details.files.isEmpty() -> R.string.free_nothing_to_read
-        else -> null
-    }
+    val note = refusalOf(details)
     if (note != null) {
         Text(
             stringResource(note),
@@ -412,9 +409,12 @@ private fun Detail(label: String, value: String) {
     Text(value, style = MaterialTheme.typography.bodyMedium)
 }
 
-/** A Gutenberg cover, fetched once it is shown; the quiet block stands in until then, or for good. */
+/**
+ * A Gutenberg cover, fetched once it is shown; the quiet block stands in until then, or for good.
+ * The library's free classics show theirs the same way.
+ */
 @Composable
-private fun Cover(url: String, width: Dp) {
+internal fun Cover(url: String, width: Dp) {
     val px = with(LocalDensity.current) { width.roundToPx() }
     val art by produceState(FreeBookRepository.cachedCover(url)?.asImageBitmap(), url, px) {
         if (value == null) value = FreeBookRepository.cover(url, px)?.asImageBitmap()
@@ -464,7 +464,7 @@ private fun Note(title: String, hint: String, action: @Composable () -> Unit = {
 }
 
 @Composable
-private fun authorOf(book: FreeBook): String = book.author ?: stringResource(R.string.free_unknown_author)
+internal fun authorOf(book: FreeBook): String = book.author ?: stringResource(R.string.free_unknown_author)
 
 /** The interface is in English, so languages are named in English too. */
 private fun languageName(code: String): String =

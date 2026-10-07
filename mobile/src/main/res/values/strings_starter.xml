@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="starter_title">Start with a free classic</string>
+    <string name="starter_more">More free books</string>
+    <string name="starter_unavailable">Could not load free classics</string>
+</resources>

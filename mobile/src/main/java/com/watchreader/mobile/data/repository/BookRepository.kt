@@ -292,6 +292,13 @@ object BookRepository {
         prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
     }
 
+    /**
+     * Whether the library holds any book the reader chose. The bundled guide is put there by the
+     * app, so a library with only the guide in it is still a new reader's, and is offered the
+     * free classics an empty one is.
+     */
+    fun hasOwnBooks(books: List<Book>): Boolean = books.any { it.id != SAMPLE_ID }
+
     suspend fun loadText(book: Book): String = withContext(Dispatchers.IO) {
         File(book.filePath).readText(Charsets.UTF_8)
     }
