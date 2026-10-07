@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">
+<id>http://www.gutenberg.org/ebooks/5200.opds</id>
+<updated>2026-10-07T18:39:19Z</updated>
+<title>Metamorphosis by Franz Kafka</title>
+<subtitle>Free eBooks since 1971.</subtitle>
+<author>
+<name>Project Gutenberg</name>
+<uri>https://www.gutenberg.org</uri>
+<email>webmaster@gutenberg.org</email>
+</author>
+<icon>https://www.gutenberg.org/gutenberg/favicon.ico</icon>
+<link rel="search" type="application/opensearchdescription+xml" title="Project Gutenberg Catalog Search" href="https://www.gutenberg.org/catalog/osd-books.xml"/>
+<link rel="self" title="This Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/5200.opds"/>
+<link rel="alternate" type="text/html" title="HTML Page" href="/ebooks/5200"/>
+<link rel="start" title="Start Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks.opds/"/>
+<opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+<opensearch:startIndex>1</opensearch:startIndex>
+<entry>
+<updated>2026-10-07T18:39:19Z</updated>
+<title>Metamorphosis</title>
+<content type="xhtml">
+<div xmlns="http://www.w3.org/1999/xhtml">
+<p>Title: ...</p>
+</div>
+</content>
+<id>urn:gutenberg:5200:2</id>
+<published>2005-08-17T00:00:00+00:00</published>
+<rights>Copyrighted. Read the copyright notice inside this book for details.</rights>
+<contributor>
+<name>Wyllie, David (Translator)</name>
+</contributor>
+<author>
+<name>Kafka, Franz</name>
+</author>
+<category scheme="http://purl.org/dc/terms/LCSH" term="Psychological fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Metamorphosis -- Fiction"/>
+<category scheme="http://purl.org/dc/terms/LCC" term="PT" label="Language and Literatures: Germanic, Scandinavian, and Icelandic literatures"/>
+<category scheme="http://purl.org/dc/terms/DCMIType" term="Text"/>
+<dcterms:language>en</dcterms:language>
+<relevance:score>1</relevance:score>
+<link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB (older e-readers, no images)" length="158601" href="https://www.gutenberg.org/ebooks/5200.epub.noimages"/>
+<link type="application/x-mobipocket-ebook" rel="http://opds-spec.org/acquisition" title="Kindle (no images)" length="164470" href="https://www.gutenberg.org/ebooks/5200.kindle.noimages"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image" href="https://www.gutenberg.org/cache/epub/5200/pg5200.cover.medium.jpg"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image/thumbnail" href="https://www.gutenberg.org/cache/epub/5200/pg5200.cover.small.jpg"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/author/1735.opds" title="By Kafka, Franz…"/>
+</entry>
+<entry>
+<updated>2026-10-07T18:39:19Z</updated>
+<title>Metamorphosis</title>
+<content type="xhtml">
+<div xmlns="http://www.w3.org/1999/xhtml">
+<p>Title: ...</p>
+</div>
+</content>
+<id>urn:gutenberg:5200:3</id>
+<published>2005-08-17T00:00:00+00:00</published>
+<rights>Copyrighted. Read the copyright notice inside this book for details.</rights>
+<contributor>
+<name>Wyllie, David (Translator)</name>
+</contributor>
+<author>
+<name>Kafka, Franz</name>
+</author>
+<category scheme="http://purl.org/dc/terms/LCSH" term="Psychological fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Metamorphosis -- Fiction"/>
+<category scheme="http://purl.org/dc/terms/LCC" term="PT" label="Language and Literatures: Germanic, Scandinavian, and Icelandic literatures"/>
+<category scheme="http://purl.org/dc/terms/DCMIType" term="Text"/>
+<dcterms:language>en</dcterms:language>
+<relevance:score>1</relevance:score>
+<link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB3 (E-readers incl. Send-to-Kindle)" length="317245" href="https://www.gutenberg.org/ebooks/5200.epub3.images"/>
+<link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB (older e-readers)" length="315306" href="https://www.gutenberg.org/ebooks/5200.epub.images"/>
+<link type="application/x-mobipocket-ebook" rel="http://opds-spec.org/acquisition" title="Kindles (kf8)" length="452828" href="https://www.gutenberg.org/ebooks/5200.kf8.images"/>
+<link type="application/x-mobipocket-ebook" rel="http://opds-spec.org/acquisition" title="Older Kindles" length="443450" href="https://www.gutenberg.org/ebooks/5200.kindle.images"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image" href="https://www.gutenberg.org/cache/epub/5200/pg5200.cover.medium.jpg"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image/thumbnail" href="https://www.gutenberg.org/cache/epub/5200/pg5200.cover.small.jpg"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/author/1735.opds" title="By Kafka, Franz…"/>
+</entry>
+</feed>

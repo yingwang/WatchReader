@@ -5,12 +5,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.watchreader.mobile.R
 import com.watchreader.mobile.data.model.FreeBook
+import com.watchreader.mobile.data.model.FreeBookDetails
 import com.watchreader.mobile.data.repository.FreeBookRepository
-import com.watchreader.mobile.data.repository.Gutendex
+import com.watchreader.mobile.data.repository.GutenbergCatalog
 import com.watchreader.mobile.data.repository.ImportException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,22 +23,27 @@ import java.net.UnknownHostException
 import java.util.Locale
 
 class FreeBooksViewModel(application: Application) : AndroidViewModel(application) {
-    /** Why a list could not be had; the screen words each one. */
-    enum class Problem { OFFLINE, SLOW, UNAVAILABLE }
+    /** Why something could not be had from the library; the screen words each one. */
+    enum class Problem { OFFLINE, UNAVAILABLE }
 
     data class Listing(
         /** What was searched for, which the field may since have moved on from; empty for the popular list. */
         val search: String = "",
         val books: List<FreeBook> = emptyList(),
         val next: String? = null,
-        /** The first page of a new search is on its way. */
+        /** The first page of a new list is on its way. */
         val loading: Boolean = false,
-        /** It has been on its way long enough for the screen to say why. */
-        val slow: Boolean = false,
         val problem: Problem? = null,
         val loadingMore: Boolean = false,
         val moreProblem: Problem? = null,
     )
+
+    /** The open book's own catalogue entry, asked for when it is opened. */
+    sealed interface Details {
+        data object Loading : Details
+        data class Loaded(val details: FreeBookDetails) : Details
+        data class Failed(val problem: Problem) : Details
+    }
 
     sealed interface Adding {
         data object Idle : Adding
@@ -51,7 +56,7 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
     val query: StateFlow<String> = _query.asStateFlow()
 
     /** A language code, or null for every language. */
-    private val _language = MutableStateFlow(Gutendex.languageFor(Locale.getDefault()))
+    private val _language = MutableStateFlow(GutenbergCatalog.languageFor(Locale.getDefault()))
     val language: StateFlow<String?> = _language.asStateFlow()
 
     private val _listing = MutableStateFlow(Listing(loading = true))
@@ -61,11 +66,15 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selected = MutableStateFlow<FreeBook?>(null)
     val selected: StateFlow<FreeBook?> = _selected.asStateFlow()
 
+    private val _details = MutableStateFlow<Details>(Details.Loading)
+    val details: StateFlow<Details> = _details.asStateFlow()
+
     private val _adding = MutableStateFlow<Adding>(Adding.Idle)
     val adding: StateFlow<Adding> = _adding.asStateFlow()
 
     private var listJob: Job? = null
     private var moreJob: Job? = null
+    private var detailsJob: Job? = null
     private var addJob: Job? = null
 
     /** The search and language the list shows, or is on its way to showing. */
@@ -75,11 +84,7 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
         refresh()
     }
 
-    /**
-     * A search goes out with the keyboard's search key, not as the reader types: one Gutendex
-     * has not seen lately costs it a minute or more of work, and one at every pause in the
-     * typing would cost it several. An emptied field goes back to the popular list at once.
-     */
+    /** A search goes out with the keyboard's search key; an emptied field goes back to the popular list at once. */
     fun setQuery(text: String) {
         _query.value = text
         if (text.isBlank()) refresh()
@@ -104,28 +109,19 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
         val (search, language) = wanted
         listJob = viewModelScope.launch {
             _listing.value = Listing(search, loading = true)
-            val note = launch {
-                delay(SLOW_AFTER_MS)
-                _listing.update { it.copy(slow = true) }
-            }
-            try {
-                var page = FreeBookRepository.firstPage(search, language)
-                // A page can hold nothing but audio books or music, none of which is listed here;
-                // the next ones may have something to read.
-                repeat(EMPTY_PAGES_SKIPPED) {
-                    val next = page.next
-                    if (page.books.isEmpty() && next != null) page = FreeBookRepository.page(next)
-                }
-                _listing.value = Listing(search, page.books, page.next)
+            _listing.value = try {
+                val page = FreeBookRepository.firstPage(search, language)
+                Listing(search, page.books, page.next)
             } catch (e: IOException) {
-                _listing.value = Listing(search, problem = problemOf(e))
-            } finally {
-                note.cancel()
+                Listing(search, problem = problemOf(e))
             }
         }
     }
 
-    /** The next page, asked for as the list nears its end; once it has failed, only [retryMore] asks again. */
+    /**
+     * The next page, asked for as the list nears its end and never before; once it has failed,
+     * only [retryMore] asks again.
+     */
     fun loadMore() {
         val now = _listing.value
         val next = now.next ?: return
@@ -146,21 +142,44 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
         loadMore()
     }
 
-    /** Opens a book's details, or closes them with null; closing them stops a download under way. */
+    /**
+     * Opens a book's details and asks for its catalogue entry, or closes them with null. Closing
+     * them stops whatever was still on its way for the book, a download included.
+     */
     fun select(book: FreeBook?) {
+        detailsJob?.cancel()
         addJob?.cancel()
         _adding.value = Adding.Idle
         _selected.value = book
+        if (book != null) loadDetails(book)
+    }
+
+    fun retryDetails() {
+        _selected.value?.let(::loadDetails)
+    }
+
+    private fun loadDetails(book: FreeBook) {
+        detailsJob?.cancel()
+        _details.value = Details.Loading
+        detailsJob = viewModelScope.launch {
+            _details.value = try {
+                Details.Loaded(FreeBookRepository.details(book))
+            } catch (e: IOException) {
+                Details.Failed(problemOf(e))
+            }
+        }
     }
 
     /** Downloads the open book into the library; leaving the screen or closing the details stops it. */
     fun add() {
         val book = _selected.value ?: return
+        val details = (_details.value as? Details.Loaded)?.details ?: return
+        if (!details.publicDomain || details.files.isEmpty()) return
         if (_adding.value == Adding.Busy || _adding.value == Adding.Done) return
         _adding.value = Adding.Busy
         addJob = viewModelScope.launch {
             _adding.value = try {
-                FreeBookRepository.add(book)
+                FreeBookRepository.add(book, details)
                 Adding.Done
             } catch (e: CancellationException) {
                 throw e
@@ -171,10 +190,9 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun problemOf(e: IOException): Problem = when (e) {
-        is SocketTimeoutException -> Problem.SLOW
         // No address for the server, or no route to it: the phone is offline, or as good as.
         is UnknownHostException, is SocketException -> Problem.OFFLINE
-        // An error page, or an answer that is not a list of books.
+        // A timeout, an error page, or an answer that is not a feed.
         else -> Problem.UNAVAILABLE
     }
 
@@ -189,8 +207,6 @@ class FreeBooksViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private companion object {
-        const val SLOW_AFTER_MS = 6_000L
-        const val EMPTY_PAGES_SKIPPED = 2
         val SPACES = Regex("\\s+")
     }
 }
