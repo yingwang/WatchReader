@@ -101,14 +101,14 @@ internal object StarterShelf {
         ),
         "ru" to emptyList(),
         "zh" to listOf(
-            FreeBook(23962, "西遊記", "Cheng'en Wu"),
-            FreeBook(24264, "紅樓夢", "Xueqin Cao"),
-            FreeBook(23950, "三國志演義", "Guanzhong Luo"),
+            FreeBook(23962, "西遊記", "吳承恩"),
+            FreeBook(24264, "紅樓夢", "曹雪芹"),
+            FreeBook(23950, "三國志演義", "羅貫中"),
         ),
         "ja" to listOf(
-            FreeBook(1982, "羅生門", "Ryūnosuke Akutagawa"),
-            FreeBook(33307, "友情", "Saneatsu Mushanokoji"),
-            FreeBook(31757, "お目出たき人", "Saneatsu Mushanokoji"),
+            FreeBook(1982, "羅生門", "芥川龍之介"),
+            FreeBook(33307, "友情", "武者小路実篤"),
+            FreeBook(31757, "お目出たき人", "武者小路実篤"),
         ),
         "el" to listOf(
             FreeBook(36248, "Ιλιάδα", "Homer"),
