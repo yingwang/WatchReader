@@ -12,6 +12,7 @@ import com.watchreader.mobile.ui.SharedIntent
 import com.watchreader.mobile.ui.screen.AddBookScreen
 import com.watchreader.mobile.ui.screen.BookDetailsScreen
 import com.watchreader.mobile.ui.screen.BookListScreen
+import com.watchreader.mobile.ui.screen.FreeBooksScreen
 import com.watchreader.mobile.ui.screen.ReadingStatsScreen
 import com.watchreader.mobile.ui.screen.ReaderScreen
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
@@ -57,7 +58,15 @@ fun MobileNavigation(shareGeneration: Int) {
             )
         }
         composable("add") {
-            AddBookScreen(shareGeneration = shareGeneration, onBack = back)
+            AddBookScreen(
+                shareGeneration = shareGeneration,
+                onBack = back,
+                onFreeBooks = { navController.navigate("free") { launchSingleTop = true } },
+            )
+        }
+        composable("free") {
+            // A book added from the free library is shown where it landed, in the library itself.
+            FreeBooksScreen(onBack = back, onAdded = { navController.popBackStack("books", inclusive = false) })
         }
         composable(
             route = "read/{bookId}",
