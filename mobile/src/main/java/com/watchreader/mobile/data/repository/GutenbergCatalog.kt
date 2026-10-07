@@ -54,25 +54,6 @@ internal object GutenbergCatalog {
 
     private const val NO_RECORDINGS = "!cat.audio"
 
-    /** How many free classics the library offers a reader who has no books of their own yet. */
-    const val STARTER_COUNT = 3
-
-    /**
-     * The free classics offered to a library with nothing of the reader's own in it: the most
-     * downloaded books in [language], the phone's own. A phone whose language Gutenberg does not
-     * have, or has too few books in to fill the card, is offered the most downloaded in every
-     * language instead, so the card never stands half empty. [mostDownloaded] gives the popular
-     * list's first page for a language, or for all of them with null; the list in every language
-     * is only asked for when the phone's own falls short.
-     */
-    suspend fun starterPicks(language: String?, mostDownloaded: suspend (language: String?) -> List<FreeBook>): List<FreeBook> {
-        if (language != null) {
-            val own = mostDownloaded(language).distinctBy { it.id }
-            if (own.size >= STARTER_COUNT) return own.take(STARTER_COUNT)
-        }
-        return mostDownloaded(null).distinctBy { it.id }.take(STARTER_COUNT)
-    }
-
     /** A book's own feed, with its language, subjects, rights and files. */
     fun bookUrl(id: Int) = "$SITE/ebooks/$id.opds"
 

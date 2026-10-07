@@ -34,10 +34,11 @@ import com.watchreader.mobile.ui.viewmodel.BookListViewModel.Pick
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel.Starters
 
 /**
- * What a library with none of the reader's own books offers: a few free classics, the most
- * downloaded on Project Gutenberg in the phone's language, each added with one tap and sent on to
- * the watch, and the way into the rest of the free library. Without a connection the card
- * shrinks to one quiet line, since a new reader's library is no place for a large error.
+ * What a library with none of the reader's own books offers: a few free classics from Project
+ * Gutenberg in the phone's language, chosen by hand for most languages, each added with one tap
+ * and sent on to the watch, and the way into the rest of the free library. Where the classics
+ * have to be looked up and there is no connection, the card shrinks to one quiet line, since a
+ * new reader's library is no place for a large error.
  */
 @Composable
 fun StarterCard(
@@ -76,7 +77,16 @@ fun StarterCard(
                 Starters.Loading -> Box(Modifier.fillMaxWidth().height(PICKS_HEIGHT), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
                 }
-                is Starters.Ready -> starters.picks.forEach { book -> PickRow(book, pick, onPick) }
+                is Starters.Ready -> {
+                    starters.picks.forEach { book -> PickRow(book, pick, onPick) }
+                    // A tap adds the book without passing the free library's note, so it is here too.
+                    Text(
+                        stringResource(R.string.free_legal),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 4.dp, bottom = 4.dp),
+                    )
+                }
                 Starters.Unavailable -> {}
             }
             // The button's own inset lines its text up with the title's.

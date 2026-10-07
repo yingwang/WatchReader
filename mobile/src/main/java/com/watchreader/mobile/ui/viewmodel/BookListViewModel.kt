@@ -77,8 +77,9 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
 
     /**
      * [quietly] is for a send the reader did not ask for, a free classic's straight after it is
-     * added: with no watch in reach the book is left Not on watch, as any other book is, and
-     * nothing is said about it.
+     * added: with no watch in reach, or one without WatchReader, the book is left Not on watch,
+     * as any other book is, and nothing is said about it. The reader's own Send still offers to
+     * install the app on such a watch.
      */
     fun sendToWatch(book: Book, quietly: Boolean = false) {
         if (!BookRepository.beginSending(book.id)) return
@@ -95,7 +96,7 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
         val watch = when (val lookup = sender.findWatch()) {
             is WatchLookup.Ready -> lookup
             is WatchLookup.WithoutApp -> {
-                _events.tryEmit(UiEvent.OfferInstall(lookup.nodeId, lookup.name))
+                if (!quietly) _events.tryEmit(UiEvent.OfferInstall(lookup.nodeId, lookup.name))
                 return
             }
             WatchLookup.None -> {

@@ -49,12 +49,13 @@ object FreeBookRepository {
     suspend fun firstPage(search: String, language: String?): FreeBookPage = page(GutenbergCatalog.searchUrl(search, language))
 
     /**
-     * The few classics the library offers while it holds none of the reader's own books. They are
-     * the head of the popular lists the free library shows, so they come out of the same cache of
-     * pages: going back to the library, or on to the free library, asks Gutenberg for nothing.
+     * The few classics the library offers while it holds none of the reader's own books. Most
+     * languages have theirs chosen by hand and ask Gutenberg for nothing; any other language's
+     * fiction comes through the same cache of pages as the free library's lists, so going back
+     * to the library asks for it only once.
      */
     suspend fun starterPicks(language: String?): List<FreeBook> =
-        GutenbergCatalog.starterPicks(language) { firstPage("", it).books }
+        StarterShelf.picks(language) { firstPage(StarterShelf.FICTION, it).books }
 
     /** The page at [url], a page's next link. */
     suspend fun page(url: String): FreeBookPage {
