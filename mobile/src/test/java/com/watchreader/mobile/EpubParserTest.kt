@@ -350,4 +350,355 @@ class EpubParserTest {
         val picture = epub(withEncryption("http://www.w3.org/2001/04/xmlenc#aes128-cbc", "OEBPS/cover.jpg"), blob = null)
         assertTrue(EpubParser.parse(picture.inputStream()).text.contains("Body A."))
     }
+
+    // ---- older and sloppier books ----
+
+    /** An archive of [files] exactly as given, bytes and names alike. */
+    private fun zip(files: List<Pair<String, ByteArray>>): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            for ((name, content) in files) {
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(content)
+                zip.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
+    private fun utf8(vararg files: Pair<String, String>): List<Pair<String, ByteArray>> =
+        files.map { (name, text) -> name to text.toByteArray(Charsets.UTF_8) }
+
+    private fun containerFor(path: String) = "META-INF/container.xml" to
+        """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">""" +
+        """<rootfiles><rootfile full-path="$path" media-type="application/oebps-package+xml"/></rootfiles></container>"""
+
+    /** An EPUB 2 book the way older tools wrote it: prefixed tags and pages labelled every which way. */
+    private val oldStyleBook = utf8(
+        "mimetype" to "application/epub+zip",
+        containerFor("OEBPS/content.opf"),
+        "OEBPS/content.opf" to """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <opf:package xmlns:opf="http://www.idpf.org/2007/opf" version="2.0">
+              <opf:metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                <dc:Title>An Old Book</dc:Title>
+                <opf:meta name='cover' content='cover-pic'/>
+              </opf:metadata>
+              <opf:manifest>
+                <opf:item id="ncx" href="toc.ncx" media-type="text/xml"/>
+                <opf:item id="c1" href="one.html" media-type="text/html"/>
+                <opf:item id="c2" href="two.htm" media-type="application/octet-stream"/>
+                <opf:item id="c3" href="three.html" media-type="text/x-oeb1-document"/>
+                <opf:item id="cover-pic" href="cover.jpg" media-type="image/jpeg"/>
+              </opf:manifest>
+              <opf:spine toc="ncx"><opf:itemref idref="c1"/><opf:itemref idref="c2"/><opf:itemref idref="c3"/></opf:spine>
+            </opf:package>
+        """.trimIndent(),
+        "OEBPS/toc.ncx" to """
+            <ncx:ncx xmlns:ncx="http://www.daisy.org/z3986/2005/ncx/"><ncx:navMap>
+            <ncx:navPoint id="p1"><ncx:navLabel><ncx:text>
+                The First
+                Chapter
+            </ncx:text></ncx:navLabel><ncx:content src='one.html'/></ncx:navPoint>
+            <ncx:navPoint id="p2"><ncx:navLabel><ncx:text><![CDATA[Second & last but one]]></ncx:text></ncx:navLabel><ncx:content src="two.htm"/></ncx:navPoint>
+            <ncx:navPoint id="p3"><ncx:navLabel><ncx:text>Third</ncx:text></ncx:navLabel><ncx:content src="three.html"/></ncx:navPoint>
+            </ncx:navMap></ncx:ncx>
+        """.trimIndent(),
+        "OEBPS/one.html" to "<HTML><HEAD><TITLE>x</TITLE></HEAD><BODY><H1>One</H1><P>Body one.</P></BODY></HTML>",
+        "OEBPS/two.htm" to "<html><body><h1>Two</h1><p>Body two.</p></body></html>",
+        "OEBPS/three.html" to "<html><body><h1>Three</h1><p>Body three.</p></body></html>",
+        "OEBPS/cover.jpg" to "not really a picture",
+    )
+
+    @Test
+    fun anOldStyleEpub2BookIsReadWithItsNcxContents() {
+        val parsed = EpubParser.parse(zip(oldStyleBook))
+        assertEquals("An Old Book", parsed.title)
+        assertEquals("One\n\nBody one.\n\nTwo\n\nBody two.\n\nThree\n\nBody three.", parsed.text)
+        assertEquals(listOf("The First Chapter", "Second & last but one", "Third"), parsed.chapters.map { it.title })
+        assertEquals(listOf("One", "Two", "Three").map { parsed.text.indexOf(it) }, parsed.chapters.map { it.start })
+        assertEquals("not really a picture", parsed.cover?.toString(Charsets.UTF_8))
+    }
+
+    @Test
+    fun anNcxLeftOutOfTheManifestIsStillFound() {
+        val book = oldStyleBook.map { (name, bytes) ->
+            if (name.endsWith(".opf")) {
+                name to bytes.toString(Charsets.UTF_8).replace("""<opf:item id="ncx" href="toc.ncx" media-type="text/xml"/>""", "")
+                    .replace("""toc="ncx"""", "").toByteArray()
+            } else name to bytes
+        }
+        assertEquals(listOf("The First Chapter", "Second & last but one", "Third"), EpubParser.parse(zip(book)).chapters.map { it.title })
+    }
+
+    @Test
+    fun thePackageIsFoundWhereverTheContainerPointsOrIfThereIsNone() {
+        val moved = oldStyleBook.map { (name, bytes) -> name.replace("content.opf", "Content.OPF") to bytes }
+        for (fullPath in listOf("/OEBPS/content.opf", "OEBPS\\Content.OPF", "./OEBPS/./Content.opf", "OEBPS/missing.opf", null)) {
+            val files = moved.mapNotNull { (name, bytes) ->
+                when {
+                    name != "META-INF/container.xml" -> name to bytes
+                    fullPath == null -> null
+                    else -> containerFor(fullPath).let { it.first to it.second.toByteArray() }
+                }
+            }
+            val parsed = EpubParser.parse(zip(files))
+            assertEquals(fullPath.toString(), "An Old Book", parsed.title)
+            assertEquals(3, parsed.chapters.size)
+        }
+    }
+
+    @Test
+    fun theMimetypeEntryIsNeitherNeededNorChecked() {
+        val missing = oldStyleBook.filterNot { it.first == "mimetype" }
+        assertEquals(3, EpubParser.parse(zip(missing)).chapters.size)
+        val wrong = oldStyleBook.map { (name, bytes) -> if (name == "mimetype") name to "application/zip\n".toByteArray() else name to bytes }
+        assertEquals(3, EpubParser.parse(zip(wrong)).chapters.size)
+    }
+
+    /**
+     * An archive whose entries all carry their sizes after the data, as some EPUB tools write
+     * them; the mimetype is stored uncompressed that way, which a stream reader refuses outright.
+     */
+    private fun zipWithTrailingSizes(files: List<Pair<String, ByteArray>>): ByteArray {
+        val out = ByteArrayOutputStream()
+        val directory = ByteArrayOutputStream()
+        fun le(stream: ByteArrayOutputStream, value: Long, bytes: Int) {
+            for (i in 0 until bytes) stream.write(((value shr (8 * i)) and 0xFF).toInt())
+        }
+        for ((name, content) in files) {
+            val stored = name == "mimetype"
+            val data = if (stored) content else {
+                val deflater = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, true)
+                deflater.setInput(content)
+                deflater.finish()
+                val buffer = ByteArrayOutputStream()
+                val chunk = ByteArray(4096)
+                while (!deflater.finished()) buffer.write(chunk, 0, deflater.deflate(chunk))
+                buffer.toByteArray()
+            }
+            val crc = java.util.zip.CRC32().apply { update(content) }.value
+            val method = if (stored) 0L else 8L
+            val nameBytes = name.toByteArray()
+            val offset = out.size().toLong()
+            le(out, 0x04034b50, 4); le(out, 20, 2); le(out, 0x0808, 2); le(out, method, 2); le(out, 0, 4)
+            le(out, 0, 4); le(out, 0, 4); le(out, 0, 4); le(out, nameBytes.size.toLong(), 2); le(out, 0, 2)
+            out.write(nameBytes)
+            out.write(data)
+            le(out, 0x08074b50, 4); le(out, crc, 4); le(out, data.size.toLong(), 4); le(out, content.size.toLong(), 4)
+            le(directory, 0x02014b50, 4); le(directory, 20, 2); le(directory, 20, 2); le(directory, 0x0808, 2)
+            le(directory, method, 2); le(directory, 0, 4); le(directory, crc, 4); le(directory, data.size.toLong(), 4)
+            le(directory, content.size.toLong(), 4); le(directory, nameBytes.size.toLong(), 2); le(directory, 0, 2)
+            le(directory, 0, 2); le(directory, 0, 2); le(directory, 0, 2); le(directory, 0, 4); le(directory, offset, 4)
+            directory.write(nameBytes)
+        }
+        val start = out.size().toLong()
+        out.write(directory.toByteArray())
+        le(out, 0x06054b50, 4); le(out, 0, 2); le(out, 0, 2); le(out, files.size.toLong(), 2); le(out, files.size.toLong(), 2)
+        le(out, directory.size().toLong(), 4); le(out, start, 4); le(out, 0, 2)
+        return out.toByteArray()
+    }
+
+    @Test
+    fun anArchiveAStreamReaderCannotStepThroughIsReadByItsDirectory() {
+        val bytes = zipWithTrailingSizes(oldStyleBook)
+        assertThrows(java.util.zip.ZipException::class.java) {
+            java.util.zip.ZipInputStream(bytes.inputStream()).use { while (it.nextEntry != null) it.readBytes() }
+        }
+        val parsed = EpubParser.parse(bytes)
+        assertEquals("An Old Book", parsed.title)
+        assertEquals("One\n\nBody one.\n\nTwo\n\nBody two.\n\nThree\n\nBody three.", parsed.text)
+    }
+
+    @Test
+    fun aDamagedArchiveIsRefusedInWords() {
+        val bytes = zipWithTrailingSizes(oldStyleBook)
+        val refusal = assertThrows(IllegalArgumentException::class.java) { EpubParser.parse(bytes.copyOf(bytes.size - 30)) }
+        assertTrue(refusal.message!!.contains("damaged"))
+    }
+
+    @Test
+    fun anArchiveThatNamesItsFilesInGbkIsRead() {
+        val files = utf8(
+            containerFor("content.opf"),
+            "content.opf" to """
+                <package><metadata><dc:title>红楼梦</dc:title></metadata><manifest>
+                <item id="a" href="第一回.xhtml" media-type="application/xhtml+xml"/>
+                </manifest><spine><itemref idref="a"/></spine></package>
+            """.trimIndent(),
+            "第一回.xhtml" to "<html><body><h1>第一回</h1><p>甄士隐梦幻识通灵</p></body></html>",
+        )
+        // Written the way a Chinese Windows zip tool writes it: names in GBK, and no UTF-8 flag.
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out, charset("GBK")).use { zip ->
+            for ((name, content) in files) {
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(content)
+                zip.closeEntry()
+            }
+        }
+        assertEquals("第一回\n\n甄士隐梦幻识通灵", EpubParser.parse(out.toByteArray()).text)
+    }
+
+    @Test
+    fun linksFindTheirFilesWhateverTheirCaseOrEncoding() {
+        val bytes = zip(utf8(
+            containerFor("OEBPS/content.opf"),
+            "OEBPS/content.opf" to """
+                <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+                <item id="a" href="Text/Chapter%20One.XHTML" media-type="application/xhtml+xml"/>
+                <item id="b" href="Text/second part.xhtml" media-type="application/xhtml+xml"/>
+                <item id="c" href="Text\third.xhtml" media-type="application/xhtml+xml"/>
+                <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+                </manifest><spine toc="ncx"><itemref idref="a"/><itemref idref="b"/><itemref idref="c"/></spine></package>
+            """.trimIndent(),
+            "OEBPS/toc.ncx" to """
+                <ncx><navMap>
+                <navPoint><navLabel><text>One</text></navLabel><content src="TEXT/chapter%20one.xhtml#Start"/></navPoint>
+                <navPoint><navLabel><text>Two</text></navLabel><content src="Text/second%20part.xhtml"/></navPoint>
+                <navPoint><navLabel><text>Three</text></navLabel><content src="text/Third.xhtml#c%203"/></navPoint>
+                </navMap></ncx>
+            """.trimIndent(),
+            // The archive keeps one name in lower case, one percent-encoded and one with a space.
+            "OEBPS/text/chapter one.xhtml" to "<html><body><p>Front matter.</p><h1 id=\"Start\">Chapter one</h1><p>Body one.</p></body></html>",
+            "OEBPS/Text/second%20part.xhtml" to "<html><body><h1>Chapter two</h1><p>Body two.</p></body></html>",
+            "OEBPS/Text/third.xhtml" to "<html><body><p>Lead-in.</p><h1 id=\"c 3\">Chapter three</h1><p>Body three.</p></body></html>",
+        ))
+        val parsed = EpubParser.parse(bytes)
+        assertTrue(parsed.text.contains("Body one.") && parsed.text.contains("Body two.") && parsed.text.contains("Body three."))
+        assertEquals(listOf("One", "Two", "Three"), parsed.chapters.map { it.title })
+        assertEquals(
+            listOf("Chapter one", "Chapter two", "Chapter three").map { parsed.text.indexOf(it) },
+            parsed.chapters.map { it.start },
+        )
+    }
+
+    @Test
+    fun htmlEntitiesWithoutADtdAreDecoded() {
+        assertEquals(
+            "a b — c… été © ½ x² “q” αβ – €",
+            EpubParser.htmlToText(
+                "<p>a&nbsp;b &mdash; c&hellip; &eacute;t&eacute; &copy; &frac12; x&sup2; &ldquo;q&rdquo; &alpha;&beta; &#150; &#128;</p>",
+            ),
+        )
+        // An unknown name is left as it was rather than lost.
+        assertEquals("&bogus; stays", EpubParser.decodeEntities("&bogus; stays"))
+    }
+
+    private fun bookWithPage(page: ByteArray): ByteArray = zip(
+        utf8(
+            containerFor("content.opf"),
+            "content.opf" to """
+                <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+                <item id="p" href="page.html" media-type="application/xhtml+xml"/>
+                </manifest><spine><itemref idref="p"/></spine></package>
+            """.trimIndent(),
+        ) + ("page.html" to page),
+    )
+
+    @Test
+    fun pagesInTheEncodingTheyDeclareAreRead() {
+        val samples = listOf(
+            "windows-1251" to "Глава первая. Вечером над рекой поднялся туман, и старый лодочник долго смотрел на огни.",
+            "windows-1250" to "Kapitola první. Ráno bylo chladné a nad řekou ležela mlha, převozník se díval na břeh.",
+            "ISO-8859-2" to "Rozdział pierwszy. Wieczorem nad jeziorem zapadła cisza, a księżyc wyłonił się zza drzew.",
+            "KOI8-R" to "Глава вторая. Утром туман рассеялся, и над рекой взошло солнце.",
+            "GBK" to "第一回 甄士隐梦幻识通灵，贾雨村风尘怀闺秀。",
+            "Big5" to "第一回 甄士隱夢幻識通靈，賈雨村風塵懷閨秀。",
+            "Shift_JIS" to "吾輩は猫である。名前はまだ無い。",
+        )
+        for ((charset, text) in samples) {
+            val xml = """<?xml version="1.0" encoding="$charset"?><html><body><p>$text</p></body></html>"""
+            assertEquals(charset, text, EpubParser.parse(bookWithPage(xml.toByteArray(charset(charset)))).text)
+            val html = """<html><head><meta http-equiv="Content-Type" content="text/html; charset=$charset"></head><body><p>$text</p></body></html>"""
+            assertEquals(charset, text, EpubParser.parse(bookWithPage(html.toByteArray(charset(charset)))).text)
+        }
+    }
+
+    @Test
+    fun aPageThatClaimsUtf8WithoutBeingItIsStillRead() {
+        val text = "第一回 甄士隐梦幻识通灵，贾雨村风尘怀闺秀。此开卷第一回也。"
+        val page = """<?xml version="1.0" encoding="utf-8"?><html><body><p>$text</p></body></html>"""
+        assertEquals(text, EpubParser.parse(bookWithPage(page.toByteArray(charset("GBK")))).text)
+        val cyrillic = "Вечером над рекой поднялся туман, и старый лодочник долго смотрел на огни деревни."
+        val untagged = "<html><body><p>$cyrillic</p></body></html>"
+        assertEquals(cyrillic, EpubParser.parse(bookWithPage(untagged.toByteArray(charset("windows-1251")))).text)
+    }
+
+    @Test
+    fun spinePagesTheContentsLeaveOutAreStillRead() {
+        // The contents skip the interlude and name a page that is not in the spine at all.
+        val bytes = zip(utf8(
+            containerFor("OEBPS/content.opf"),
+            "OEBPS/content.opf" to """
+                <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+                <item id="a" href="a.xhtml" media-type="application/xhtml+xml"/>
+                <item id="i" href="interlude.xhtml" media-type="application/xhtml+xml"/>
+                <item id="b" href="b.xhtml" media-type="application/xhtml+xml"/>
+                <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+                </manifest><spine toc="ncx"><itemref idref="a"/><itemref idref="i"/><itemref idref="a"/><itemref idref="b"/></spine></package>
+            """.trimIndent(),
+            "OEBPS/toc.ncx" to """
+                <ncx><navMap>
+                <navPoint><navLabel><text>A</text></navLabel><content src="a.xhtml"/></navPoint>
+                <navPoint><navLabel><text>Notes</text></navLabel><content src="notes.xhtml"/></navPoint>
+                <navPoint><navLabel><text>B</text></navLabel><content src="b.xhtml"/></navPoint>
+                </navMap></ncx>
+            """.trimIndent(),
+            "OEBPS/a.xhtml" to "<html><body><h1>Heading A</h1><p>Body A.</p></body></html>",
+            "OEBPS/interlude.xhtml" to "<html><body><p>An interlude no contents mention.</p></body></html>",
+            "OEBPS/b.xhtml" to "<html><body><h1>Heading B</h1><p>Body B.</p></body></html>",
+        ))
+        val parsed = EpubParser.parse(bytes)
+        // Each page once, the one the spine named twice included.
+        assertEquals("Heading A\n\nBody A.\n\nAn interlude no contents mention.\n\nHeading B\n\nBody B.", parsed.text)
+        assertEquals(listOf("A", "B"), parsed.chapters.map { it.title })
+        assertEquals(listOf(0, parsed.text.indexOf("Heading B")), parsed.chapters.map { it.start })
+    }
+
+    /** A long chapter Calibre split in two, with contents made before the split. */
+    private fun splitBook(toc: String) = zip(utf8(
+        containerFor("content.opf"),
+        "content.opf" to """
+            <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+            <item id="s0" href="index_split_000.html" media-type="application/xhtml+xml"/>
+            <item id="s1" href="index_split_001.html" media-type="application/xhtml+xml"/>
+            <item id="s2" href="index_split_002.html" media-type="application/xhtml+xml"/>
+            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+            </manifest><spine toc="ncx"><itemref idref="s0"/><itemref idref="s1"/><itemref idref="s2"/></spine></package>
+        """.trimIndent(),
+        "toc.ncx" to "<ncx><navMap>$toc</navMap></ncx>",
+        "index_split_000.html" to "<html><body><h2 id=\"c1\">Chapter One</h2><p>It began on a Tuesday.</p></body></html>",
+        "index_split_001.html" to "<html><body><p>and went on well into Wednesday.</p></body></html>",
+        "index_split_002.html" to "<html><body><h2 id=\"c2\">Chapter Two</h2><p>Thursday was quieter.</p></body></html>",
+    ))
+
+    @Test
+    fun aSplitFileIsNoChapterOfItsOwn() {
+        val parsed = EpubParser.parse(splitBook(toc = ""))
+        assertEquals(listOf("Chapter One", "Chapter Two"), parsed.chapters.map { it.title })
+    }
+
+    @Test
+    fun contentsMadeBeforeASplitStillFindTheirChapters() {
+        val toc = """
+            <navPoint><navLabel><text>One</text></navLabel><content src="index.html#c1"/></navPoint>
+            <navPoint><navLabel><text>Two</text></navLabel><content src="index_split_000.html#c2"/></navPoint>
+        """
+        val parsed = EpubParser.parse(splitBook(toc))
+        assertEquals(listOf("One", "Two"), parsed.chapters.map { it.title })
+        assertEquals(listOf(0, parsed.text.indexOf("Chapter Two")), parsed.chapters.map { it.start })
+    }
+
+    @Test
+    fun namedAnchorsPlaceChaptersLikeIds() {
+        val book = singleDocumentBook.map { (name, content) ->
+            if (name == "OEBPS/book.xhtml") {
+                name to content.replace("<h1 id=\"c1\">", "<a name=\"c1\"></a><h1>").replace("<h1 id=\"c2\">", "<a name=\"c2\"></a><h1>")
+                    .replace("<h1 id=\"c3\">", "<A NAME='c3'></A><h1>")
+            } else name to content
+        }
+        val parsed = EpubParser.parse(epub(book, blob = null).inputStream())
+        assertEquals(listOf(0, parsed.text.indexOf("Chapter Two"), parsed.text.indexOf("Chapter Three")), parsed.chapters.map { it.start })
+    }
 }

@@ -25,6 +25,15 @@ object TextNormalizer {
         return Decoded(unwrap(normalize(text)), charset)
     }
 
+    /**
+     * [bytes] decoded the way [decode] decodes them, with nothing else done: for a file whose
+     * text is markup, where line ends, blank runs and control codes are the parser's business.
+     */
+    fun decodeAsIs(bytes: ByteArray, declaredCharset: String? = null): Decoded {
+        val (text, charset) = read(bytes, declaredCharset)
+        return Decoded(text, charset)
+    }
+
     private fun read(bytes: ByteArray, declaredCharset: String?): Pair<String, String> {
         bom(bytes)?.let { (charset, skip) ->
             return String(bytes, skip, bytes.size - skip, charset) to charset.name()
