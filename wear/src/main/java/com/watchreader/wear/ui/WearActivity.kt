@@ -2,13 +2,12 @@ package com.watchreader.wear.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
-import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.watchreader.wear.data.repository.WearBookRepository
 import com.watchreader.wear.ui.navigation.WearNavigation
@@ -34,6 +33,9 @@ class WearActivity : ComponentActivity() {
     private class Start(val resumeBookId: String?)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The launch screen (the app icon on black) has to be in place before the activity is
+        // created; it then hands over to the app's own theme.
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         val bookId = intent?.getStringExtra(EXTRA_BOOK_ID)
         bookId?.let { openRequest = OpenRequest(it) }
@@ -52,7 +54,11 @@ class WearActivity : ComponentActivity() {
                 start?.let { WearNavigation(openRequest = openRequest, resumeBookId = it.resumeBookId) }
             }
         }
-        if (plainLaunch) holdFirstFrameUntilStarted()
+        // Keep the launch screen up until the app knows where it opens, so a start on a book goes
+        // from the icon straight to its page, without an empty frame or a glimpse of the library
+        // on the way. The lookup gives up after RESUME_LOOKUP_MS, so the hold is short; any
+        // other start already knows where it opens and lets the launch screen go at once.
+        splash.setKeepOnScreenCondition { start == null }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -64,22 +70,6 @@ class WearActivity : ComponentActivity() {
     private suspend fun bookToResume(): String? = withContext(Dispatchers.IO) {
         val book = continueReading(WearBookRepository.observeAll().first()) ?: return@withContext null
         book.id.takeIf { File(book.filePath).isFile }
-    }
-
-    /**
-     * Holds the first frame back until the app knows where it opens, so a start on a book goes
-     * from the launch screen straight to its page, without an empty frame or a glimpse of the
-     * library on the way. The lookup gives up after [RESUME_LOOKUP_MS], so the hold is short.
-     */
-    private fun holdFirstFrameUntilStarted() {
-        val content = findViewById<View>(android.R.id.content)
-        content.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                if (start == null) return false
-                content.viewTreeObserver.removeOnPreDrawListener(this)
-                return true
-            }
-        })
     }
 
     companion object {

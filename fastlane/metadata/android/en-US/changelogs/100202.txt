@@ -1,0 +1,1 @@
+A warmer look: the reading controls take their colours from the page you are reading. The built-in guide has been rewritten to show how to use the app, step by step. The app now shows its icon while it starts.

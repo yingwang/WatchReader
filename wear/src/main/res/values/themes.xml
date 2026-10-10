@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WatchReader" parent="@android:style/Theme.DeviceDefault" />
+
+    <!-- Shown while the app starts: the launcher icon at 48dp on black, as Wear OS asks for. Once
+         the activity is up it switches to the app's own theme.
+
+         The icon is given a background in its own colour, so it looks exactly like the launcher
+         icon. That matters for the size too: from Wear OS 4 the system draws this screen, and it
+         enlarges an icon that has no background (to 60dp on Wear OS 6), while an icon with a
+         background is shown at 48dp. On Wear OS 3 the splash screen library draws it instead, and
+         the icon drawable keeps it at 48dp there as well. -->
+    <style name="Theme.WatchReader.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/launcher_icon_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_screen_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.WatchReader</item>
+    </style>
+</resources>

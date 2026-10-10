@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background of the launcher icon; the launch screen puts the same colour behind it. -->
+    <color name="launcher_icon_background">#121210</color>
+</resources>
