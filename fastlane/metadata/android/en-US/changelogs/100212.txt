@@ -1,0 +1,1 @@
+A sleep timer for reading aloud: choose 15, 30, 45 or 60 minutes, and reading pauses when the time is up. Bookmarks: save a page and come back to it later, on the watch or on the phone. Books sent from the phone arrive more reliably, and the built-in guide is updated.

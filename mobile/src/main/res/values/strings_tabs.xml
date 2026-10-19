@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nav_library">Library</string>
+    <string name="nav_discover">Discover</string>
+    <string name="nav_stats">Stats</string>
+    <string name="list_find_books">Browse free classics</string>
+    <string name="list_find_books_hint">Thousands of public-domain books, ready to read and send to your watch.</string>
+    <string name="library_search_open">Search</string>
+    <string name="library_search_close">Close search</string>
+    <string name="library_show_list">Show as list</string>
+    <string name="library_show_covers">Show covers</string>
+    <plurals name="stats_streak">
+        <item quantity="one">%1$d day in a row</item>
+        <item quantity="other">%1$d days in a row</item>
+    </plurals>
+</resources>

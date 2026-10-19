@@ -4,9 +4,9 @@ This short guide comes with WatchReader on your phone and on your watch. It show
 
 Adding books
 
-Add books on your phone. Tap the plus button in the library to open Add book, then choose from a file, a link, or Free books. Common formats are txt, epub and fb2. You can also share a book to WatchReader from another app.
+Add books on your phone. Tap the plus button in your library to open Add book, then choose a file or a link. Common formats are txt, epub and fb2. You can also share a book to WatchReader from another app.
 
-Tap Free books to browse classics from Project Gutenberg, searchable by title, author, and language; they are public domain in the US. If you have no books of your own yet, tap any of the three free classics offered in your library to add it and send it to your watch.
+Tap Discover at the bottom of the phone screen to browse free classics from Project Gutenberg, searchable by title, author, and language; they are public domain in the US. Tap a book there and add it to your library.
 
 Sending a book to the watch
 

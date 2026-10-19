@@ -1,6 +1,7 @@
 package com.watchreader.mobile.service
 
 import android.util.Log
+import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
@@ -13,6 +14,8 @@ import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.stats.ReadingStatsSync
+import com.watchreader.shared.bookmark.BookmarkRepository
+import com.watchreader.shared.bookmark.BookmarkSync
 import kotlinx.coroutines.runBlocking
 
 private const val TAG = "WatchReader"
@@ -29,11 +32,24 @@ private const val TAG = "WatchReader"
  */
 class WearSyncService : WearableListenerService() {
 
+    override fun onCapabilityChanged(info: CapabilityInfo) {
+        if (info.name == DataLayerPaths.WEAR_CAPABILITY && info.nodes.isNotEmpty()) wakeTransfers()
+    }
+
+    private fun wakeTransfers() {
+        BookmarkRepository.get(this).requestSync()
+        runBlocking {
+            runCatching { BookTransferWorker.resumeWaiting(this@WearSyncService, reconnect = true) }
+                .onFailure { Log.w(TAG, "Could not resume pending transfers", it) }
+        }
+    }
+
     override fun onDataChanged(events: DataEventBuffer) {
         runBlocking {
             for (event in events) {
                 if (event.type != DataEvent.TYPE_CHANGED) continue
                 val item = event.dataItem
+                BookmarkSync.receive(this@WearSyncService, item.uri.path, item.data)
                 ProgressDataSync.decode(item.uri.path, item.data)?.let { BookRepository.applyProgress(it) }
                 ReadingStatsSync.decode(item.uri.path, item.data)?.let { BookRepository.applyWatchReport(it) }
             }
@@ -56,7 +72,11 @@ class WearSyncService : WearableListenerService() {
                             BookSender(this@WearSyncService).sendContentsIfLeftOut(it, messageEvent.sourceNodeId)
                         }
                     } else {
-                        BookRepository.updateSyncStatus(receipt.bookId, SyncStatus.FAILED, receipt.message)
+                        // A late rejection must not overwrite a successful receipt or a cancelled queue.
+                        val next = if (receipt.retryable) SyncStatus.QUEUED else SyncStatus.FAILED
+                        if (!BookRepository.changeSyncStatus(receipt.bookId, SyncStatus.SENDING, next, receipt.message)) {
+                            BookRepository.changeSyncStatus(receipt.bookId, SyncStatus.QUEUED, next, receipt.message)
+                        }
                     }
                 }
             }

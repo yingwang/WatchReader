@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watchreader.mobile.R
+import com.watchreader.mobile.ui.navigation.ScrollToTopOn
 import com.watchreader.mobile.data.model.FreeBook
 import com.watchreader.mobile.data.model.FreeBookDetails
 import com.watchreader.mobile.data.repository.FreeBookRepository
@@ -98,8 +99,9 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreeBooksScreen(
-    onBack: () -> Unit,
     onAdded: () -> Unit,
+    scrollToTop: Int = 0,
+    onBack: (() -> Unit)? = null,
     vm: FreeBooksViewModel = viewModel(),
 ) {
     val query by vm.query.collectAsState()
@@ -111,7 +113,11 @@ fun FreeBooksScreen(
     val keyboard = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(adding) {
-        if (adding == Adding.Done) onAdded()
+        if (adding == Adding.Done) {
+            // The tab survives navigation. Consume completion before saving its back stack.
+            vm.select(null)
+            onAdded()
+        }
     }
 
     Scaffold(
@@ -119,7 +125,7 @@ fun FreeBooksScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.free_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    if (onBack != null) IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
                     }
                 },
@@ -176,6 +182,7 @@ fun FreeBooksScreen(
                         onSelect = vm::select,
                         onLoadMore = vm::loadMore,
                         onRetryMore = vm::retryMore,
+                        scrollToTop = scrollToTop,
                     )
                 }
             }
@@ -226,8 +233,10 @@ private fun BookList(
     onSelect: (FreeBook) -> Unit,
     onLoadMore: () -> Unit,
     onRetryMore: () -> Unit,
+    scrollToTop: Int,
 ) {
     val state = rememberLazyListState()
+    ScrollToTopOn(scrollToTop) { state.animateScrollToItem(0) }
     // The next page is asked for while a few rows are still to come, so scrolling rarely waits.
     LaunchedEffect(state) {
         snapshotFlow {

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="transfer_waiting">Queued · sends when your watch is connected</string>
+    <string name="transfer_cancel">Cancel queued transfer</string>
+    <string name="import_preparing">Opening selected files…</string>
+    <string name="import_progress">Importing %1$d of %2$d…</string>
+    <plurals name="import_added_count">
+        <item quantity="one">Added %1$d book</item>
+        <item quantity="other">Added %1$d books</item>
+    </plurals>
+    <string name="import_read_now">Start reading</string>
+    <string name="import_send_all">Send all to watch</string>
+    <string name="import_retry_failed">Retry failed files</string>
+    <string name="import_back_library">Back to library</string>
+    <string name="import_more">Add more books</string>
+    <string name="import_file_hint">Choose one or more EPUB, FB2 or TXT books. They will be added to your library.</string>
+    <string name="import_choose_files">Choose books</string>
+    <string name="import_title_hint">Used for a single book. When you choose several, each keeps its own title.</string>
+</resources>

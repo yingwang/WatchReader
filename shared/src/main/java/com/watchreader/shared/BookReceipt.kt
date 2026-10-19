@@ -8,12 +8,14 @@ data class BookReceipt(
     val ok: Boolean,
     val message: String = "",
     val totalChars: Int = 0,
+    val retryable: Boolean = false,
 ) {
     fun toJson(): String = JSONObject().apply {
         put("bookId", bookId)
         put("ok", ok)
         put("message", message)
         put("totalChars", totalChars)
+        put("retryable", retryable)
     }.toString()
 
     companion object {
@@ -24,6 +26,7 @@ data class BookReceipt(
                 ok = obj.optBoolean("ok", false),
                 message = obj.optString("message", ""),
                 totalChars = obj.optInt("totalChars", 0),
+                retryable = obj.optBoolean("retryable", false),
             )
         }
     }

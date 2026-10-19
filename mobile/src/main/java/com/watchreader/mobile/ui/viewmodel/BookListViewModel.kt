@@ -13,6 +13,7 @@ import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.data.repository.FreeBookRepository
 import com.watchreader.mobile.data.repository.GutenbergCatalog
+import com.watchreader.mobile.service.BookTransferWorker
 import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.service.WatchLookup
 import com.watchreader.shared.PendingDeletes
@@ -57,14 +58,9 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
 
     private val sender = BookSender(application)
 
-    init {
-        // A send waits for its receipt in this scope, so a book still SENDING when a new screen
-        // comes up has lost its waiter (the screen was left, or the process died); free it.
-        viewModelScope.launch { BookRepository.recoverStaleTransfers() }
-    }
-
     fun deleteBook(book: Book) {
         viewModelScope.launch {
+            BookTransferWorker.cancel(getApplication(), book.id)
             BookRepository.delete(book.id)
             // Whatever the phone believes about the transfer, the watch may hold a copy: a receipt
             // can go missing after a send that worked. Telling a watch that has none is harmless.
@@ -75,51 +71,33 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /**
-     * [quietly] is for a send the reader did not ask for, a free classic's straight after it is
-     * added: with no watch in reach, or one without WatchReader, the book is left Not on watch,
-     * as any other book is, and nothing is said about it. The reader's own Send still offers to
-     * install the app on such a watch.
-     */
+    /** Quiet automatic sends still queue offline; explicit sends also offer watch-app installation. */
     fun sendToWatch(book: Book, quietly: Boolean = false) {
-        if (!BookRepository.beginSending(book.id)) return
         viewModelScope.launch {
             try {
-                send(book, quietly)
-            } finally {
-                BookRepository.endSending(book.id)
+                BookTransferWorker.enqueue(getApplication(), book)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _events.emit(UiEvent.Message(R.string.msg_send_failed))
+                return@launch
+            }
+            if (!quietly) {
+                when (val watch = sender.findWatch()) {
+                    is WatchLookup.WithoutApp -> _events.emit(UiEvent.OfferInstall(watch.nodeId, watch.name))
+                    WatchLookup.None -> _events.emit(UiEvent.Message(R.string.transfer_waiting))
+                    is WatchLookup.Ready -> Unit
+                }
             }
         }
     }
 
-    private suspend fun send(book: Book, quietly: Boolean) {
-        val watch = when (val lookup = sender.findWatch()) {
-            is WatchLookup.Ready -> lookup
-            is WatchLookup.WithoutApp -> {
-                if (!quietly) _events.tryEmit(UiEvent.OfferInstall(lookup.nodeId, lookup.name))
-                return
-            }
-            WatchLookup.None -> {
-                if (!quietly) _events.tryEmit(UiEvent.Message(R.string.msg_watch_not_connected))
-                return
-            }
-        }
-        BookRepository.updateSyncStatus(book.id, SyncStatus.SENDING)
-        val streamed = sender.sendBook(book, watch.nodeId)
-        if (!streamed) {
-            BookRepository.updateSyncStatus(book.id, SyncStatus.FAILED)
-            _events.tryEmit(UiEvent.Message(R.string.msg_send_failed))
-            return
-        }
-        // The watch answers with a receipt once the book is on its books; give it a while.
-        val settled = withTimeoutOrNull(ACK_TIMEOUT_MS) {
-            BookRepository.observeAll().first { list ->
-                list.firstOrNull { it.id == book.id }?.syncStatus != SyncStatus.SENDING
-            }
-        }
-        if (settled == null) {
-            BookRepository.updateSyncStatus(book.id, SyncStatus.FAILED)
-            _events.tryEmit(UiEvent.Message(R.string.msg_no_receipt))
+    fun cancelQueuedSend(book: Book) {
+        viewModelScope.launch {
+            try {
+                BookTransferWorker.cancelWaiting(getApplication(), book.id)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _events.emit(UiEvent.Message(R.string.msg_send_failed)) }
         }
     }
 
@@ -204,7 +182,4 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private companion object {
-        const val ACK_TIMEOUT_MS = 90_000L
-    }
 }

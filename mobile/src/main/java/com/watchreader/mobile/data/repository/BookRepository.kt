@@ -177,10 +177,17 @@ object BookRepository {
 
     fun observeMilestone(bookId: String): Flow<ReadingMilestone?> = stats.observeMilestone(bookId)
 
+    fun observeMilestones(): Flow<List<ReadingMilestone>> = stats.observeMilestones()
+
     /** [message] is the watch's reason when a transfer failed; the library shows it under the cover. */
     suspend fun updateSyncStatus(id: String, status: SyncStatus, message: String? = null) {
         dao.updateSyncStatus(id, status, System.currentTimeMillis(), message?.takeIf { it.isNotBlank() })
     }
+
+    suspend fun changeSyncStatus(id: String, expected: SyncStatus, next: SyncStatus, message: String? = null): Boolean =
+        dao.changeSyncStatus(id, expected, next, System.currentTimeMillis(), message?.takeIf { it.isNotBlank() }) != 0
+
+    suspend fun queuedBookIds(): List<String> = dao.idsWithStatus(SyncStatus.QUEUED)
 
     /**
      * Books with a send under way in this process. The database says SENDING from the moment the
@@ -196,16 +203,10 @@ object BookRepository {
         sending.remove(id)
     }
 
-    /**
-     * A book still marked SENDING when nothing is waiting for its receipt is stuck: the wait lives
-     * in the screen that started the send and dies with it, while the status lives in the
-     * database. Such books are marked failed so they can be sent again; a receipt that turns up
-     * late still flips them to SENT. A send still running in this process is left alone. Returns
-     * how many were recovered.
-     */
+    /** Return interrupted transfers to the queue while leaving this process's live sends alone. */
     suspend fun recoverStaleTransfers(): Int {
         val stale = dao.idsWithStatus(SyncStatus.SENDING).filterNot { it in sending }
-        for (id in stale) updateSyncStatus(id, SyncStatus.FAILED)
+        for (id in stale) changeSyncStatus(id, SyncStatus.SENDING, SyncStatus.QUEUED)
         return stale.size
     }
 
@@ -456,6 +457,6 @@ object BookRepository {
     private const val KEY_MARKER_IN_USE = "marker_in_use"
     private const val SAMPLE_ASSET = "sample.txt"
     /** Bumped whenever the bundled guide is rewritten. */
-    private const val SAMPLE_VERSION = 5
+    private const val SAMPLE_VERSION = 6
     private const val KEY_SAMPLE_VERSION = "sample_version"
 }

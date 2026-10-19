@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_bookmarks">Bookmarks</string>
+    <string name="reader_bookmark_add">Add bookmark</string>
+    <string name="reader_bookmark_remove">Remove bookmark</string>
+    <string name="reader_bookmark_empty">No bookmarks yet. Save a place to return to it later.</string>
+    <string name="reader_bookmark_position">At %1$d%%</string>
+    <string name="reader_bookmark_delete">Delete bookmark: %1$s</string>
+    <string name="reader_bookmark_load_error">Could not load bookmarks. Your saved data has been kept.</string>
+    <string name="reader_bookmark_save_error">Could not save the bookmark change. Please try again.</string>
+    <string name="reader_bookmark_retry">Retry</string>
+    <string name="reader_search">Search in book</string>
+    <string name="reader_search_query">Find text</string>
+    <string name="reader_search_clear">Clear search</string>
+    <string name="reader_search_hint">Enter text to find it in this book.</string>
+    <string name="reader_search_running">Searching…</string>
+    <string name="reader_search_empty">No matches found.</string>
+    <plurals name="reader_search_results">
+        <item quantity="one">%1$d match</item>
+        <item quantity="other">%1$d matches</item>
+    </plurals>
+    <plurals name="reader_search_limited">
+        <item quantity="one">Showing the first %1$d match. Refine your search to find more.</item>
+        <item quantity="other">Showing the first %1$d matches. Refine your search to find more.</item>
+    </plurals>
+    <string name="reader_send_waiting">Waiting</string>
+    <string name="reader_cancel_queued_send">Waiting to send. Tap to cancel.</string>
+</resources>

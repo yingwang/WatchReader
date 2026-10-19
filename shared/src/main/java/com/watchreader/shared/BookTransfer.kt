@@ -15,6 +15,21 @@ import java.io.OutputStream
 object BookTransfer {
     private const val MAX_HEADER_BYTES = 64 * 1024
 
+    /** A closed channel is not proof of a complete book. Never accept truncated text on retry. */
+    fun copyBody(input: InputStream, output: OutputStream, expectedBytes: Long) {
+        require(expectedBytes >= 0) { "Invalid book size" }
+        val buffer = ByteArray(32 * 1024)
+        var received = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            received += count
+            if (received > expectedBytes) throw IOException("Book exceeds its expected size")
+            output.write(buffer, 0, count)
+        }
+        if (received != expectedBytes) throw IOException("Incomplete book: received $received of $expectedBytes bytes")
+    }
+
     fun writeHeader(output: OutputStream, meta: BookMetadata) {
         var header = meta.toJson().toByteArray(Charsets.UTF_8)
         // Contents are optional. Large EPUB navigation trees must not break book transfer,

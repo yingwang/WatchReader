@@ -25,6 +25,7 @@
                  A zipped .fb2 is shared as a plain ZIP. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="application/epub+zip" />
@@ -53,9 +54,14 @@
             android:name=".service.WearSyncService"
             android:exported="true">
             <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CAPABILITY_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:path="/watchreader_wear" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/reading-progress/" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/reading-time/" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/reader-bookmarks/v1/" />
             </intent-filter>
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />

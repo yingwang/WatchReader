@@ -9,6 +9,8 @@ import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import com.watchreader.shared.BookContents
+import com.watchreader.shared.bookmark.BookmarkRepository
+import com.watchreader.shared.bookmark.BookmarkSync
 import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
@@ -38,11 +40,18 @@ private const val TAG = "WatchReader"
  */
 class BookReceiverService : WearableListenerService() {
 
+    override fun onCapabilityChanged(info: com.google.android.gms.wearable.CapabilityInfo) {
+        if (info.name == DataLayerPaths.PHONE_CAPABILITY && info.nodes.isNotEmpty()) {
+            BookmarkRepository.get(this).requestSync()
+        }
+    }
+
     override fun onDataChanged(events: DataEventBuffer) {
         runBlocking {
             for (event in events) {
                 if (event.type != DataEvent.TYPE_CHANGED) continue
                 val item = event.dataItem
+                BookmarkSync.receive(this@BookReceiverService, item.uri.path, item.data)
                 ProgressDataSync.decode(item.uri.path, item.data)?.let { WearBookRepository.applyProgressFromPhone(it) }
                 PendingDeletes.bookId(item.uri.path, item.data)?.let { id ->
                     TtsService.stopIfPlaying(this@BookReceiverService, id)
@@ -92,7 +101,7 @@ class BookReceiverService : WearableListenerService() {
             val input = BufferedInputStream(Tasks.await(client.getInputStream(channel)), 32 * 1024)
             val meta = input.use { stream ->
                 val header = BookTransfer.readHeader(stream)
-                tmp.outputStream().use { out -> stream.copyTo(out, bufferSize = 32 * 1024) }
+                tmp.outputStream().use { out -> BookTransfer.copyBody(stream, out, header.sizeBytes) }
                 header
             }
             if (meta.id != bookId) throw IllegalStateException("Header is for ${meta.id}, channel is for $bookId")
@@ -133,7 +142,7 @@ class BookReceiverService : WearableListenerService() {
         } catch (e: Exception) {
             Log.e(TAG, "Receiving $bookId failed", e)
             tmp.delete()
-            BookReceipt(bookId, ok = false, message = e.message ?: e.javaClass.simpleName)
+            BookReceipt(bookId, ok = false, message = e.message ?: e.javaClass.simpleName, retryable = e is java.io.IOException)
         } finally {
             runCatching { Tasks.await(client.close(channel)) }
         }

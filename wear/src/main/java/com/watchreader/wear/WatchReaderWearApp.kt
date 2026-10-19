@@ -2,6 +2,7 @@ package com.watchreader.wear
 
 import android.app.Application
 import android.util.Log
+import com.watchreader.shared.bookmark.BookmarkRepository
 import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.wear.data.repository.WearBookRepository
@@ -15,6 +16,7 @@ class WatchReaderWearApp : Application() {
     override fun onCreate() {
         super.onCreate()
         WearBookRepository.init(this)
+        BookmarkRepository.get(this).requestSync()
         TtsService.ensureNotificationChannel(this)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             WearBookRepository.seedSampleIfNeeded()

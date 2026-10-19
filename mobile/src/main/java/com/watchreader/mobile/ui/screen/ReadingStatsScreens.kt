@@ -35,12 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.watchreader.mobile.R
+import com.watchreader.mobile.ui.navigation.ScrollToTopOn
 import com.watchreader.mobile.data.model.ReadingTime
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
 import com.watchreader.shared.stats.ReadingDay
@@ -61,23 +63,34 @@ import java.util.Locale
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReadingStatsScreen(listVm: BookListViewModel, onBack: () -> Unit, onDetails: (String) -> Unit) {
+fun ReadingStatsScreen(listVm: BookListViewModel, onDetails: (String) -> Unit, scrollToTop: Int = 0) {
     val rows by listVm.readingTime.collectAsState()
     val books by listVm.books.collectAsState()
     val week = remember { lastDays(7) }
     val inWeek = rows.filter { it.day in week }
     val perDay = week.map { day -> inWeek.filter { it.day == day }.sumOf { it.millis } }
+    val streak = remember(rows) { streak(rows) }
+    val scroll = rememberScrollState()
+    ScrollToTopOn(scrollToTop) { scroll.animateScrollTo(0) }
 
     Scaffold(
-        topBar = { StatsTopBar(stringResource(R.string.stats_title), onBack) },
+        topBar = { StatsTopBar(stringResource(R.string.stats_title)) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(scroll).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.stats_today), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Text(durationOrNothing(perDay.last()), style = MaterialTheme.typography.headlineMedium)
+            // Shown from the second day on: a run of one is just today, said already above.
+            if (streak > 1) {
+                Text(
+                    pluralStringResource(R.plurals.stats_streak, streak, streak),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.stats_last_week), style = MaterialTheme.typography.titleMedium)
@@ -176,11 +189,11 @@ fun BookDetailsScreen(bookId: String, listVm: BookListViewModel, onBack: () -> U
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StatsTopBar(title: String, onBack: () -> Unit) {
+private fun StatsTopBar(title: String, onBack: (() -> Unit)? = null) {
     TopAppBar(
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = {
-            IconButton(onClick = onBack) {
+            if (onBack != null) IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
             }
         },
@@ -274,26 +287,17 @@ private val dateFormat = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLIS
 
 private fun date(epochMs: Long): String = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).format(dateFormat)
 
-private val headerDateFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.ENGLISH)
-
 /**
- * The library's first line: today's date and today's reading time, for a reader who has any on
- * record at all. The date stands in for a "Today" label, so the line also says what day it is.
+ * Days in a row with some reading, up to today. A day not yet read does not break the run until
+ * it is over, so in the morning the run still counts from yesterday.
  */
-@Composable
-fun TodayLine(rows: List<ReadingTime>, onClick: () -> Unit) {
-    val date = remember { LocalDate.now() }
-    val today = date.toString()
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(date.format(headerDateFormat), style = MaterialTheme.typography.titleMedium)
-        Text(
-            durationOrNothing(rows.filter { it.day == today }.sumOf { it.millis }) + "  ›",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
+internal fun streak(rows: List<ReadingTime>, today: LocalDate = LocalDate.now()): Int {
+    val read = rows.filter { it.millis > 0 }.map { it.day }.toSet()
+    var day = if (today.toString() in read) today else today.minusDays(1)
+    var count = 0
+    while (day.toString() in read) {
+        count++
+        day = day.minusDays(1)
     }
+    return count
 }

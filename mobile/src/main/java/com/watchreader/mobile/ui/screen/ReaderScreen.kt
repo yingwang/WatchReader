@@ -102,6 +102,7 @@ import com.watchreader.mobile.ui.viewmodel.ReaderUiState
 import com.watchreader.mobile.ui.viewmodel.ReaderViewModel
 import com.watchreader.mobile.ui.viewmodel.UiEvent
 import com.watchreader.shared.reader.LineMeasurer
+import com.watchreader.shared.bookmark.BookmarkError
 import com.watchreader.shared.reader.PageGeometry
 import kotlin.math.roundToInt
 
@@ -118,10 +119,14 @@ fun ReaderScreen(
         factory = ReaderViewModel.Factory(context.applicationContext as android.app.Application, bookId),
     )
     val state by vm.state.collectAsState()
+    val bookmarks by vm.bookmarks.collectAsState()
+    val search by vm.search.collectAsState()
     val books by listVm.books.collectAsState()
     val book = books?.firstOrNull { it.id == bookId }
     val snackbar = remember { SnackbarHostState() }
     var showContents by rememberSaveable { mutableStateOf(false) }
+    var showBookmarks by rememberSaveable(bookId) { mutableStateOf(false) }
+    var showSearch by rememberSaveable(bookId) { mutableStateOf(false) }
     // Fully open, as the contents list is scrolled to the current chapter: near the end of a long
     // book that chapter sits at the bottom of the list, below what a half-open sheet shows.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -132,6 +137,13 @@ fun ReaderScreen(
     var showMenu by remember { mutableStateOf(false) }
     var toolbarVisible by rememberSaveable(bookId) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(bookmarks.error) {
+        if (bookmarks.error == BookmarkError.SAVE) {
+            snackbar.showSnackbar(context.getString(R.string.reader_bookmark_save_error))
+            vm.clearBookmarkError()
+        }
+    }
 
     // Reading time runs while this screen is in front. On the way to the background (Home, the
     // lock button) the watch hears about the last pages turned; closing with Back is not the only
@@ -195,6 +207,12 @@ fun ReaderScreen(
                             val onWatch = book?.syncStatus == SyncStatus.SENT
                             if (onWatch) {
                                 Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.reader_on_watch), modifier = Modifier.padding(12.dp))
+                            } else if (book?.syncStatus == SyncStatus.QUEUED) {
+                                val cancelLabel = stringResource(R.string.reader_cancel_queued_send)
+                                TextButton(
+                                    onClick = { book?.let { listVm.cancelQueuedSend(it) } },
+                                    modifier = Modifier.semantics { contentDescription = cancelLabel },
+                                ) { Text(stringResource(R.string.reader_send_waiting)) }
                             } else if (book?.syncStatus == SyncStatus.SENDING) {
                                 CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
                             } else IconButton(onClick = { book?.let { listVm.sendToWatch(it) } }, enabled = book != null) {
@@ -206,6 +224,23 @@ fun ReaderScreen(
                             Box {
                                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.reader_options)) }
                                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                    val ready = state as? ReaderUiState.Ready
+                                    val hasBookmark = ready != null && bookmarks.onPage(ready.page.start, ready.page.end) != null
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(if (hasBookmark) R.string.reader_bookmark_remove else R.string.reader_bookmark_add)) },
+                                        enabled = ready != null && ready.page.start < ready.totalChars && !bookmarks.loading && !bookmarks.saving && bookmarks.error != BookmarkError.LOAD,
+                                        onClick = { showMenu = false; vm.toggleBookmark() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.reader_bookmarks)) },
+                                        enabled = ready != null,
+                                        onClick = { showMenu = false; showBookmarks = true },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.reader_search)) },
+                                        enabled = ready != null,
+                                        onClick = { showMenu = false; showSearch = true },
+                                    )
                                     DropdownMenuItem(text = { Text(stringResource(R.string.reader_appearance)) }, onClick = { showMenu = false; showAppearance = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
                                         showMenu = false
@@ -328,6 +363,24 @@ fun ReaderScreen(
         }
 
         val ready = state as? ReaderUiState.Ready
+        if (showBookmarks && ready != null) ReaderBookmarkSheet(
+            state = bookmarks,
+            pageStart = ready.page.start,
+            pageEnd = ready.page.end,
+            totalChars = ready.totalChars,
+            onToggle = vm::toggleBookmark,
+            onJump = { vm.jumpToBookmark(it); showBookmarks = false },
+            onDelete = vm::removeBookmark,
+            onRetry = vm::retryBookmarks,
+            onDismiss = { showBookmarks = false },
+        )
+        if (showSearch && ready != null) ReaderSearchSheet(
+            state = search,
+            totalChars = ready.totalChars,
+            onQuery = vm::searchBody,
+            onResult = { generation, hit -> vm.jumpToSearchResult(generation, hit); showSearch = false; vm.clearSearch() },
+            onDismiss = { showSearch = false; vm.clearSearch() },
+        )
         if (showContents && ready != null) {
             ModalBottomSheet(onDismissRequest = { showContents = false }, sheetState = sheetState) {
                 val pageStart = ready.page.start

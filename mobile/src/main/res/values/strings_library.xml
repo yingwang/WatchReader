@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_layout_covers">Covers</string>
+    <string name="library_layout_compact">List</string>
+    <string name="library_search">Search titles</string>
+    <string name="library_clear_search">Clear search</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_reading">Reading</string>
+    <string name="library_filter_finished">Finished</string>
+    <string name="library_filter_on_watch">On watch</string>
+    <string name="library_sort_added">Recently added</string>
+    <string name="library_sort_read">Recently read</string>
+    <string name="library_sort_description">Sort: %1$s</string>
+    <plurals name="library_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="library_no_results">No matching books</string>
+    <string name="library_no_results_hint">Try another title or clear the filters.</string>
+    <string name="library_clear_query">Clear search and filters</string>
+    <string name="library_loading">Loading your books…</string>
+    <string name="library_status_queued">Waiting for watch connection</string>
+    <string name="library_cancel_send">Cancel send</string>
+</resources>

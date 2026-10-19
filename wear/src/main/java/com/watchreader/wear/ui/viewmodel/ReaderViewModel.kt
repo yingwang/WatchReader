@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.bookmark.BookmarkRepository
+import com.watchreader.shared.bookmark.ReaderBookmarks
 import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
@@ -62,8 +64,13 @@ class ReaderViewModel(
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
+    private val bookmarkReader = ReaderBookmarks(BookmarkRepository.get(application), bookId, viewModelScope)
+    val bookmarks = bookmarkReader.state
+
     private var book: WearBook? = null
     private var text: String = ""
+    // Keep a search/bookmark anchor through background saves until the reader moves again.
+    private var positionAnchor: Int? = null
     private var chapters: List<Chapter> = emptyList()
     private var loaded = false
     private var layout: Pair<PageGeometry, LineMeasurer>? = null
@@ -103,6 +110,7 @@ class ReaderViewModel(
                 return@launch
             }
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            positionAnchor = restoreOffset
             knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
@@ -120,6 +128,7 @@ class ReaderViewModel(
     private fun follow(offset: Int, at: Long) {
         if (at <= knownStamp) return
         knownStamp = at
+        positionAnchor = offset.coerceIn(0, text.length)
         val p = paginator
         val current = page
         if (p == null || current == null) {
@@ -197,6 +206,7 @@ class ReaderViewModel(
         }
         if (target.start == current?.start) return
         current?.let { jumpHistory.record(it.start) }
+        positionAnchor = null
         page = target
         credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
@@ -208,6 +218,7 @@ class ReaderViewModel(
         val p = paginator ?: return
         if (chapter !in chapters) return
         page?.let { jumpHistory.record(it.start) }
+        positionAnchor = null
         page = p.pageFrom(chapter.start.coerceIn(0, p.length))
         credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
@@ -218,6 +229,7 @@ class ReaderViewModel(
     fun undoJump() {
         val p = paginator ?: return
         val offset = jumpHistory.take() ?: return
+        positionAnchor = null
         page = p.pageFrom(offset.coerceIn(0, p.length))
         credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
@@ -225,8 +237,32 @@ class ReaderViewModel(
         scheduleSync()
     }
 
+    fun toggleBookmark() {
+        val current = page ?: return
+        val existing = bookmarks.value.onPage(current.start, current.end)
+        if (existing != null) bookmarkReader.remove(existing.offset)
+        else if (current.start < text.length) bookmarkReader.add(current.start, text)
+    }
+
+    fun removeBookmark(offset: Int) = bookmarkReader.remove(offset)
+    fun retryBookmarks() = bookmarkReader.refresh()
+
+    /** The screen must stop active TTS before calling, as it does for chapter/slider jumps. */
+    fun jumpToBookmark(offset: Int) {
+        val p = paginator ?: return
+        if (offset !in text.indices || bookmarks.value.items.none { it.offset == offset }) return
+        page?.let { jumpHistory.record(it.start) }
+        page = p.pageFrom(offset)
+        credit(clock.turn(System.currentTimeMillis()), 0)
+        publish()
+        syncJob?.cancel()
+        flipsSinceSync = 0
+        saveProgress(toPhone = true, anchor = offset)
+    }
+
     /** Keeps the page under the sentence being read aloud. */
     fun followSpoken(offset: Int) {
+        positionAnchor = offset.coerceIn(0, text.length)
         val p = paginator ?: return
         val current = page ?: return
         if (offset in current.start until current.end) return
@@ -247,6 +283,7 @@ class ReaderViewModel(
     }
 
     private fun flipped() {
+        positionAnchor = null
         jumpHistory.turned()
         flipsSinceSync++
         val toPhone = flipsSinceSync >= SYNC_EVERY_FLIPS
@@ -255,11 +292,15 @@ class ReaderViewModel(
     }
 
     /** Where the open page is kept: its start, or the end of the book when it is the last one. */
-    private fun savedOffset(): Int? = page?.let { if (it.end >= text.length) text.length else it.start }
+    private fun savedOffset(): Int? = page?.let { current ->
+        positionAnchor?.takeIf { it in current.start until current.end }
+            ?: if (current.end >= text.length) text.length else current.start
+    }
 
-    fun saveProgress(toPhone: Boolean) {
+    fun saveProgress(toPhone: Boolean, anchor: Int? = null) {
+        if (anchor != null) positionAnchor = anchor.coerceIn(0, text.length)
         val b = book ?: return
-        val offset = savedOffset() ?: return
+        val offset = anchor?.coerceIn(0, text.length) ?: savedOffset() ?: return
         val at = System.currentTimeMillis()
         lastMove = offset to at
         knownStamp = maxOf(knownStamp, at)
@@ -290,6 +331,7 @@ class ReaderViewModel(
     /** The page is on screen again; reading time runs from now unless the voice has the book. */
     fun onScreenResumed() {
         screenUp = true
+        bookmarkReader.refresh()
         if (loaded && !listening) clock.start(System.currentTimeMillis())
     }
 

@@ -12,6 +12,7 @@ object SharedIntent {
     sealed class Shared {
         /** A file, which the screen selects. */
         data class File(val uri: Uri) : Shared()
+        data class Files(val uris: List<Uri>) : Shared()
 
         /** A link to a book, which the screen puts in its link field. */
         data class Link(val url: String) : Shared()
@@ -37,6 +38,11 @@ object SharedIntent {
                     stream != null -> Shared.File(stream)
                     else -> link(intent.getStringExtra(Intent.EXTRA_TEXT))?.let { Shared.Link(it) } ?: Shared.Unusable
                 }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                @Suppress("DEPRECATION")
+                val streams = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+                if (streams.isEmpty()) Shared.Unusable else Shared.Files(streams.distinct())
             }
             Intent.ACTION_VIEW -> intent.data?.let { Shared.File(it) }
             else -> null

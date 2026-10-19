@@ -15,6 +15,12 @@ import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.ProgressDataSync
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -62,25 +68,56 @@ class BookSender(private val context: Context) {
      * bytes are handed to the Data Layer; the watch confirms storage with a BOOK_RECEIVED message.
      */
     suspend fun sendBook(book: Book, nodeId: String): Boolean = withContext(Dispatchers.IO) {
-        val channelClient = Wearable.getChannelClient(context)
+        val client = Wearable.getChannelClient(context)
         var channel: ChannelClient.Channel? = null
+        var callback: ChannelClient.ChannelCallback? = null
+        val staged = File.createTempFile("book-transfer-", ".bin", context.cacheDir)
         try {
-            channel = channelClient.openChannel(nodeId, DataLayerPaths.bookChannelPath(book.id)).await()
-            val output = channelClient.getOutputStream(channel).await()
-            val file = File(book.filePath)
-            val meta = metadata(book)
-            output.use { out ->
-                BookTransfer.writeHeader(out, meta)
-                file.inputStream().use { input -> input.copyTo(out, bufferSize = 16 * 1024) }
-                out.flush()
+            staged.outputStream().use { out ->
+                BookTransfer.writeHeader(out, metadata(book))
+                File(book.filePath).inputStream().use { input ->
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        out.write(buffer, 0, count)
+                    }
+                }
             }
-            Log.d(TAG, "Streamed '${book.title}' (${file.length()} bytes) to $nodeId")
-            true
+            withTimeout(180_000) {
+                val opened = client.openChannel(nodeId, DataLayerPaths.bookChannelPath(book.id)).await()
+                channel = opened
+                val closed = CompletableDeferred<Boolean>()
+                val listener = object : ChannelClient.ChannelCallback() {
+                    override fun onOutputClosed(channel: ChannelClient.Channel, reason: Int, error: Int) {
+                        closed.complete(reason == CLOSE_REASON_NORMAL)
+                    }
+                    override fun onChannelClosed(channel: ChannelClient.Channel, reason: Int, error: Int) {
+                        closed.complete(false)
+                    }
+                }
+                callback = listener
+                client.registerChannelCallback(opened, listener).await()
+                client.sendFile(opened, Uri.fromFile(staged)).await()
+                closed.await()
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            Log.w(TAG, "Book transfer timed out", e)
+            false
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Sending '${book.title}' failed", e)
+            Log.w(TAG, "Book transfer failed", e)
             false
         } finally {
-            channel?.let { runCatching { channelClient.close(it).await() } }
+            withContext(NonCancellable) {
+                channel?.let { opened ->
+                    runCatching { withTimeout(10_000) { callback?.let { client.unregisterChannelCallback(opened, it).await() } } }
+                    runCatching { withTimeout(10_000) { client.close(opened).await() } }
+                }
+                staged.delete()
+            }
         }
     }
 

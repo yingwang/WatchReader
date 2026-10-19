@@ -34,6 +34,9 @@ abstract class ReadingStatsDao {
     @Query("SELECT * FROM reading_milestone WHERE bookId = :bookId")
     abstract fun observeMilestone(bookId: String): Flow<ReadingMilestone?>
 
+    @Query("SELECT * FROM reading_milestone")
+    abstract fun observeMilestones(): Flow<List<ReadingMilestone>>
+
     @Query("INSERT OR IGNORE INTO reading_milestone (bookId, firstOpenedEpochMs, finishedEpochMs) VALUES (:bookId, 0, 0)")
     protected abstract suspend fun ensureMilestone(bookId: String)
 

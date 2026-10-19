@@ -3,6 +3,7 @@ package com.watchreader.wear.ui.screen
 import android.Manifest
 import android.app.Activity
 import android.os.Build
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,6 +75,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.InlineSlider
@@ -102,6 +105,7 @@ import com.watchreader.shared.reader.Paginator
 import com.watchreader.wear.service.TtsService
 import com.watchreader.wear.settings.ReaderPrefs
 import com.watchreader.wear.tts.TtsLanguages
+import com.watchreader.wear.tts.SleepTimer
 import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
 import com.watchreader.wear.ui.theme.pageColors
@@ -142,14 +146,19 @@ fun ReaderScreen(
     }
 
     val state by vm.state.collectAsState()
+    val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
     val ttsState by TtsPlayback.state.collectAsState()
     val ttsBook by TtsPlayback.bookId.collectAsState()
     val spoken by TtsPlayback.sentence.collectAsState()
     val fetching by TtsPlayback.fetching.collectAsState()
     val ttsHere = ttsBook == bookId && ttsState != TtsState.IDLE
+    val sleepTimer by TtsPlayback.sleepTimer.collectAsStateWithLifecycle()
+    val timerHere = sleepTimer.takeIf { ttsHere }
+    val sleepSeconds = sleepTimerSeconds(timerHere)
     val isRound = LocalConfiguration.current.isScreenRound
 
     var showToolbar by remember { mutableStateOf(false) }
+    var showBookmarks by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(!prefs.readerHintSeen) }
     var crownTravel by remember { mutableFloatStateOf(0f) }
     var autoTurn by remember { mutableStateOf(prefs.autoTurnEnabled) }
@@ -190,13 +199,13 @@ fun ReaderScreen(
     // inside repeatOnLifecycle, so it stops the moment the watch leaves the page (screen off,
     // Home, another app) and starts afresh on the way back; otherwise a book left open would
     // keep turning in the dark and overwrite the reading position on the phone.
-    LaunchedEffect(autoTurn, autoSeconds, state, showToolbar) {
+    LaunchedEffect(autoTurn, autoSeconds, state, showToolbar, showBookmarks) {
         val s = state
-        if (!autoTurn || showToolbar || s !is ReaderUiState.Ready) return@LaunchedEffect
+        if (!autoTurn || showToolbar || showBookmarks || s !is ReaderUiState.Ready) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             delay((autoSeconds * 1000).toLong())
             // The last page stays its full time like any other before the turning stops.
-            if (autoTurn && !showToolbar && !vm.nextPage()) {
+            if (autoTurn && !showToolbar && !showBookmarks && !vm.nextPage()) {
                 autoTurn = false
                 boundaryMessage = context.getString(R.string.reader_end)
             }
@@ -369,7 +378,9 @@ fun ReaderScreen(
                 if (ttsHere) {
                     val waitingFor = fetching
                     Text(
-                        text = if (ttsState == TtsState.PLAYING && waitingFor != null) {
+                        text = if (sleepSeconds != null) {
+                            stringResource(R.string.sleep_timer_countdown, sleepSeconds / 60, sleepSeconds % 60)
+                        } else if (ttsState == TtsState.PLAYING && waitingFor != null) {
                             stringResource(R.string.reader_fetching_short, TtsLanguages.label(waitingFor))
                         } else stringResource(when (ttsState) {
                             TtsState.LOADING -> R.string.reader_preparing_short
@@ -399,6 +410,9 @@ fun ReaderScreen(
                         fraction = s.fraction,
                         ttsHere = ttsHere,
                         ttsState = ttsState,
+                        sleepTimer = timerHere,
+                        sleepSeconds = sleepSeconds,
+                        onSleepTimer = { minutes -> TtsService.setSleepTimer(context, bookId, minutes) },
                         autoTurn = autoTurn,
                         onAutoTurnChange = { on ->
                             if (on && ttsHere) TtsService.stop(context)
@@ -423,6 +437,7 @@ fun ReaderScreen(
                             showToolbar = false
                             tick()
                         },
+                        onBookmarks = { showToolbar = false; showBookmarks = true },
                         onClose = { showToolbar = false },
                         onPlayPause = {
                             when {
@@ -448,6 +463,30 @@ fun ReaderScreen(
         }
     }
 
+    val readyForBookmarks = state as? ReaderUiState.Ready
+    Dialog(showDialog = showBookmarks && readyForBookmarks != null, onDismissRequest = { showBookmarks = false }) {
+        readyForBookmarks?.let { ready ->
+            WearBookmarkSheet(
+                state = bookmarks,
+                pageStart = ready.page.start,
+                pageEnd = ready.page.end,
+                totalChars = ready.totalChars,
+                background = colors.background,
+                textColor = colors.text,
+                onToggle = vm::toggleBookmark,
+                onDelete = vm::removeBookmark,
+                onRetry = vm::retryBookmarks,
+                onJump = { offset ->
+                    if (ttsHere) TtsService.stop(context)
+                    vm.jumpToBookmark(offset)
+                    showBookmarks = false
+                    tick()
+                },
+                onClose = { showBookmarks = false },
+            )
+        }
+    }
+
     Dialog(showDialog = showHint && state is ReaderUiState.Ready, onDismissRequest = {
         showHint = false
         prefs.readerHintSeen = true
@@ -463,8 +502,12 @@ fun ReaderScreen(
 @Composable
 private fun Toolbar(
     fraction: Float,
+    onBookmarks: () -> Unit,
     ttsHere: Boolean,
     ttsState: TtsState,
+    sleepTimer: SleepTimer.State?,
+    sleepSeconds: Long?,
+    onSleepTimer: (Int) -> Unit,
     autoTurn: Boolean,
     onAutoTurnChange: (Boolean) -> Unit,
     background: androidx.compose.ui.graphics.Color,
@@ -482,6 +525,7 @@ private fun Toolbar(
 ) {
     val controlBg = textColor.copy(alpha = 0.10f).compositeOver(background)
     var contents by remember { mutableStateOf(false) }
+    var sleepOptions by remember { mutableStateOf(false) }
     // The position shown follows the reading until the reader presses + or -; from then on it
     // is theirs, and a voice turning the page underneath must not put it back.
     var jumpEdited by remember { mutableStateOf(false) }
@@ -491,14 +535,62 @@ private fun Toolbar(
     val targetChapter = chapters.lastOrNull { it.start <= (draftFraction * totalChars).toInt() }
     val listState = rememberScalingLazyListState()
     val chapterState = rememberScalingLazyListState(initialCenterItemIndex = (chapters.indexOfLast { it.start <= currentOffset } + 1).coerceAtLeast(1))
-    val activeState = if (contents) chapterState else listState
-    BackHandler { if (contents) contents = false else onClose() }
+    val sleepListState = rememberScalingLazyListState()
+    val activeState = when {
+        sleepOptions -> sleepListState
+        contents -> chapterState
+        else -> listState
+    }
+    BackHandler {
+        when {
+            sleepOptions -> sleepOptions = false
+            contents -> contents = false
+            else -> onClose()
+        }
+    }
     Scaffold(
         modifier = Modifier.fillMaxSize().background(background),
         positionIndicator = { PositionIndicator(scalingLazyListState = activeState) },
     ) {
         ScalingLazyColumn(state = activeState, modifier = Modifier.fillMaxSize()) {
-            if (contents) {
+            if (sleepOptions) {
+                item { Text(stringResource(R.string.sleep_timer_title), color = textColor, fontSize = 14.sp) }
+                item {
+                    Text(
+                        if (sleepSeconds != null) stringResource(R.string.sleep_timer_countdown, sleepSeconds / 60, sleepSeconds % 60)
+                        else stringResource(R.string.sleep_timer_off),
+                        color = textColor, fontSize = 12.sp,
+                    )
+                }
+                items(listOf(0) + SleepTimer.MINUTES) { minutes ->
+                    val selected = if (minutes == 0) sleepTimer == null else sleepTimer?.minutes == minutes
+                    Chip(
+                        onClick = { onSleepTimer(minutes); sleepOptions = false },
+                        enabled = minutes == 0 || (ttsHere && ttsState == TtsState.PLAYING),
+                        label = {
+                            Text(
+                                (if (selected) "● " else "") + if (minutes == 0) stringResource(R.string.sleep_timer_off)
+                                else stringResource(R.string.sleep_timer_minutes, minutes),
+                            )
+                        },
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
+                        modifier = Modifier.fillMaxWidth(0.84f),
+                    )
+                }
+                item {
+                    Text(stringResource(R.string.sleep_timer_rule), color = textColor, fontSize = 12.sp,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                }
+                if (!ttsHere || ttsState != TtsState.PLAYING) item {
+                    Text(stringResource(R.string.sleep_timer_play_first), color = textColor, fontSize = 12.sp,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
+                }
+                item {
+                    Chip(onClick = { sleepOptions = false }, label = { Text(stringResource(R.string.reader_controls)) },
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
+                        modifier = Modifier.fillMaxWidth(0.84f))
+                }
+            } else if (contents) {
                 item { Text(stringResource(R.string.reader_contents), color = textColor, fontSize = 14.sp) }
                 if (chapters.isEmpty()) item {
                     Text(stringResource(R.string.reader_no_chapters), color = textColor, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
@@ -544,6 +636,20 @@ private fun Toolbar(
                         color = textColor, fontSize = 12.sp,
                     )
                 }
+                if (ttsHere) item {
+                    Chip(
+                        onClick = { sleepOptions = true },
+                        label = { Text(stringResource(R.string.sleep_timer_title)) },
+                        secondaryLabel = {
+                            Text(
+                                if (sleepSeconds != null) stringResource(R.string.sleep_timer_countdown, sleepSeconds / 60, sleepSeconds % 60)
+                                else stringResource(R.string.sleep_timer_off),
+                            )
+                        },
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
+                        modifier = Modifier.fillMaxWidth(0.84f),
+                    )
+                }
                 item {
                     ToggleChip(
                         checked = autoTurn,
@@ -556,6 +662,14 @@ private fun Toolbar(
                             uncheckedStartBackgroundColor = controlBg,
                             uncheckedEndBackgroundColor = controlBg,
                         ),
+                        modifier = Modifier.fillMaxWidth(0.84f),
+                    )
+                }
+                item {
+                    Chip(
+                        onClick = onBookmarks,
+                        label = { Text(stringResource(R.string.reader_bookmarks)) },
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
                         modifier = Modifier.fillMaxWidth(0.84f),
                     )
                 }
@@ -614,6 +728,26 @@ private fun Toolbar(
             }
         }
     }
+}
+
+/** Display refreshes stop off-screen. Expiry itself is exclusively owned by TtsService. */
+@Composable
+private fun sleepTimerSeconds(timer: SleepTimer.State?): Long? {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val seconds by produceState(timer?.remainingSeconds(SystemClock.elapsedRealtime()), timer, lifecycleOwner) {
+        value = timer?.remainingSeconds(SystemClock.elapsedRealtime())
+        if (timer != null) lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                val now = SystemClock.elapsedRealtime()
+                value = timer.remainingSeconds(now)
+                val remaining = timer.deadlineMillis - now
+                if (remaining <= 0) break
+                // Refresh on the next displayed-second boundary, including after waking the screen.
+                delay(((remaining - 1) % 1_000) + 1)
+            }
+        }
+    }
+    return if (timer == null) null else seconds
 }
 
 private enum class Transport { PLAY, PAUSE, STOP }

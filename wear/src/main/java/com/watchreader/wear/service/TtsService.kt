@@ -1,5 +1,6 @@
 package com.watchreader.wear.service
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,7 +12,10 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -25,6 +29,8 @@ import com.watchreader.wear.settings.ReaderPrefs
 import com.watchreader.wear.tts.BookLanguages
 import com.watchreader.wear.tts.LanguageDetector
 import com.watchreader.wear.tts.SentenceParser
+import com.watchreader.wear.tts.SleepTimer
+import com.watchreader.wear.tts.SleepTimerAlarm
 import com.watchreader.wear.tts.TtsLanguages
 import com.watchreader.wear.tts.TtsPlayback
 import com.watchreader.wear.tts.TtsState
@@ -94,6 +100,16 @@ class TtsService : Service() {
     /** Bumped by every play(); work left over from an earlier book checks it and stands down. */
     private val session = UtteranceSession()
 
+    private val sleepTimerAlarm by lazy {
+        SleepTimerAlarm(getSystemService(AlarmManager::class.java), Handler(Looper.getMainLooper()))
+    }
+    private val sleepTimer = SleepTimer(
+        elapsedRealtime = SystemClock::elapsedRealtime,
+        schedule = { deadline, callback -> sleepTimerAlarm.schedule(deadline, callback) },
+        onChanged = TtsPlayback::sleepTimer,
+        onExpired = { pause() },
+    )
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -127,6 +143,7 @@ class TtsService : Service() {
                 }
                 if ((pendingPlay?.first == id || TtsPlayback.bookId.value == id) &&
                     TtsPlayback.state.value == TtsState.LOADING) return START_NOT_STICKY
+                sleepTimer.cancel()
                 TtsPlayback.set(TtsState.LOADING, id, null)
                 goForeground(titleOrLoading(), playing = true)
                 if (engineReady) play(id, offset) else pendingPlay = id to offset
@@ -134,6 +151,24 @@ class TtsService : Service() {
             ACTION_PAUSE -> pause()
             ACTION_RESUME -> resume()
             ACTION_STOP -> finish()
+            ACTION_SLEEP_TIMER -> {
+                // A queued control from a reader that has since changed books cannot change the
+                // current book's timer. A stale intent must not leave a newly-created service up.
+                if (book == null && pendingPlay == null && TtsPlayback.state.value == TtsState.IDLE) {
+                    finish()
+                } else if (intent.getStringExtra(EXTRA_BOOK_ID) == TtsPlayback.bookId.value) {
+                    val minutes = intent.getIntExtra(EXTRA_SLEEP_MINUTES, -1)
+                    if (minutes == 0) sleepTimer.cancel()
+                    else if (minutes in SleepTimer.MINUTES && TtsPlayback.state.value == TtsState.PLAYING) {
+                        try {
+                            sleepTimer.start(minutes)
+                        } catch (failure: RuntimeException) {
+                            Log.w(TAG, "Could not schedule sleep timer", failure)
+                            toast(getString(R.string.sleep_timer_unavailable))
+                        }
+                    }
+                }
+            }
         }
         return START_NOT_STICKY
     }
@@ -221,6 +256,7 @@ class TtsService : Service() {
 
     /** Keeps the engine fed a batch at a time; a whole novel queued at once makes some engines stall. */
     private fun queueMore() {
+        if (sleepTimer.checkExpired()) return
         val engine = tts ?: return
         // Reading is to stop at a stretch the watch cannot say; nothing goes in after it.
         if (stopAt >= 0) return
@@ -341,6 +377,7 @@ class TtsService : Service() {
         override fun onStart(utteranceId: String) {
             scope.launch {
                 val index = session.index(utteranceId) ?: return@launch
+                if (sleepTimer.checkExpired()) return@launch
                 val serial = session.generation
                 if (TtsPlayback.state.value != TtsState.PLAYING) return@launch
                 val range = sentences.getOrNull(index) ?: return@launch
@@ -383,6 +420,7 @@ class TtsService : Service() {
                 Log.w(TAG, "Utterance $utteranceId failed with $errorCode; waiting for the voice")
                 scope.launch {
                     val index = session.index(utteranceId) ?: return@launch
+                    if (sleepTimer.checkExpired()) return@launch
                     if (TtsPlayback.state.value == TtsState.PLAYING) voiceNotReady(index)
                 }
                 return
@@ -407,6 +445,7 @@ class TtsService : Service() {
     private fun utteranceOver(utteranceId: String, failed: Boolean) {
         scope.launch {
             val index = session.index(utteranceId) ?: return@launch
+            if (sleepTimer.checkExpired()) return@launch
             val serial = session.generation
             if (TtsPlayback.state.value != TtsState.PLAYING || index !in sentences.indices) return@launch
             if (failed) {
@@ -428,6 +467,8 @@ class TtsService : Service() {
     }
 
     private fun pause() {
+        // Manual, missing-voice, and timer pauses all consume the timer. Resume starts untimed.
+        sleepTimer.cancel()
         if (TtsPlayback.state.value != TtsState.PLAYING) return
         session.invalidate()
         tts?.stop()
@@ -466,6 +507,8 @@ class TtsService : Service() {
     }
 
     private fun finish() {
+        sleepTimer.cancel()
+        pendingPlay = null
         session.invalidate()
         // stop() waits for the engine's lock, which its connection set-up holds for seconds on a
         // cold start; before the engine has reported ready there is nothing to stop anyway.
@@ -483,6 +526,7 @@ class TtsService : Service() {
 
     @OptIn(DelicateCoroutinesApi::class)
     override fun onDestroy() {
+        sleepTimer.cancel()
         session.invalidate()
         destroyed = true
         pendingPlay = null
@@ -554,8 +598,10 @@ class TtsService : Service() {
         const val ACTION_PAUSE = "com.watchreader.tts.PAUSE"
         const val ACTION_RESUME = "com.watchreader.tts.RESUME"
         const val ACTION_STOP = "com.watchreader.tts.STOP"
+        const val ACTION_SLEEP_TIMER = "com.watchreader.tts.SLEEP_TIMER"
         const val EXTRA_BOOK_ID = "book_id"
         const val EXTRA_OFFSET = "offset"
+        private const val EXTRA_SLEEP_MINUTES = "sleep_minutes"
         private const val CHANNEL_ID = "read_aloud"
         private const val NOTIFICATION_ID = 41
         private const val BATCH = 24
@@ -591,6 +637,18 @@ class TtsService : Service() {
         fun pause(context: Context) = context.startService(Intent(context, TtsService::class.java).setAction(ACTION_PAUSE))
         fun resume(context: Context) = context.startService(Intent(context, TtsService::class.java).setAction(ACTION_RESUME))
         fun stop(context: Context) = context.startService(Intent(context, TtsService::class.java).setAction(ACTION_STOP))
+
+        /** Zero disables the timer; durations are accepted only for the currently playing book. */
+        fun setSleepTimer(context: Context, bookId: String, minutes: Int) {
+            require(minutes == 0 || minutes in SleepTimer.MINUTES)
+            if (TtsPlayback.bookId.value != bookId || TtsPlayback.state.value == TtsState.IDLE) return
+            context.startService(
+                Intent(context, TtsService::class.java)
+                    .setAction(ACTION_SLEEP_TIMER)
+                    .putExtra(EXTRA_BOOK_ID, bookId)
+                    .putExtra(EXTRA_SLEEP_MINUTES, minutes),
+            )
+        }
 
         fun stopIfPlaying(context: Context, bookId: String) {
             if (TtsPlayback.bookId.value == bookId) stop(context)

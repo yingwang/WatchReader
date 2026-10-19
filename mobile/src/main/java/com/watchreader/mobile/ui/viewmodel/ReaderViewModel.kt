@@ -9,6 +9,10 @@ import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.bookmark.BookmarkRepository
+import com.watchreader.shared.bookmark.ReaderBookmarks
+import com.watchreader.shared.search.ReaderSearch
+import com.watchreader.shared.search.SearchHit
 import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
@@ -52,8 +56,15 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
+    private val bookmarkReader = ReaderBookmarks(BookmarkRepository.get(application), bookId, viewModelScope)
+    val bookmarks = bookmarkReader.state
+    private val searcher = ReaderSearch(viewModelScope)
+    val search = searcher.state
+
     private var book: Book? = null
     private var text: String = ""
+    // Keep a search/bookmark anchor through background saves until the reader moves again.
+    private var positionAnchor: Int? = null
     private var chapters: List<Chapter> = emptyList()
     private var loaded = false
     private var layout: Pair<PageGeometry, LineMeasurer>? = null
@@ -90,6 +101,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
                 return@launch
             }
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            positionAnchor = restoreOffset
             knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
@@ -107,6 +119,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private fun follow(offset: Int, at: Long) {
         if (at <= knownStamp) return
         knownStamp = at
+        positionAnchor = offset.coerceIn(0, text.length)
         val p = paginator
         val current = page
         if (p == null || current == null) {
@@ -164,11 +177,34 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
 
     fun jumpTo(offset: Int) {
         val p = paginator ?: return
-        page = p.pageFrom(offset.coerceIn(0, p.length))
+        val target = offset.coerceIn(0, p.length)
+        page = if (target == p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
         credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
         // a jump is a long way to move; the watch hears about it at once
-        saveProgress(toWatch = true)
+        // Preserve the chosen anchor even on the phone's last page: the watch has smaller pages.
+        saveProgress(toWatch = true, anchor = target)
+    }
+
+    fun toggleBookmark() {
+        val current = page ?: return
+        val existing = bookmarks.value.onPage(current.start, current.end)
+        if (existing != null) bookmarkReader.remove(existing.offset)
+        else if (current.start < text.length) bookmarkReader.add(current.start, text)
+    }
+
+    fun removeBookmark(offset: Int) = bookmarkReader.remove(offset)
+    fun retryBookmarks() = bookmarkReader.refresh()
+    fun clearBookmarkError() = bookmarkReader.clearError()
+
+    fun jumpToBookmark(offset: Int) {
+        if (bookmarks.value.items.any { it.offset == offset } && offset in text.indices) jumpTo(offset)
+    }
+
+    fun searchBody(query: String) { if (loaded) searcher.search(text, query) }
+    fun clearSearch() = searcher.clear()
+    fun jumpToSearchResult(generation: Long, hit: SearchHit) {
+        searcher.selectedOffset(generation, hit)?.let { jumpTo(it) }
     }
 
     private fun publish() {
@@ -178,16 +214,21 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
 
     /** Every turn is saved; the watch is told about one turn in [SYNC_EVERY_FLIPS] and the last one on exit. */
     private fun flipped() {
+        positionAnchor = null
         flipsSinceSync++
         saveProgress(toWatch = flipsSinceSync >= SYNC_EVERY_FLIPS)
     }
 
     /** Where the open page is kept: its start, or the end of the book when it is the last one. */
-    private fun savedOffset(): Int? = page?.let { if (it.end >= text.length) text.length else it.start }
+    private fun savedOffset(): Int? = page?.let { current ->
+        positionAnchor?.takeIf { it in current.start until current.end }
+            ?: if (current.end >= text.length) text.length else current.start
+    }
 
-    fun saveProgress(toWatch: Boolean = true) {
+    fun saveProgress(toWatch: Boolean = true, anchor: Int? = null) {
+        if (anchor != null) positionAnchor = anchor.coerceIn(0, text.length)
         val b = book ?: return
-        val offset = savedOffset() ?: return
+        val offset = anchor?.coerceIn(0, text.length) ?: savedOffset() ?: return
         val at = System.currentTimeMillis()
         lastMove = offset to at
         knownStamp = maxOf(knownStamp, at)
@@ -202,6 +243,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     /** The page is on screen again; reading time runs from now. */
     fun onScreenResumed() {
         screenUp = true
+        bookmarkReader.refresh()
         if (loaded) clock.start(System.currentTimeMillis())
     }
 

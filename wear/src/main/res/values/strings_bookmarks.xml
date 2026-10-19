@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_bookmarks">Bookmarks</string>
+    <string name="reader_bookmark_add">Save this page</string>
+    <string name="reader_bookmark_remove">Remove this bookmark</string>
+    <string name="reader_bookmark_empty">No bookmarks yet.</string>
+    <string name="reader_bookmark_position">At %1$d%%</string>
+    <string name="reader_bookmark_manage">Remove bookmarks</string>
+    <string name="reader_bookmark_delete">Remove at %1$d%%</string>
+    <string name="reader_bookmark_load_error">Could not load bookmarks. Saved data has been kept.</string>
+    <string name="reader_bookmark_save_error">Could not save the change. Please try again.</string>
+    <string name="reader_bookmark_retry">Retry</string>
+</resources>

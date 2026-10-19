@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sleep_timer_title">Sleep timer</string>
+    <string name="sleep_timer_off">Off</string>
+    <string name="sleep_timer_minutes">%1$d minutes</string>
+    <string name="sleep_timer_countdown">Sleep in %1$d:%2$02d</string>
+    <string name="sleep_timer_rule">Pauses reading when time is up. Pausing or stopping turns the timer off. Choose again to restart the countdown.</string>
+    <string name="sleep_timer_play_first">Start reading aloud to set a timer.</string>
+    <string name="sleep_timer_unavailable">Could not set the sleep timer. Please try again.</string>
+</resources>

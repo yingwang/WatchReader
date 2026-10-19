@@ -26,7 +26,16 @@ object TtsPlayback {
     private val _fetching = MutableStateFlow<Locale?>(null)
     val fetching: StateFlow<Locale?> = _fetching.asStateFlow()
 
+    /** Service-owned elapsed-realtime deadline; the screen only renders its remaining time. */
+    private val _sleepTimer = MutableStateFlow<SleepTimer.State?>(null)
+    val sleepTimer: StateFlow<SleepTimer.State?> = _sleepTimer.asStateFlow()
+
+    internal fun sleepTimer(timer: SleepTimer.State?) {
+        _sleepTimer.value = timer
+    }
+
     internal fun set(state: TtsState, bookId: String?, sentence: IntRange?) {
+        if (state == TtsState.IDLE || bookId != _bookId.value) _sleepTimer.value = null
         _bookId.value = bookId
         _sentence.value = sentence
         _fetching.value = null

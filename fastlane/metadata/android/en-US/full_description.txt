@@ -1,7 +1,7 @@
 WatchReader turns your Wear OS watch into a book reader.
 
 How it works
-Add a book on the phone: tap the plus button in the library, then a file, a link, or free books from Project Gutenberg, or share a book to WatchReader from another app. A new reader is also offered three free classics in the library, which one tap adds and sends to the watch.
+Add a book on the phone: tap the plus button in the library to add a file or a link, several at once if you like, or share a book to WatchReader from another app. Tap Discover at the bottom of the phone screen for free classics from Project Gutenberg.
 
 Send it to the watch: open the book on the phone and tap the send button at the top, or the three dots on the cover and Send to watch. The watch then has its own copy.
 
@@ -9,11 +9,13 @@ Open it on the watch: tap the book in the watch library (next time, opening the 
 
 Features
 • Read on your watch, turning pages with the crown or a tap
-• Read aloud in the book's own language, carrying on with the screen off
+• Read aloud in the book's own language, carrying on with the screen off, with a sleep timer
 • Auto page turn at a pace you set
+• Bookmarks on the watch and the phone, kept in step
 • Add books from a file, a link, or by sharing, in txt, epub and fb2
 • Free classics from Project Gutenberg
 • Read on your phone as well, with your place kept in step
+• Search your library, and the text of a book, on your phone
 • See how long you have read on your phone
 • No account and no ads
 
