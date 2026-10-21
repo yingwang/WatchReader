@@ -3,7 +3,7 @@ package com.watchreader.wear.reader
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.Typeface
-import com.watchreader.wear.R
+import com.watchreader.shared.R as SharedR
 import java.io.File
 
 /**
@@ -13,7 +13,8 @@ import java.io.File
  * Hei-style Noto Sans CJK for Chinese, and the serif family is Noto Serif with the Song-style Noto
  * Serif CJK behind it. The Chinese faces are also offered on their own, so a reader can hold a book
  * in Song while its English quotations stay in the same face rather than switching mid-sentence.
- * The last one, a Kai calligraphic face, travels with the app because no watch ships it.
+ * The last one, a Kai calligraphic face, travels with the app because no watch ships it; the
+ * file lives in the shared module, so the phone offers the same face from the same copy.
  */
 object Typefaces {
     data class Face(val key: String, val label: String, val family: () -> FontFamily)
@@ -34,7 +35,7 @@ object Typefaces {
             add(Face("serif", "Serif") { FontFamily.Serif })
             systemFace("hei", "Hei", CJK_SANS)?.let { add(it) }
             systemFace("song", "Song", CJK_SERIF)?.let { add(it) }
-            val kai = FontFamily(Font(R.font.lxgw_wenkai))
+            val kai = FontFamily(Font(SharedR.font.lxgw_wenkai))
             add(Face("kai", "Kai") { kai })
         }
     }

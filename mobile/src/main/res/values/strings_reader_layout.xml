@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_presets">Presets</string>
+    <string name="reader_font">Font</string>
+    <string name="reader_font_sans">Sans</string>
+    <string name="reader_font_serif">Serif</string>
+    <string name="reader_font_hei">Hei</string>
+    <string name="reader_font_song">Song</string>
+    <string name="reader_font_kai">Kai</string>
+    <string name="reader_font_literata">Literata</string>
+    <string name="reader_preset_compact">Compact</string>
+    <string name="reader_preset_comfortable">Standard</string>
+    <string name="reader_preset_large">Large</string>
+    <string name="reader_line_spacing">Line spacing</string>
+    <string name="reader_spacing_tight">Tight</string>
+    <string name="reader_spacing_normal">Normal</string>
+    <string name="reader_spacing_loose">Loose</string>
+    <string name="reader_margins">Margins</string>
+    <string name="reader_margin_narrow">Narrow</string>
+    <string name="reader_margin_normal">Normal</string>
+    <string name="reader_margin_wide">Wide</string>
+    <string name="reader_back_to">Back to %1$d%%</string>
+    <string name="reader_back_forget">Keep reading here</string>
+    <string name="reader_watch_place_title">Continue from your watch?</string>
+    <string name="reader_watch_place_body">Your watch is at %1$d%%.</string>
+    <string name="reader_watch_place_body_chapter">Your watch is at %1$d%%, in %2$s.</string>
+    <string name="reader_watch_place_go">Go there</string>
+    <string name="reader_watch_place_stay">Stay here</string>
+</resources>

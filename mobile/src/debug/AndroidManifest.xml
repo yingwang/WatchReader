@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: lets an emulator without a watch receive a place read on the watch. -->
+        <receiver
+            android:name=".debug.DebugProgressReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.watchreader.debug.PROGRESS" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

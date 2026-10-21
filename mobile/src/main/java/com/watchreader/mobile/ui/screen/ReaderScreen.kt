@@ -1,6 +1,12 @@
 package com.watchreader.mobile.ui.screen
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -121,6 +127,8 @@ fun ReaderScreen(
     val state by vm.state.collectAsState()
     val bookmarks by vm.bookmarks.collectAsState()
     val search by vm.search.collectAsState()
+    val returnTo by vm.returnTo.collectAsState()
+    val watchPlace by vm.watchPlace.collectAsState()
     val books by listVm.books.collectAsState()
     val book = books?.firstOrNull { it.id == bookId }
     val snackbar = remember { SnackbarHostState() }
@@ -132,6 +140,19 @@ fun ReaderScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val prefs = remember { context.getSharedPreferences("reader_appearance", android.content.Context.MODE_PRIVATE) }
     var fontSize by remember { mutableStateOf(prefs.getInt("font_size", 18).coerceIn(MIN_FONT_SP, MAX_FONT_SP)) }
+    var lineSpacing by remember { mutableStateOf(LineSpacing.fromKey(prefs.getString("line_spacing", null))) }
+    var pageMargin by remember { mutableStateOf(PageMargin.fromKey(prefs.getString("page_margin", null))) }
+    var font by remember { mutableStateOf(ReaderTypefaces.byKey(prefs.getString("font", null))) }
+    val applySettings: (TextSettings) -> Unit = { settings ->
+        fontSize = settings.fontSize
+        lineSpacing = settings.spacing
+        pageMargin = settings.margin
+        prefs.edit()
+            .putInt("font_size", settings.fontSize)
+            .putString("line_spacing", settings.spacing.key)
+            .putString("page_margin", settings.margin.key)
+            .apply()
+    }
     var pageTheme by remember { mutableStateOf(PageTheme.fromKey(prefs.getString("page_theme", null))) }
     var showAppearance by rememberSaveable { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -187,13 +208,38 @@ fun ReaderScreen(
             topBar = {
                 if (toolbarVisible) {
                     TopAppBar(
-                        title = { Text(book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        title = {
+                            // After a look-up the way back takes the title's place, where the eye
+                            // goes and where it covers none of the page.
+                            val ready = state as? ReaderUiState.Ready
+                            val back = returnTo
+                            if (back != null && ready != null && ready.totalChars > 0) {
+                                InputChip(
+                                    selected = false,
+                                    onClick = vm::goBack,
+                                    label = { Text(stringResource(R.string.reader_back_to, (back * 100L / ready.totalChars).toInt()), maxLines = 1) },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, Modifier.size(InputChipDefaults.IconSize)) },
+                                    trailingIcon = {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = stringResource(R.string.reader_back_forget),
+                                            modifier = Modifier.size(InputChipDefaults.IconSize).clickable(onClick = vm::forgetReturnPoint),
+                                        )
+                                    },
+                                )
+                            } else {
+                                Text(book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_back))
                             }
                         },
                         actions = {
+                            IconButton(onClick = { showAppearance = true }) {
+                                Icon(Icons.Filled.TextFields, contentDescription = stringResource(R.string.reader_appearance))
+                            }
                             // Shown for every book: the sheet also jumps to a percentage, which a book
                             // without chapters needs most.
                             if (state is ReaderUiState.Ready) {
@@ -241,7 +287,6 @@ fun ReaderScreen(
                                         enabled = ready != null,
                                         onClick = { showMenu = false; showSearch = true },
                                     )
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.reader_appearance)) }, onClick = { showMenu = false; showAppearance = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
                                         showMenu = false
                                         toolbarVisible = false
@@ -270,8 +315,8 @@ fun ReaderScreen(
             val onBackground = MaterialTheme.colorScheme.onBackground
             // Colour is left out of the style the pages are measured with and given when drawing, so
             // picking another page colour repaints the page without laying the book out again.
-            val textStyle = remember(fontSize) {
-                TextStyle(fontSize = fontSize.sp, lineHeight = (fontSize * 1.65f).sp)
+            val textStyle = remember(fontSize, lineSpacing, font) {
+                TextStyle(fontSize = fontSize.sp, lineHeight = (fontSize * lineSpacing.factor).sp, fontFamily = font.family)
             }
 
             BoxWithConstraints(
@@ -296,9 +341,9 @@ fun ReaderScreen(
             ) {
                 val widthPx = with(density) { maxWidth.roundToPx() }
                 val heightPx = with(density) { maxHeight.roundToPx() }
-                val lineHeightPx = with(density) { (fontSize * 1.65f).sp.toPx() }
-                val marginPx = with(density) { 24.dp.toPx() }
-                val geometry = remember(widthPx, heightPx, lineHeightPx) {
+                val lineHeightPx = with(density) { (fontSize * lineSpacing.factor).sp.toPx() }
+                val marginPx = with(density) { pageMargin.dp.dp.toPx() }
+                val geometry = remember(widthPx, heightPx, lineHeightPx, marginPx) {
                     PageGeometry.rect(widthPx, heightPx, marginPx, lineHeightPx)
                 }
                 val lineMeasurer = remember(measurer, textStyle) {
@@ -446,6 +491,19 @@ fun ReaderScreen(
                 }
                 // Scrolls on a phone held sideways, where the largest sample and the slider do not fit.
                 Column(Modifier.verticalScroll(rememberScrollState())) {
+                    val settings = TextSettings(fontSize, lineSpacing, pageMargin)
+                    Text(
+                        stringResource(R.string.reader_presets),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    ChoiceChips(
+                        options = ReadingPreset.entries,
+                        selected = ReadingPreset.matching(settings),
+                        label = { it.label },
+                        onSelect = { applySettings(it.settings) },
+                    )
+                    Spacer(Modifier.height(16.dp))
                     PageThemeChoice(selected = pageTheme, onSelect = {
                         pageTheme = it
                         prefs.edit().putString("page_theme", it.key).apply()
@@ -460,20 +518,58 @@ fun ReaderScreen(
                     Text(
                         stringResource(R.string.reader_font_preview),
                         fontSize = fontSize.sp,
-                        lineHeight = (fontSize * 1.65f).sp,
+                        lineHeight = (fontSize * lineSpacing.factor).sp,
+                        fontFamily = font.family,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.height(with(LocalDensity.current) { (MAX_FONT_SP * 1.65f * 2).sp.toDp() }),
+                        modifier = Modifier.height(with(LocalDensity.current) { (MAX_FONT_SP * LineSpacing.LOOSE.factor * 2).sp.toDp() }),
                     )
                     Text("${fontSize} sp")
                     Slider(value = fontSize.toFloat(), onValueChange = {
-                        fontSize = it.roundToInt()
-                        prefs.edit().putInt("font_size", fontSize).apply()
+                        applySettings(settings.copy(fontSize = it.roundToInt()))
                     }, valueRange = MIN_FONT_SP.toFloat()..MAX_FONT_SP.toFloat(), steps = MAX_FONT_SP - MIN_FONT_SP - 1)
+                    Text(
+                        stringResource(R.string.reader_font),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+                    )
+                    ChoiceChips(ReaderTypefaces.faces, font, { it.label }, { it.family }) {
+                        font = it
+                        prefs.edit().putString("font", it.key).apply()
+                    }
+                    Text(
+                        stringResource(R.string.reader_line_spacing),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+                    )
+                    ChoiceChips(LineSpacing.entries, lineSpacing, { it.label }) { applySettings(settings.copy(spacing = it)) }
+                    Text(
+                        stringResource(R.string.reader_margins),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+                    )
+                    ChoiceChips(PageMargin.entries, pageMargin, { it.label }) { applySettings(settings.copy(margin = it)) }
                 }
             },
             confirmButton = { TextButton(onClick = { showAppearance = false }) { Text(stringResource(R.string.reader_done)) } },
         )
+        val offered = watchPlace
+        if (offered != null && ready != null && ready.totalChars > 0) {
+            val percent = (offered * 100L / ready.totalChars).toInt()
+            val chapter = chapters.lastOrNull { it.start <= offered }?.title
+            AlertDialog(
+                onDismissRequest = vm::dismissWatchPlace,
+                title = { Text(stringResource(R.string.reader_watch_place_title)) },
+                text = {
+                    Text(
+                        if (chapter != null) stringResource(R.string.reader_watch_place_body_chapter, percent, chapter)
+                        else stringResource(R.string.reader_watch_place_body, percent),
+                    )
+                },
+                confirmButton = { TextButton(onClick = vm::goToWatchPlace) { Text(stringResource(R.string.reader_watch_place_go)) } },
+                dismissButton = { TextButton(onClick = vm::stayHere) { Text(stringResource(R.string.reader_watch_place_stay)) } },
+            )
+        }
     }
 }
 

@@ -84,6 +84,19 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
      */
     private var knownStamp = 0L
 
+    private val returnPoint = ReturnPoint()
+    private val _returnTo = MutableStateFlow<Int?>(null)
+    /** Where the reader was before the last look-up, while there is a way back to it. */
+    val returnTo: StateFlow<Int?> = _returnTo.asStateFlow()
+
+    private val _watchPlace = MutableStateFlow<Int?>(null)
+    /**
+     * A place read on the watch, newer than anything seen here, while this screen was open. It is
+     * offered rather than followed: being moved without warning in the middle of a page is worse
+     * than being asked.
+     */
+    val watchPlace: StateFlow<Int?> = _watchPlace.asStateFlow()
+
     /** Reading time: runs while the page is on screen. */
     private val clock = ReadingClock()
     private var screenUp = false
@@ -115,26 +128,46 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         }
     }
 
-    /** Moves to a place read on the other device, when it is newer than anything seen here. */
+    /**
+     * A place read on the other device, newer than anything seen here. Before the first page is up
+     * the book simply opens there; once the reader is on a page, the place is offered instead.
+     */
     private fun follow(offset: Int, at: Long) {
         if (at <= knownStamp) return
         knownStamp = at
-        positionAnchor = offset.coerceIn(0, text.length)
         val p = paginator
         val current = page
         if (p == null || current == null) {
             // Not laid out yet: the first page will open here instead.
+            positionAnchor = offset.coerceIn(0, text.length)
             restoreOffset = offset.coerceIn(0, text.length)
             return
         }
         val target = offset.coerceIn(0, p.length)
-        if (target in current.start until current.end) return
-        if (target >= p.length && current.end >= p.length) return
-        page = if (target >= p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
-        credit(clock.turn(System.currentTimeMillis()), 0)
-        lastMove = null
-        flipsSinceSync = 0
-        publish()
+        val onThisPage = target in current.start until current.end || (target >= p.length && current.end >= p.length)
+        _watchPlace.value = if (onThisPage) null else target
+    }
+
+    /** Goes to the place the watch reached, with a way back to this one. */
+    fun goToWatchPlace() {
+        val target = _watchPlace.value ?: return
+        _watchPlace.value = null
+        savedOffset()?.let { returnPoint.jumpedFrom(it) }
+        moveTo(target)
+    }
+
+    /**
+     * Stays on this page and makes it the newest place, so the watch follows the phone rather
+     * than the other way round.
+     */
+    fun stayHere() {
+        _watchPlace.value = null
+        saveProgress(toWatch = true)
+    }
+
+    /** Closes the question without choosing; whichever device is read next moves the place on. */
+    fun dismissWatchPlace() {
+        _watchPlace.value = null
     }
 
     fun attachLayout(geometry: PageGeometry, measurer: LineMeasurer) {
@@ -161,6 +194,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (page?.end?.let { it >= p.length } == true) {
             viewModelScope.launch { withContext(NonCancellable + Dispatchers.IO) { BookRepository.markFinished(bookId) } }
         }
+        reachedReturnPoint()
         publish()
         flipped()
     }
@@ -171,11 +205,40 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (current.start <= 0) return
         page = p.pageEndingAt(current.start)
         credit(clock.turn(System.currentTimeMillis()), 0)
+        reachedReturnPoint()
         publish()
         flipped()
     }
 
+    /** A jump from the contents, the slider, a search result or a bookmark, which can be undone with [goBack]. */
     fun jumpTo(offset: Int) {
+        val p = paginator ?: return
+        val current = page ?: return
+        val target = offset.coerceIn(0, p.length)
+        val onThisPage = target in current.start until current.end || (target >= p.length && current.end >= p.length)
+        if (!onThisPage) savedOffset()?.let { returnPoint.jumpedFrom(it) }
+        moveTo(target)
+    }
+
+    /** Back to where the reading was before the look-up. */
+    fun goBack() {
+        val back = returnPoint.take() ?: return
+        moveTo(back)
+    }
+
+    /** Lets the way back go, for a reader who has decided to read on from here. */
+    fun forgetReturnPoint() {
+        returnPoint.clear()
+        _returnTo.value = null
+    }
+
+    private fun reachedReturnPoint() {
+        val current = page ?: return
+        returnPoint.reached(current.start, current.end, text.length)
+        _returnTo.value = returnPoint.offset
+    }
+
+    private fun moveTo(offset: Int) {
         val p = paginator ?: return
         val target = offset.coerceIn(0, p.length)
         page = if (target == p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
@@ -184,6 +247,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         // a jump is a long way to move; the watch hears about it at once
         // Preserve the chosen anchor even on the phone's last page: the watch has smaller pages.
         saveProgress(toWatch = true, anchor = target)
+        _returnTo.value = returnPoint.offset
     }
 
     fun toggleBookmark() {
