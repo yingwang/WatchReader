@@ -109,7 +109,8 @@ class HighlightExportTest {
         assertEquals(Handoff.Open(dictionary), HandoffChoice.lookUp(listOf(search, translate, dictionary)))
         assertEquals(Handoff.Choose(listOf(search, translate)), HandoffChoice.lookUp(listOf(search, dictionary, translate, pleco)))
         assertEquals(Handoff.Choose(emptyList()), HandoffChoice.lookUp(listOf(search, translate)))
-        assertEquals(Handoff.Open(search), HandoffChoice.lookUp(listOf(search)))
+        // A lone app that is no dictionary is offered, not opened unasked.
+        assertEquals(Handoff.Choose(emptyList()), HandoffChoice.lookUp(listOf(search)))
         assertEquals(Handoff.WebSearch, HandoffChoice.lookUp(emptyList()))
     }
 

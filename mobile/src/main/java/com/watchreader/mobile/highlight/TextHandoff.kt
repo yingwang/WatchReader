@@ -41,14 +41,16 @@ object HandoffChoice {
         return among(handlers, handlers.filter { matches(it, TRANSLATOR_HINTS) })
     }
 
-    /** One app of the kind wanted is opened; several are offered without the rest; none falls back to all. */
-    private fun among(all: List<TextHandler>, preferred: List<TextHandler>): Handoff {
-        val pool = preferred.ifEmpty { all }
-        return when {
-            pool.isEmpty() -> Handoff.WebSearch
-            pool.size == 1 -> Handoff.Open(pool.single())
-            else -> Handoff.Choose(all - pool.toSet())
-        }
+    /**
+     * One app of the kind wanted is opened; several are offered without the rest. With none of the
+     * kind, every text app is offered to choose from, even a lone one: a phone without a translator
+     * may have only a read-aloud tool that takes text, and opening that unasked would be a guess.
+     */
+    private fun among(all: List<TextHandler>, preferred: List<TextHandler>): Handoff = when {
+        preferred.size == 1 -> Handoff.Open(preferred.single())
+        preferred.isNotEmpty() -> Handoff.Choose(all - preferred.toSet())
+        all.isEmpty() -> Handoff.WebSearch
+        else -> Handoff.Choose(emptyList())
     }
 
     private fun matches(handler: TextHandler, hints: List<String>): Boolean {

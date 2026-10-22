@@ -60,7 +60,7 @@ object WordSelection {
         return if (text[index].isLowSurrogate() && text[index - 1].isHighSurrogate()) index - 1 else index
     }
 
-    private fun isCjk(codePoint: Int): Boolean = when (Character.UnicodeScript.of(codePoint)) {
+    internal fun isCjk(codePoint: Int): Boolean = when (Character.UnicodeScript.of(codePoint)) {
         Character.UnicodeScript.HAN, Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA,
         Character.UnicodeScript.HANGUL, Character.UnicodeScript.BOPOMOFO -> true
         else -> false
@@ -69,19 +69,43 @@ object WordSelection {
 
 /**
  * How a selection on the page changes as a handle is dragged. The two ends are kept in order and
- * at least one character apart: a handle pulled past the other stops beside it.
+ * at least one character apart: a handle pulled past the other stops beside it. In a word of
+ * letters (English, French, Russian) an end let go in the middle of the word goes to the word's
+ * edge, so a selection never cuts "mats" to "m"; Chinese and Japanese keep the one character.
  */
 object SelectionDrag {
     fun moveStart(text: String, pageStart: Int, current: TextSpan, to: Int): TextSpan {
         val limit = current.end - 1
-        val start = snapIn(text, pageStart, to.coerceIn(pageStart, limit))
-        return TextSpan(start.coerceAtMost(limit), current.end)
+        var start = snapIn(text, pageStart, to.coerceIn(pageStart, limit)) - pageStart
+        if (inWord(text, start - 1) && inWord(text, start)) {
+            while (inWord(text, start - 1)) start--
+        }
+        return TextSpan((pageStart + start).coerceAtMost(limit), current.end)
     }
 
     fun moveEnd(text: String, pageStart: Int, current: TextSpan, to: Int): TextSpan {
         val limit = current.start + 1
-        val end = snapIn(text, pageStart, to.coerceIn(limit, pageStart + text.length))
-        return TextSpan(current.start, end.coerceAtLeast(limit))
+        var end = snapIn(text, pageStart, to.coerceIn(limit, pageStart + text.length)) - pageStart
+        if (inWord(text, end - 1) && inWord(text, end)) {
+            while (inWord(text, end)) end++
+        }
+        return TextSpan(current.start, (pageStart + end).coerceAtLeast(limit))
+    }
+
+    /**
+     * The character at [i] is part of a word of letters: a letter outside Chinese and Japanese, or
+     * an apostrophe between two such letters ("isn't").
+     */
+    private fun inWord(text: String, i: Int): Boolean {
+        if (i !in text.indices) return false
+        if (text[i] == '\'' || text[i] == '\u2019') return isLetter(text, i - 1) && isLetter(text, i + 1)
+        return isLetter(text, i)
+    }
+
+    private fun isLetter(text: String, i: Int): Boolean {
+        if (i !in text.indices) return false
+        val c = text[i]
+        return Character.isLetter(c) && !c.isSurrogate() && !WordSelection.isCjk(c.code)
     }
 
     /** A book offset, given the page's text and where it starts, kept off the middle of a surrogate pair. */

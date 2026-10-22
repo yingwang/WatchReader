@@ -97,6 +97,27 @@ class TextSelectionTest {
         assertEquals(TextSpan(103, 110), SelectionDrag.moveEnd(text, pageStart, selected, 400))
     }
 
+    @Test fun aHandleLetGoInsideAWordOfLettersTakesTheWholeWord() {
+        val text = "old rag mats. At isn't"
+        val pageStart = 50
+        fun picked(span: TextSpan) = text.substring(span.start - pageStart, span.end - pageStart)
+        val rag = TextSpan(pageStart + 4, pageStart + 7)
+        // The end let go after the "m" of "mats" runs on to the end of the word, before the full stop.
+        assertEquals("rag mats", picked(SelectionDrag.moveEnd(text, pageStart, rag, pageStart + 9)))
+        // The start let go inside "old" goes back to its first letter.
+        assertEquals("old rag", picked(SelectionDrag.moveStart(text, pageStart, rag, pageStart + 1)))
+        // An end at a word's edge stays there, and an apostrophe between letters is part of the word.
+        assertEquals("rag mats.", picked(SelectionDrag.moveEnd(text, pageStart, rag, pageStart + 13)))
+        assertEquals("rag mats. At isn't", picked(SelectionDrag.moveEnd(text, pageStart, rag, pageStart + 19)))
+    }
+
+    @Test fun chineseHandlesStillMoveOneCharacterAtATime() {
+        val text = "春天的早晨，河面上起了一层薄雾。"
+        val selected = TextSpan(2, 4)
+        assertEquals(TextSpan(2, 7), SelectionDrag.moveEnd(text, 0, selected, 7))
+        assertEquals(TextSpan(1, 4), SelectionDrag.moveStart(text, 0, selected, 1))
+    }
+
     /** Ten characters to a line, or up to the paragraph's end; five lines to a page. */
     private fun paginator(text: String) = Paginator(
         text,
