@@ -168,6 +168,9 @@ fun ReaderScreen(
     var showMenu by remember { mutableStateOf(false) }
     var toolbarVisible by rememberSaveable(bookId) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
+    // Reading aloud and auto page turn; both live in their own files (ReaderListen, ReaderAutoTurn).
+    val listen = rememberReaderListen(bookId, vm, snackbar)
+    val autoTurn = rememberAutoTurnState()
 
     LaunchedEffect(bookmarks.error) {
         if (bookmarks.error == BookmarkError.SAVE) {
@@ -210,6 +213,16 @@ fun ReaderScreen(
     }
 
     val chapters = (state as? ReaderUiState.Ready)?.chapters.orEmpty()
+
+    AutoTurnEffect(
+        auto = autoTurn,
+        ready = state as? ReaderUiState.Ready,
+        paused = toolbarVisible || showMenu || showAppearance || showContents || showBookmarks || showSearch || showHighlights || marks.active || watchPlace != null,
+        onTurn = vm::nextPage,
+        onEnd = { scope.launch { snackbar.showSnackbar(context.getString(R.string.auto_turn_end)) } },
+    )
+    // The voice turns the pages itself, so starting it switches auto page turn off, as on the watch.
+    LaunchedEffect(listen.playing) { if (listen.playing && autoTurn.enabled) autoTurn.switchTo(false) }
 
     // The page colours are chosen on this screen, so the theme is applied here rather than around
     // it: the page, the bars and the open dialog all change the moment a colour is picked.
@@ -302,6 +315,10 @@ fun ReaderScreen(
                                         enabled = ready != null,
                                         onClick = { showMenu = false; showSearch = true },
                                     )
+                                    ReaderPlaybackMenuItems(listen, autoTurn, ready?.page?.start, onDismiss = { showMenu = false }, onAutoTurnOn = {
+                                        toolbarVisible = false
+                                        scope.launch { snackbar.showSnackbar(context.getString(R.string.auto_turn_started, autoTurn.seconds)) }
+                                    })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
                                         showMenu = false
                                         toolbarVisible = false
@@ -322,6 +339,7 @@ fun ReaderScreen(
                     )
                 }
             },
+            bottomBar = { ReaderBottomBar(listen, autoTurn, controlsVisible = toolbarVisible, hasChapters = chapters.isNotEmpty()) },
             snackbarHost = { SnackbarHost(snackbar) },
             containerColor = MaterialTheme.colorScheme.background,
         ) { padding ->
@@ -389,6 +407,7 @@ fun ReaderScreen(
                         val nextLabel = stringResource(R.string.reader_next_page)
                         val controlsLabel = stringResource(if (toolbarVisible) R.string.reader_hide_controls else R.string.reader_show_controls)
                         ReaderMarksUnderlay(marks, page, geometry, measurer, textStyle)
+                        SpokenSentenceTint(page, geometry, measurer, textStyle, { listen.spoken }, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f))
                         // TalkBack cannot tap a third of the page, so the page offers the same three
                         // things as actions, as the watch's page does. The page is read from its own
                         // text: joining the drawn lines put a space at every line break, in the middle

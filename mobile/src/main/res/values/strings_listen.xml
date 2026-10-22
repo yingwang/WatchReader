@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Reading aloud on the phone -->
+    <string name="listen_channel_name">Reading aloud</string>
+    <string name="listen_menu_start">Listen</string>
+    <string name="listen_menu_stop">Stop listening</string>
+    <string name="listen_loading">Opening book…</string>
+    <string name="listen_reading">Reading aloud</string>
+    <string name="listen_paused">Paused</string>
+    <string name="listen_fetching">Getting the %1$s voice…</string>
+    <string name="listen_action_play">Play</string>
+    <string name="listen_action_pause">Pause</string>
+    <string name="listen_action_previous">Previous sentence</string>
+    <string name="listen_action_next">Next sentence</string>
+    <string name="listen_action_stop">Stop</string>
+    <string name="listen_speed">Speed %1$s</string>
+    <string name="listen_sleep">Sleep timer</string>
+    <string name="listen_sleep_off">Off</string>
+    <string name="listen_sleep_minutes">%1$d minutes</string>
+    <string name="listen_sleep_chapter">End of chapter</string>
+    <string name="listen_sleep_countdown">Sleep in %1$d:%2$02d</string>
+    <string name="listen_sleep_at_chapter_end">Stops at the end of the chapter</string>
+    <string name="listen_sleep_unavailable">Could not set the sleep timer. Please try again.</string>
+    <string name="listen_voice">Voice and language</string>
+    <string name="listen_voice_default">Default</string>
+    <string name="listen_voice_installed">On this phone</string>
+    <string name="listen_voice_download">Downloaded the first time it is read</string>
+    <string name="listen_voice_missing">No voice on this phone</string>
+    <string name="listen_voice_get">Get voice</string>
+    <string name="listen_voice_asking">Asking the speech engine…</string>
+    <string name="listen_language">Read the book in</string>
+    <string name="listen_language_auto">Automatic (%1$s)</string>
+    <string name="listen_no_engine">No text-to-speech engine on this phone</string>
+    <string name="listen_no_voice">This phone has no %1$s voice</string>
+    <string name="listen_voice_offline">Connect to the internet to get the %1$s voice</string>
+    <string name="listen_voice_failed">Couldn\'t get the %1$s voice. Please try again later.</string>
+    <string name="listen_no_focus">Another app is playing sound. Press play when it has finished.</string>
+
+    <!-- Auto page turn on the phone -->
+    <string name="auto_turn">Auto page turn</string>
+    <string name="auto_turn_seconds">%1$d s a page</string>
+    <string name="auto_turn_longer">Longer on each page</string>
+    <string name="auto_turn_shorter">Shorter on each page</string>
+    <string name="auto_turn_started">Pages turn every %1$d s. Tap the middle of the page to pause and change that.</string>
+    <string name="auto_turn_end">End of the book</string>
+</resources>

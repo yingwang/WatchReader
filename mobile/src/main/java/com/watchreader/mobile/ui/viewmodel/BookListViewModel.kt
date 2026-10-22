@@ -14,6 +14,7 @@ import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.data.repository.FreeBookRepository
 import com.watchreader.mobile.data.repository.GutenbergCatalog
 import com.watchreader.mobile.service.BookTransferWorker
+import com.watchreader.mobile.service.ReadAloudService
 import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.service.WatchLookup
 import com.watchreader.shared.PendingDeletes
@@ -61,6 +62,7 @@ class BookListViewModel(application: Application) : AndroidViewModel(application
     fun deleteBook(book: Book) {
         viewModelScope.launch {
             BookTransferWorker.cancel(getApplication(), book.id)
+            ReadAloudService.stopIfPlaying(getApplication(), book.id)
             BookRepository.delete(book.id)
             // Whatever the phone believes about the transfer, the watch may hold a copy: a receipt
             // can go missing after a send that worked. Telling a watch that has none is harmless.

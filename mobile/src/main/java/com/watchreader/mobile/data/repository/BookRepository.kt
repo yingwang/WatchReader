@@ -6,6 +6,7 @@ import android.util.Log
 import com.watchreader.mobile.data.db.AppDatabase
 import com.watchreader.mobile.data.db.BookDao
 import com.watchreader.mobile.data.db.ReadingStatsDao
+import com.watchreader.mobile.data.model.PHONE_LISTEN
 import com.watchreader.mobile.data.model.ReadingMilestone
 import com.watchreader.mobile.data.model.ReadingTime
 import com.watchreader.shared.stats.ReadingReport
@@ -162,6 +163,12 @@ object BookRepository {
     suspend fun recordReading(bookId: String, millis: Long, chars: Int, at: Long = System.currentTimeMillis()) {
         if (millis <= 0 && chars <= 0) return
         stats.add(bookId, dayOf(at), ReadingSource.PHONE, millis.coerceAtLeast(0), chars.coerceAtLeast(0))
+    }
+
+    /** Time spent listening to a book read aloud on the phone, on the day it ends. */
+    suspend fun recordListening(bookId: String, millis: Long, at: Long = System.currentTimeMillis()) {
+        if (millis <= 0) return
+        stats.add(bookId, dayOf(at), PHONE_LISTEN, millis, 0)
     }
 
     suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) = stats.markOpened(bookId, at)
