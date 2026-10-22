@@ -217,12 +217,13 @@ fun ReaderScreen(
     AutoTurnEffect(
         auto = autoTurn,
         ready = state as? ReaderUiState.Ready,
-        paused = toolbarVisible || showMenu || showAppearance || showContents || showBookmarks || showSearch || showHighlights || marks.active || watchPlace != null,
+        paused = toolbarVisible || showMenu || showAppearance || showContents || showBookmarks || showSearch || showHighlights ||
+            marks.active || marks.opened != null || marks.noteEditor != null || watchPlace != null,
         onTurn = vm::nextPage,
         onEnd = { scope.launch { snackbar.showSnackbar(context.getString(R.string.auto_turn_end)) } },
     )
     // The voice turns the pages itself, so starting it switches auto page turn off, as on the watch.
-    LaunchedEffect(listen.playing) { if (listen.playing && autoTurn.enabled) autoTurn.switchTo(false) }
+    LaunchedEffect(listen.playing) { if (listen.playing) autoTurn.stop() }
 
     // The page colours are chosen on this screen, so the theme is applied here rather than around
     // it: the page, the bars and the open dialog all change the moment a colour is picked.
@@ -315,10 +316,7 @@ fun ReaderScreen(
                                         enabled = ready != null,
                                         onClick = { showMenu = false; showSearch = true },
                                     )
-                                    ReaderPlaybackMenuItems(listen, autoTurn, ready?.page?.start, onDismiss = { showMenu = false }, onAutoTurnOn = {
-                                        toolbarVisible = false
-                                        scope.launch { snackbar.showSnackbar(context.getString(R.string.auto_turn_started)) }
-                                    })
+                                    ReaderPlaybackMenuItems(listen, autoTurn, ready?.page?.start, onDismiss = { showMenu = false })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
                                         showMenu = false
                                         toolbarVisible = false
@@ -339,7 +337,7 @@ fun ReaderScreen(
                     )
                 }
             },
-            bottomBar = { ReaderBottomBar(listen, autoTurn, controlsVisible = toolbarVisible, hasChapters = chapters.isNotEmpty()) },
+            bottomBar = { ReaderBottomBar(listen, autoTurn, controlsVisible = toolbarVisible, hasChapters = chapters.isNotEmpty(), hideControls = { toolbarVisible = false }) },
             snackbarHost = { SnackbarHost(snackbar) },
             containerColor = MaterialTheme.colorScheme.background,
         ) { padding ->
@@ -433,12 +431,16 @@ fun ReaderScreen(
                                 drawText(layout, color = onBackground, topLeft = Offset(slot.left, slot.top))
                             }
                         }
-                        Text(
-                            text = stringResource(R.string.reader_percent, (s.fraction * 100).toInt()),
-                            color = onBackground.copy(alpha = 0.7f),
-                            fontSize = 12.sp,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                        )
+                        // While the pages turn by themselves, the line under the page says so beside the percentage.
+                        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AutoTurnIndicator(autoTurn, Modifier.padding(end = 8.dp))
+                            Text(
+                                text = stringResource(R.string.reader_percent, (s.fraction * 100).toInt()),
+                                color = onBackground.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
                         ReaderMarksOverlay(marks, book?.title, snackbar)
                     }
                 }
@@ -446,6 +448,7 @@ fun ReaderScreen(
         }
 
         val ready = state as? ReaderUiState.Ready
+        AutoTurnSheet(autoTurn, listen, hideControls = { toolbarVisible = false })
         if (showBookmarks && ready != null) ReaderBookmarkSheet(
             state = bookmarks,
             pageStart = ready.page.start,

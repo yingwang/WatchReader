@@ -62,15 +62,15 @@ import com.watchreader.mobile.tts.TtsLanguages
 import kotlinx.coroutines.delay
 
 /**
- * What the reader shows under the page: the player while this book is read aloud, or the auto
- * page turn's pace while the controls are up and the pages turn by themselves. Nothing otherwise,
- * so the page keeps the whole screen.
+ * What the reader shows under the page: the player while this book is read aloud, or auto page
+ * turn's paused panel while the controls are up and the pages wait; its Resume calls
+ * [hideControls]. Nothing otherwise, so the page keeps the whole screen.
  */
 @Composable
-fun ReaderBottomBar(listen: ReaderListen, auto: AutoTurnState, controlsVisible: Boolean, hasChapters: Boolean) {
+fun ReaderBottomBar(listen: ReaderListen, auto: AutoTurnState, controlsVisible: Boolean, hasChapters: Boolean, hideControls: () -> Unit) {
     when {
         listen.here -> ReadAloudBar(listen, hasChapters)
-        auto.enabled && controlsVisible -> AutoTurnBar(auto)
+        auto.on && controlsVisible -> AutoTurnBar(auto, onResume = hideControls)
     }
 }
 

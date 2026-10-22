@@ -18,7 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -163,7 +162,8 @@ internal fun openVoiceDownloads(context: Context) {
 
 /**
  * The two entries the reader's menu gains: Listen, which starts or stops the voice from this
- * page, and auto page turn. The two never run together: whichever is started stops the other.
+ * page, and auto page turn, which opens its sheet. The two never run together: whichever is
+ * started stops the other.
  */
 @Composable
 fun ReaderPlaybackMenuItems(
@@ -172,8 +172,6 @@ fun ReaderPlaybackMenuItems(
     /** The page's place in the text; null until a page is up. */
     pageStart: Int?,
     onDismiss: () -> Unit,
-    /** Auto page turn was switched on; the controls make way so the turning can begin. */
-    onAutoTurnOn: () -> Unit,
 ) {
     DropdownMenuItem(
         text = { Text(stringResource(if (listen.here) R.string.listen_menu_stop else R.string.listen_menu_start)) },
@@ -184,7 +182,7 @@ fun ReaderPlaybackMenuItems(
             if (listen.here) {
                 listen.stop()
             } else if (pageStart != null) {
-                if (auto.enabled) auto.switchTo(false)
+                auto.stop()
                 listen.start(pageStart)
             }
         },
@@ -192,13 +190,10 @@ fun ReaderPlaybackMenuItems(
     DropdownMenuItem(
         text = { Text(stringResource(R.string.auto_turn)) },
         leadingIcon = { Icon(Icons.Filled.Timer, contentDescription = null) },
-        trailingIcon = { Switch(checked = auto.enabled, onCheckedChange = null) },
+        enabled = auto.on || pageStart != null,
         onClick = {
             onDismiss()
-            val on = !auto.enabled
-            if (on) listen.stop()
-            auto.switchTo(on)
-            if (on) onAutoTurnOn()
+            auto.openSheet()
         },
     )
 }

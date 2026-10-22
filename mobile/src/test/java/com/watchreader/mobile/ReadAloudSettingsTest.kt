@@ -73,18 +73,16 @@ class ReadAloudSettingsTest {
         assertEquals(1.5f, ReadAloudPrefs(FakePreferences(stored)).speechRate)
     }
 
-    @Test fun autoTurnSettingsSurviveARestartBesideTheTextSettings() {
+    @Test fun autoTurnSpeedSurvivesARestartBesideTheTextSettings() {
         // The text settings already in "reader_appearance" are left as they were.
         val stored = HashMap<String, Any?>(mapOf("font_size" to 20, "line_spacing" to "loose", "page_margin" to "wide", "font" to "kai", "page_theme" to "sepia"))
         val before = HashMap(stored)
         val prefs = AutoTurnPrefs(FakePreferences(stored))
-        assertFalse(prefs.enabled)
         assertEquals(8, prefs.seconds)
 
-        prefs.enabled = true
+        // Only the pace is kept; whether pages turn belongs to one reading (see AutoTurnStateTest).
         prefs.seconds = 15
         val again = AutoTurnPrefs(FakePreferences(stored))
-        assertTrue(again.enabled)
         assertEquals(15, again.seconds)
         for ((key, value) in before) assertEquals(key, value, stored[key])
 
