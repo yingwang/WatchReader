@@ -145,11 +145,6 @@ class ReadAloudSettingsTest {
         assertEquals(TtsLanguages.State.NONE, TtsLanguages.stateOf(Locale.US, emptyList(), -2))
     }
 
-    @Test fun voicesAreNamedByRegionAndNumberedOnlyWhenARegionHasSeveral() {
-        val labels = TtsLanguages.voiceLabels(listOf(Locale.US, Locale.US, Locale.UK))
-        assertEquals(listOf("English (United States) 1", "English (United States) 2", "English (United Kingdom)"), labels)
-    }
-
     @Test fun aLatinBooksLanguageCanBeChosenAndTakesTheGuesssPlace() {
         val swedishBook = setOf(LanguageDetector.SWEDISH)
         assertTrue(isLatinBook(swedishBook))

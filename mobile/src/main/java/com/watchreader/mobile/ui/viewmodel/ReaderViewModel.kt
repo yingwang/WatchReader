@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.repository.BookRepository
+import com.watchreader.mobile.tts.ReadAloudPlayback
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
 import com.watchreader.shared.bookmark.BookmarkRepository
@@ -130,6 +131,10 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
                 return@launch
             }
             restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            // A book being read aloud opens at the sentence the voice is on, as it does from the
+            // listening bar; the place the voice last saved can be a few sentences behind.
+            ReadAloudPlayback.sentence.value?.takeIf { ReadAloudPlayback.bookId.value == bookId }
+                ?.let { restoreOffset = it.first.coerceIn(0, text.length) }
             positionAnchor = restoreOffset
             knownStamp = found.lastReadEpochMs
             loaded = true

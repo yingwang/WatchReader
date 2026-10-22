@@ -58,6 +58,10 @@ object ReadAloudPlayback {
     private val _sleepAtChapterEnd = MutableStateFlow(false)
     val sleepAtChapterEnd: StateFlow<Boolean> = _sleepAtChapterEnd.asStateFlow()
 
+    /** The title of the chapter being read, for the player shown outside the reader; null when unknown. */
+    private val _chapter = MutableStateFlow<String?>(null)
+    val chapter: StateFlow<String?> = _chapter.asStateFlow()
+
     /** The languages the book being read is spoken in, once the service has looked it over. */
     private val _languages = MutableStateFlow<Set<Locale>>(emptySet())
     val languages: StateFlow<Set<Locale>> = _languages.asStateFlow()
@@ -74,6 +78,7 @@ object ReadAloudPlayback {
             _sleepTimer.value = null
             _sleepAtChapterEnd.value = false
             _languages.value = emptySet()
+            _chapter.value = null
         }
         _bookId.value = bookId
         _sentence.value = sentence
@@ -100,6 +105,10 @@ object ReadAloudPlayback {
 
     internal fun sleepAtChapterEnd(on: Boolean) {
         _sleepAtChapterEnd.value = on
+    }
+
+    internal fun chapter(title: String?) {
+        _chapter.value = title
     }
 
     internal fun languages(languages: Set<Locale>) {

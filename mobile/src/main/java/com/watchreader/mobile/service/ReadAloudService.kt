@@ -824,6 +824,7 @@ class ReadAloudService : Service() {
     private fun describe() {
         val b = book ?: return
         media.describe(b.title, b.author, chapterTitle, cover)
+        ReadAloudPlayback.chapter(chapterTitle)
     }
 
     /**

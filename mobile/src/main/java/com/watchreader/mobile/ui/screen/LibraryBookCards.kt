@@ -232,7 +232,7 @@ internal fun CompactBookRow(
 }
 
 @Composable
-private fun LibraryThumbnail(book: Book, modifier: Modifier = Modifier) {
+internal fun LibraryThumbnail(book: Book, modifier: Modifier = Modifier) {
     val art = rememberCoverArt(book.coverPath)
     Box(
         modifier = modifier.aspectRatio(0.7f).clip(RoundedCornerShape(4.dp))
