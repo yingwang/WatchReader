@@ -9,12 +9,13 @@ Open it on the watch: tap the book in the watch library (next time, opening the 
 
 Features
 • Read on your watch, turning pages with the crown or a tap
-• Read aloud in the book's own language, carrying on with the screen off, with a sleep timer
-• Auto page turn at a pace you set
+• Read aloud on the watch or the phone, in the book's own language, carrying on with the screen off, with a sleep timer
+• Auto page turn on the watch and the phone, from slow to fast
 • Bookmarks on the watch and the phone, kept in step
 • Add books from a file, a link, or by sharing, in txt, epub and fb2
 • Free classics from Project Gutenberg
 • Read on your phone as well, with your place kept in step
+• Highlight and add notes on your phone, look up or translate a word, and export your notes
 • Your choice of font, text size, line spacing and margins on the phone
 • Search your library, and the text of a book, on your phone
 • See how long you have read on your phone
