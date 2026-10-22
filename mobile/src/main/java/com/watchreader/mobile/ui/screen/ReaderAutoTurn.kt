@@ -5,20 +5,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -40,6 +39,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.watchreader.mobile.R
 import com.watchreader.mobile.ui.viewmodel.ReaderUiState
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /**
  * Auto page turn in the phone's reader: whether it is on, the seconds a page stays, and what
@@ -69,10 +69,14 @@ class AutoTurnState internal constructor(private val prefs: AutoTurnPrefs) {
         changed()
     }
 
-    /** One stop along the ladder: more seconds a page for a positive [by], fewer for a negative one. */
-    fun step(by: Int) {
-        seconds = AutoTurnPrefs.step(seconds, by)
-        prefs.seconds = seconds
+    /** The pace as a stop from slow (0) to fast; see [AutoTurnPrefs.speedOf]. */
+    val speed: Int get() = AutoTurnPrefs.speedOf(seconds)
+
+    fun setSpeed(speed: Int) {
+        val chosen = AutoTurnPrefs.secondsAt(speed)
+        if (chosen == seconds) return
+        seconds = chosen
+        prefs.seconds = chosen
         changed()
     }
 
@@ -131,31 +135,57 @@ fun AutoTurnEffect(auto: AutoTurnState, ready: ReaderUiState.Ready?, paused: Boo
 private const val SCREEN_HOLD = "screen"
 
 /**
- * The pace of auto page turn, under the page while the controls are up (and the turning held):
- * fewer or more seconds a page, along the ladder, and a switch to turn it off.
+ * Auto page turn's panel, under the page while the controls are up. The pages do not turn while it
+ * shows, and it says so at the top in large type, with how to carry on, so a held page is not taken
+ * for a broken one. Below, the pace as a slider from slow to fast with no seconds shown, as WeChat
+ * Reading has it, and a button to stop turning altogether.
  */
 @Composable
 fun AutoTurnBar(auto: AutoTurnState) {
-    Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
-        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f))
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stringResource(R.string.auto_turn), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                IconButton(onClick = { auto.step(-1) }, enabled = auto.seconds > AutoTurnPrefs.LADDER.first()) {
-                    Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.auto_turn_shorter))
-                }
-                Text(
-                    stringResource(R.string.auto_turn_seconds, auto.seconds),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.widthIn(min = 80.dp),
+    val speedLabel = stringResource(R.string.auto_turn_speed)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shadowElevation = 8.dp,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.PauseCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp),
                 )
-                IconButton(onClick = { auto.step(1) }, enabled = auto.seconds < AutoTurnPrefs.LADDER.last()) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.auto_turn_longer))
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(stringResource(R.string.auto_turn_paused), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        stringResource(R.string.auto_turn_paused_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Switch(checked = auto.enabled, onCheckedChange = auto::switchTo, modifier = Modifier.padding(start = 8.dp))
+                TextButton(onClick = { auto.switchTo(false) }) { Text(stringResource(R.string.auto_turn_off)) }
+            }
+            Text(
+                speedLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.auto_turn_slow), style = MaterialTheme.typography.bodyLarge)
+                Slider(
+                    value = auto.speed.toFloat(),
+                    // No tick marks: the thumb still settles on the nearest of the stops.
+                    onValueChange = { auto.setSpeed(it.roundToInt()) },
+                    valueRange = 0f..(AutoTurnPrefs.SPEEDS - 1).toFloat(),
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp).semantics { contentDescription = speedLabel },
+                )
+                Text(stringResource(R.string.auto_turn_fast), style = MaterialTheme.typography.bodyLarge)
             }
         }
     }

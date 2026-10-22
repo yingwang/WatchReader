@@ -38,9 +38,12 @@
 
     <!-- Auto page turn on the phone -->
     <string name="auto_turn">Auto page turn</string>
-    <string name="auto_turn_seconds">%1$d s a page</string>
-    <string name="auto_turn_longer">Longer on each page</string>
-    <string name="auto_turn_shorter">Shorter on each page</string>
-    <string name="auto_turn_started">Pages turn every %1$d s. Tap the middle of the page to pause and change that.</string>
+    <string name="auto_turn_paused">Auto page turn paused</string>
+    <string name="auto_turn_paused_hint">Tap the page to carry on</string>
+    <string name="auto_turn_off">Turn off</string>
+    <string name="auto_turn_speed">Speed</string>
+    <string name="auto_turn_slow">Slow</string>
+    <string name="auto_turn_fast">Fast</string>
+    <string name="auto_turn_started">Pages now turn on their own. Tap the middle of the page to pause and change the speed.</string>
     <string name="auto_turn_end">End of the book</string>
 </resources>

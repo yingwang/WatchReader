@@ -27,13 +27,23 @@ class AutoTurnPrefs(private val prefs: SharedPreferences) {
     companion object {
         const val NAME = "reader_appearance"
         const val DEFAULT_SECONDS = 8
-        /** The stops the − and + buttons move through. */
+        /** The stops the speed slider moves through, as seconds a page. */
         val LADDER = intArrayOf(2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 75, 90, 120)
         private const val KEY_ENABLED = "auto_turn_enabled"
         private const val KEY_SECONDS = "auto_turn_seconds"
 
         /** The stop nearest [seconds]; the lower of two equally near. */
         fun nearest(seconds: Int): Int = LADDER.minByOrNull { kotlin.math.abs(it - seconds) } ?: DEFAULT_SECONDS
+
+        /**
+         * The reader sees a pace from slow to fast, not seconds (as in WeChat Reading): position 0
+         * is the slowest stop, the last the fastest. [speedOf] and [secondsAt] go between the two.
+         */
+        val SPEEDS: Int get() = LADDER.size
+
+        fun speedOf(seconds: Int): Int = LADDER.size - 1 - LADDER.indexOf(nearest(seconds))
+
+        fun secondsAt(speed: Int): Int = LADDER[LADDER.size - 1 - speed.coerceIn(0, LADDER.size - 1)]
 
         /** One stop up or down from [seconds], staying at the ladder's ends. */
         fun step(seconds: Int, by: Int): Int {

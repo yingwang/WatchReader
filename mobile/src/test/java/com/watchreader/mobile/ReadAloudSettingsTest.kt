@@ -102,6 +102,11 @@ class ReadAloudSettingsTest {
         assertEquals(6, AutoTurnPrefs.step(8, -1))
         assertEquals(2, AutoTurnPrefs.step(2, -1))
         assertEquals(120, AutoTurnPrefs.step(120, 1))
+        // The slider runs slow to fast: its first stop is the longest wait, its last the shortest.
+        assertEquals(120, AutoTurnPrefs.secondsAt(0))
+        assertEquals(2, AutoTurnPrefs.secondsAt(AutoTurnPrefs.SPEEDS - 1))
+        assertEquals(8, AutoTurnPrefs.secondsAt(AutoTurnPrefs.speedOf(8)))
+        assertTrue(AutoTurnPrefs.speedOf(6) > AutoTurnPrefs.speedOf(8))
         // Finer where a second matters, coarser above.
         val gaps = AutoTurnPrefs.LADDER.toList().zipWithNext { a, b -> b - a }
         assertEquals(gaps.sorted(), gaps)

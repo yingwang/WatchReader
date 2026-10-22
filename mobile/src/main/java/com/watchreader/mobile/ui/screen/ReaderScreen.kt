@@ -317,7 +317,7 @@ fun ReaderScreen(
                                     )
                                     ReaderPlaybackMenuItems(listen, autoTurn, ready?.page?.start, onDismiss = { showMenu = false }, onAutoTurnOn = {
                                         toolbarVisible = false
-                                        scope.launch { snackbar.showSnackbar(context.getString(R.string.auto_turn_started, autoTurn.seconds)) }
+                                        scope.launch { snackbar.showSnackbar(context.getString(R.string.auto_turn_started)) }
                                     })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.reader_hide_controls)) }, onClick = {
                                         showMenu = false
