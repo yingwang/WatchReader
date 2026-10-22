@@ -35,15 +35,4 @@
     <string name="listen_voice_offline">Connect to the internet to get the %1$s voice</string>
     <string name="listen_voice_failed">Couldn\'t get the %1$s voice. Please try again later.</string>
     <string name="listen_no_focus">Another app is playing sound. Press play when it has finished.</string>
-
-    <!-- Auto page turn on the phone -->
-    <string name="auto_turn">Auto page turn</string>
-    <string name="auto_turn_paused">Auto page turn paused</string>
-    <string name="auto_turn_paused_hint">Tap the page to carry on</string>
-    <string name="auto_turn_off">Turn off</string>
-    <string name="auto_turn_speed">Speed</string>
-    <string name="auto_turn_slow">Slow</string>
-    <string name="auto_turn_fast">Fast</string>
-    <string name="auto_turn_started">Pages now turn on their own. Tap the middle of the page to pause and change the speed.</string>
-    <string name="auto_turn_end">End of the book</string>
 </resources>

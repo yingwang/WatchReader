@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Auto page turn on the phone: the reader's menu, its sheet, the line under the page and the paused panel -->
+    <string name="auto_turn">Auto page turn</string>
+    <string name="auto_turn_about">Pages turn by themselves at the pace you choose.</string>
+    <string name="auto_turn_about_on">Auto page turn is on. A new speed applies straight away.</string>
+    <string name="auto_turn_speed">Speed</string>
+    <string name="auto_turn_slow">Slow</string>
+    <string name="auto_turn_fast">Fast</string>
+    <!-- Spoken for the speed slider, which shows no numbers -->
+    <string name="auto_turn_speed_description">Auto page turn speed, from slow to fast</string>
+    <string name="auto_turn_speed_state">%1$d of %2$d</string>
+    <string name="auto_turn_start">Start</string>
+    <string name="auto_turn_done">Done</string>
+    <string name="auto_turn_resume">Resume</string>
+    <string name="auto_turn_stop">Stop auto page turn</string>
+    <string name="auto_turn_paused">Auto page turn paused</string>
+    <!-- The indicator under the page: its state and what a tap on it does, for TalkBack -->
+    <string name="auto_turn_state_turning">Turning</string>
+    <string name="auto_turn_state_paused">Paused</string>
+    <string name="auto_turn_open">change the speed or stop</string>
+    <string name="auto_turn_end">End of the book. Auto page turn has stopped.</string>
+</resources>
