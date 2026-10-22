@@ -9,15 +9,18 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -35,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -42,14 +46,18 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.watchreader.mobile.R
 import com.watchreader.mobile.service.ReadAloudService
+import com.watchreader.mobile.tts.AudioFocusKeeper
 import com.watchreader.mobile.tts.LanguageDetector
 import com.watchreader.mobile.tts.ReadAloudPlayback
 import com.watchreader.mobile.tts.ReadAloudPrefs
+import com.watchreader.mobile.tts.ReadAloudState
 import com.watchreader.mobile.tts.TtsLanguages
+import com.watchreader.mobile.tts.VoiceChoices
+import com.watchreader.mobile.tts.VoicePreview
 import java.util.Locale
 
 /** What the engine said about one language the book is read in. */
-private class LanguageVoices(val locale: Locale, val state: TtsLanguages.State, val voices: List<Pair<String, Locale>>)
+private class LanguageVoices(val locale: Locale, val state: TtsLanguages.State, val choices: List<VoiceChoices.Choice>)
 
 /**
  * The languages a book is read aloud in, each spoken in the voice chosen for it, the order they
@@ -71,8 +79,10 @@ internal fun isLatinBook(detected: Set<Locale>): Boolean =
 /**
  * Voice and language for the book being read: for each language it is read in, whether the phone
  * has the voice, a way to the engine's voice downloads when it does not, and the voices to choose
- * between when there are several. A book in Latin letters can also be set to be read in another
- * language, for the few the detector cannot tell apart.
+ * between when there are several, named by gender where that is known (see [VoiceChoices]). A
+ * voice chosen while the book is not playing says a short sentence, so it can be heard before
+ * reading goes on in it. A book in Latin letters can also be set to be read in another language,
+ * for the few the detector cannot tell apart.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -85,6 +95,8 @@ fun VoiceSheet(bookId: String, onDismiss: () -> Unit) {
     var answer by remember { mutableStateOf<List<LanguageVoices>?>(null) }
     var noEngine by remember { mutableStateOf(false) }
     var chosen by remember { mutableIntStateOf(0) }
+    // The engine that listed the voices also speaks the samples; it goes with the sheet.
+    var engineUp by remember { mutableStateOf<TextToSpeech?>(null) }
 
     // The engine is asked again on coming back from its download page, which may have added a voice.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -104,10 +116,15 @@ fun VoiceSheet(bookId: String, onDismiss: () -> Unit) {
             }
             val listed = TtsLanguages.voices(tts)
             answer = shown.map { locale ->
-                LanguageVoices(locale, TtsLanguages.stateOf(tts, locale, listed), TtsLanguages.choices(tts, locale).map { it.name to it.locale })
+                LanguageVoices(locale, TtsLanguages.stateOf(tts, locale, listed), TtsLanguages.choices(tts, locale))
             }
+            tts.setAudioAttributes(AudioFocusKeeper.ATTRIBUTES)
+            engineUp = tts
         }
-        onDispose { TtsLanguages.release(engine) }
+        onDispose {
+            if (engineUp === engine) engineUp = null
+            TtsLanguages.release(engine)
+        }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -156,21 +173,41 @@ fun VoiceSheet(bookId: String, onDismiss: () -> Unit) {
                             OutlinedButton(onClick = { openVoiceDownloads(context) }) { Text(stringResource(R.string.listen_voice_get)) }
                         }
                     }
-                    if (language.voices.size > 1 || (language.voices.isNotEmpty() && selected != null)) {
-                        val labels = TtsLanguages.voiceLabels(language.voices.map { it.second })
+                    if (language.choices.size > 1 || (language.choices.isNotEmpty() && selected != null)) {
+                        val labels = VoiceChoices.labels(language.choices)
+                        // A saved copy of a voice ticks its voice, whichever copy the engine lists now.
+                        val current = VoiceChoices.selected(selected, language.choices)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                             val pick = { name: String? ->
                                 prefs.setVoice(language.locale, name)
                                 chosen++
                                 ReadAloudService.settingsChanged(context)
+                                // While the book plays, the voice is heard in it at once; otherwise in a sample.
+                                val engine = engineUp
+                                if (engine != null && ReadAloudPlayback.state.value != ReadAloudState.PLAYING) {
+                                    VoicePreview.speak(engine, language.locale, name, prefs.speechRate)
+                                }
                             }
                             FilterChip(
-                                selected = selected == null || language.voices.none { it.first == selected },
+                                selected = current == null,
                                 onClick = { pick(null) },
                                 label = { Text(stringResource(R.string.listen_voice_default)) },
                             )
-                            language.voices.forEachIndexed { i, (name, _) ->
-                                FilterChip(selected = selected == name, onClick = { pick(name) }, label = { Text(labels[i]) })
+                            language.choices.forEachIndexed { i, choice ->
+                                FilterChip(
+                                    selected = current == choice,
+                                    onClick = { pick(choice.name) },
+                                    label = { Text(voiceLabel(labels[i])) },
+                                    trailingIcon = if (choice.needsInternet) ({
+                                        Icon(
+                                            Icons.Outlined.Cloud,
+                                            contentDescription = stringResource(R.string.voice_needs_internet),
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                        )
+                                    }) else null,
+                                    // The engine's code for the voice, for finding it in a layout dump; it is never shown or read out.
+                                    modifier = Modifier.testTag(choice.name),
+                                )
                             }
                         }
                     }
@@ -178,6 +215,17 @@ fun VoiceSheet(bookId: String, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+/** "Female voice 2", "Voice 1", and "Male voice 1 · UK" when the language has voices from several regions. */
+@Composable
+private fun voiceLabel(label: VoiceChoices.Label): String {
+    val name = when (label.gender) {
+        VoiceChoices.Gender.FEMALE -> stringResource(R.string.voice_female, label.number)
+        VoiceChoices.Gender.MALE -> stringResource(R.string.voice_male, label.number)
+        null -> stringResource(R.string.voice_unknown, label.number)
+    }
+    return label.region?.let { stringResource(R.string.voice_in_region, name, it) } ?: name
 }
 
 /** "Read the book in": the detector's guess, or a Latin-script language the reader picks instead. */

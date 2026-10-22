@@ -55,17 +55,32 @@ object TtsLanguages {
         stateOf(locale, voices, runCatching { engine.isLanguageAvailable(locale) }.getOrNull())
 
     /**
-     * The voices on the phone for [locale]'s language, the ones a reader can pick between, in a
-     * steady order: by region, then by name. Voices that need a connection are left out; they
-     * stop mid-book when the connection does.
+     * The voices for [locale]'s language a reader can pick between, one entry per voice however many
+     * copies the engine lists of it (see [VoiceChoices]), [locale]'s own region first. A voice the
+     * engine speaks only from its servers is offered too, marked as needing a connection, since it
+     * stops mid-book without one.
      */
-    fun choices(engine: TextToSpeech, locale: Locale): List<Voice> =
-        listed(engine)
-            .filter { isOnPhone(it) && LanguageDetector.sameLanguage(it.locale, locale) }
-            .sortedWith(compareBy({ it.locale.toLanguageTag() }, { it.name }))
+    fun choices(engine: TextToSpeech, locale: Locale): List<VoiceChoices.Choice> =
+        VoiceChoices.group(listed(engine).filter { LanguageDetector.sameLanguage(it.locale, locale) }.map(::describe), first = locale)
 
-    /** The voice [engine] lists under [name], or null when it has gone (an engine update, an uninstall). */
-    fun voiceNamed(engine: TextToSpeech, name: String): Voice? = listed(engine).firstOrNull { it.name == name }
+    /**
+     * The voice to read in for the saved choice [name], or null when it has gone (an engine update,
+     * an uninstall). A saved copy of a voice gives way to the copy the reader would be offered now,
+     * the one on the phone once that has come.
+     */
+    fun voiceNamed(engine: TextToSpeech, name: String): Voice? {
+        val voices = listed(engine)
+        val wanted = VoiceChoices.resolve(name, voices.map(::describe)) ?: return null
+        return voices.firstOrNull { it.name == wanted }
+    }
+
+    private fun describe(voice: Voice) = VoiceChoices.Listed(
+        name = voice.name,
+        locale = voice.locale,
+        network = voice.isNetworkConnectionRequired,
+        installed = voice.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) != true,
+        features = voice.features.orEmpty(),
+    )
 
     private fun listed(engine: TextToSpeech): List<Voice> =
         runCatching { engine.voices }.getOrNull().orEmpty().filter { it.locale != null }
@@ -85,19 +100,4 @@ object TtsLanguages {
 
     /** The language's English name ("Chinese", "French"); the app's screens are in English. */
     fun label(locale: Locale): String = locale.getDisplayLanguage(Locale.ENGLISH)
-
-    /**
-     * A voice as the reader sees it: its region, and a number when the region has several, since
-     * engines name voices with codes such as "en-us-x-iom-local" that say nothing to a reader.
-     */
-    fun voiceLabels(voices: List<Locale>): List<String> {
-        val perRegion = voices.groupingBy { it.toLanguageTag() }.eachCount()
-        val seen = HashMap<String, Int>()
-        return voices.map { locale ->
-            val tag = locale.toLanguageTag()
-            val region = locale.getDisplayName(Locale.ENGLISH)
-            if ((perRegion[tag] ?: 0) <= 1) region
-            else "$region ${seen.merge(tag, 1, Int::plus)}"
-        }
-    }
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The player docked above the bottom bar while a book is read aloud outside the reader -->
+    <string name="nowplaying_open">Open book</string>
+    <string name="nowplaying_paused_in">Paused · %1$s</string>
+
+    <!-- Voices in the voice sheet, named by gender where it is known -->
+    <string name="voice_female">Female voice %1$d</string>
+    <string name="voice_male">Male voice %1$d</string>
+    <string name="voice_unknown">Voice %1$d</string>
+    <string name="voice_in_region">%1$s · %2$s</string>
+    <string name="voice_needs_internet">Needs internet</string>
+</resources>

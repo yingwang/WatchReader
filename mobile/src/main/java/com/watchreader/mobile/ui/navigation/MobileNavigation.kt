@@ -1,6 +1,7 @@
 package com.watchreader.mobile.ui.navigation
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
@@ -42,6 +43,7 @@ import com.watchreader.mobile.ui.screen.AddBookScreen
 import com.watchreader.mobile.ui.screen.BookDetailsScreen
 import com.watchreader.mobile.ui.screen.BookListScreen
 import com.watchreader.mobile.ui.screen.FreeBooksScreen
+import com.watchreader.mobile.ui.screen.NowListeningBar
 import com.watchreader.mobile.ui.screen.ReadingStatsScreen
 import com.watchreader.mobile.ui.screen.ReaderScreen
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
@@ -73,15 +75,26 @@ fun MobileNavigation(shareGeneration: Int) {
     }
 
     val entry by navController.currentBackStackEntryAsState()
-    // The bar belongs to the three tabs only; reading, details and adding a book have the whole screen.
+    // The tabs belong to the three tabs' screens only; reading, details and adding a book have the
+    // whole screen, apart from the listening bar on the last two while a book is read aloud.
     val current = Tab.entries.firstOrNull { it.route == entry?.destination?.route }
+    val reading = entry?.destination?.route == READER_ROUTE
 
     Scaffold(
         // Each screen handles the system bars itself, as it did before there was a bottom bar.
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            if (current != null) {
-                NavigationBar {
+            // The book being read aloud, docked above the tabs. It is part of the bar, so the screens
+            // leave room for it as they do for the tabs. It is on every screen but the reader, which
+            // has a player of its own, and goes at once on the way there rather than sliding away:
+            // a page shrinking frame by frame would be laid out again on every one.
+            Column {
+                if (!reading) NowListeningBar(
+                    listVm = listVm,
+                    padNavigationBar = current == null,
+                    onOpen = { id -> navController.navigate("read/$id") { launchSingleTop = true } },
+                )
+                if (current != null) NavigationBar {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = tab == current,
@@ -152,7 +165,7 @@ fun MobileNavigation(shareGeneration: Int) {
                 )
             }
             composable(
-                route = "read/{bookId}",
+                route = READER_ROUTE,
                 arguments = listOf(navArgument("bookId") { type = NavType.StringType }),
             ) { entry ->
                 // The reader applies its own ReadingTheme, as the page colours are chosen inside it.
@@ -165,6 +178,8 @@ fun MobileNavigation(shareGeneration: Int) {
         }
     }
 }
+
+private const val READER_ROUTE = "read/{bookId}"
 
 /**
  * Switches tabs the usual way: back to the library underneath, each tab keeping its own scroll,
