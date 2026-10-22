@@ -13,6 +13,7 @@ import com.watchreader.shared.stats.ReadingSource
 import com.watchreader.shared.stats.dayOf
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.SyncStatus
+import com.watchreader.mobile.highlight.HighlightRepository
 import com.watchreader.mobile.service.BookSender
 import com.watchreader.mobile.util.EpubParser
 import com.watchreader.mobile.util.Fb2Parser
@@ -150,6 +151,9 @@ object BookRepository {
         book.coverPath?.let { File(it).delete() }
         dao.deleteById(id)
         stats.forget(id)
+        // Highlights and notes are the phone's own and go with the book; the watch never had them.
+        runCatching { HighlightRepository.forget(appContext.filesDir, id) }
+            .onFailure { Log.w("WatchReader", "Could not delete the highlights of $id", it) }
         runCatching { ProgressDataSync.forget(appContext, id) }
             .onFailure { Log.w("WatchReader", "Could not drop synced progress for $id", it) }
     }

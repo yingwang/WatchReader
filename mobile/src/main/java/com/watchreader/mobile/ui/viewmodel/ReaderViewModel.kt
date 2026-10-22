@@ -101,6 +101,12 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private val clock = ReadingClock()
     private var screenUp = false
 
+    /**
+     * While words are selected the page stays where it is: a turn would leave the selection, and
+     * the toolbar over it, on a page no longer shown.
+     */
+    var pageTurnsHeld = false
+
     init {
         viewModelScope.launch {
             val found = BookRepository.getById(bookId)
@@ -185,6 +191,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     }
 
     fun nextPage() {
+        if (pageTurnsHeld) return
         val p = paginator ?: return
         val current = page ?: return
         if (current.end >= p.length) return
@@ -200,6 +207,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     }
 
     fun prevPage() {
+        if (pageTurnsHeld) return
         val p = paginator ?: return
         val current = page ?: return
         if (current.start <= 0) return

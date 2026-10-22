@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The toolbar over selected words -->
+    <string name="highlight_action">Highlight</string>
+    <string name="highlight_note_action">Add note</string>
+    <string name="highlight_look_up">Look up</string>
+    <string name="highlight_translate">Translate</string>
+    <string name="highlight_copy">Copy</string>
+    <string name="highlight_share">Share</string>
+    <string name="highlight_color_yellow">yellow</string>
+    <string name="highlight_color_green">green</string>
+    <string name="highlight_color_blue">blue</string>
+    <string name="highlight_color_pink">pink</string>
+    <string name="highlight_in_color">Highlight in %1$s</string>
+    <string name="highlight_look_up_with">Look up with</string>
+    <string name="highlight_translate_with">Translate with</string>
+    <string name="highlight_no_look_up">No app on this phone can look up words.</string>
+    <string name="highlight_no_translate">No app on this phone can translate text.</string>
+    <string name="highlight_copied">Copied</string>
+    <string name="highlight_clip_label">Highlight</string>
+
+    <!-- A highlight tapped on the page -->
+    <string name="highlight_edit_note">Edit note</string>
+    <string name="highlight_delete">Delete</string>
+    <string name="highlight_deleted">Highlight deleted</string>
+    <string name="highlight_undo">Undo</string>
+    <string name="highlight_note_label">Your note</string>
+    <string name="highlight_note_save">Save</string>
+    <string name="highlight_note_cancel">Cancel</string>
+    <string name="highlight_save_error">Could not save the highlight. Please try again.</string>
+
+    <!-- The list of a book's highlights -->
+    <string name="highlights_title">Highlights &amp; notes</string>
+    <string name="highlights_export">Export</string>
+    <string name="highlights_empty">No highlights yet. Press and hold a word on the page to select it, then choose Highlight or Add note.</string>
+    <string name="highlights_load_error">Could not load highlights. Your saved highlights have been kept.</string>
+    <string name="highlight_position">At %1$d%%</string>
+    <string name="highlight_position_chapter">%1$s · %2$d%%</string>
+</resources>

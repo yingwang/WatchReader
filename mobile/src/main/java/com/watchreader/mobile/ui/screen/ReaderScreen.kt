@@ -74,6 +74,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -104,6 +105,7 @@ import com.watchreader.mobile.data.model.SyncStatus
 import com.watchreader.mobile.ui.theme.PageTheme
 import com.watchreader.mobile.ui.theme.ReadingTheme
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
+import com.watchreader.mobile.ui.viewmodel.ReaderHighlightsViewModel
 import com.watchreader.mobile.ui.viewmodel.ReaderUiState
 import com.watchreader.mobile.ui.viewmodel.ReaderViewModel
 import com.watchreader.mobile.ui.viewmodel.UiEvent
@@ -124,6 +126,13 @@ fun ReaderScreen(
         key = bookId,
         factory = ReaderViewModel.Factory(context.applicationContext as android.app.Application, bookId),
     )
+    val highlightsVm: ReaderHighlightsViewModel = viewModel(
+        key = "highlights:$bookId",
+        factory = ReaderHighlightsViewModel.Factory(context.applicationContext as android.app.Application, bookId),
+    )
+    val marks = rememberReaderMarks(highlightsVm)
+    // While words are selected the page stays put, whatever would turn it.
+    LaunchedEffect(marks) { snapshotFlow { marks.active }.collect { vm.pageTurnsHeld = it } }
     val state by vm.state.collectAsState()
     val bookmarks by vm.bookmarks.collectAsState()
     val search by vm.search.collectAsState()
@@ -135,6 +144,7 @@ fun ReaderScreen(
     var showContents by rememberSaveable { mutableStateOf(false) }
     var showBookmarks by rememberSaveable(bookId) { mutableStateOf(false) }
     var showSearch by rememberSaveable(bookId) { mutableStateOf(false) }
+    var showHighlights by rememberSaveable(bookId) { mutableStateOf(false) }
     // Fully open, as the contents list is scrolled to the current chapter: near the end of a long
     // book that chapter sits at the bottom of the list, below what a half-open sheet shows.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -283,6 +293,11 @@ fun ReaderScreen(
                                         onClick = { showMenu = false; showBookmarks = true },
                                     )
                                     DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.highlights_title)) },
+                                        enabled = ready != null,
+                                        onClick = { showMenu = false; showHighlights = true },
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text(stringResource(R.string.reader_search)) },
                                         enabled = ready != null,
                                         onClick = { showMenu = false; showSearch = true },
@@ -329,13 +344,15 @@ fun ReaderScreen(
                         // come back, and nothing is left sitting over the page.
                         detectTapGestures(
                             onTap = { offset ->
+                                // Selected words, or a highlight under the finger, take the tap first.
+                                if (marks.onTap(offset)) return@detectTapGestures
                                 when {
                                     offset.x < size.width / 3f -> vm.prevPage()
                                     offset.x > size.width * 2f / 3f -> vm.nextPage()
                                     else -> toolbarVisible = !toolbarVisible
                                 }
                             },
-                            onLongPress = { toolbarVisible = true },
+                            onLongPress = { offset -> if (!marks.onLongPress(offset)) toolbarVisible = true },
                         )
                     },
             ) {
@@ -371,6 +388,7 @@ fun ReaderScreen(
                         val previousLabel = stringResource(R.string.reader_previous_page)
                         val nextLabel = stringResource(R.string.reader_next_page)
                         val controlsLabel = stringResource(if (toolbarVisible) R.string.reader_hide_controls else R.string.reader_show_controls)
+                        ReaderMarksUnderlay(marks, page, geometry, measurer, textStyle)
                         // TalkBack cannot tap a third of the page, so the page offers the same three
                         // things as actions, as the watch's page does. The page is read from its own
                         // text: joining the drawn lines put a space at every line break, in the middle
@@ -402,6 +420,7 @@ fun ReaderScreen(
                             fontSize = 12.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                         )
+                        ReaderMarksOverlay(marks, book?.title, snackbar)
                     }
                 }
             }
@@ -425,6 +444,16 @@ fun ReaderScreen(
             onQuery = vm::searchBody,
             onResult = { generation, hit -> vm.jumpToSearchResult(generation, hit); showSearch = false; vm.clearSearch() },
             onDismiss = { showSearch = false; vm.clearSearch() },
+        )
+        if (showHighlights && ready != null) ReaderHighlightsSheet(
+            state = highlightsVm.state.collectAsState().value,
+            chapters = chapters,
+            totalChars = ready.totalChars,
+            bookTitle = book?.title.orEmpty(),
+            author = book?.author,
+            onJump = { vm.jumpTo(it.start); showHighlights = false },
+            onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
+            onDismiss = { showHighlights = false },
         )
         if (showContents && ready != null) {
             ModalBottomSheet(onDismissRequest = { showContents = false }, sheetState = sheetState) {

@@ -3,6 +3,19 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Look up and Translate in the reader hand selected words to apps already on the phone (a
+         dictionary, Google Translate). From Android 11 an app sees only the apps it names here,
+         so without these the reader would find none of them. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.WEB_SEARCH" />
+        </intent>
+    </queries>
+
     <application
         android:name=".WatchReaderApp"
         android:allowBackup="true"
