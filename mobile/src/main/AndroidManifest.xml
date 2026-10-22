@@ -2,6 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Reading aloud: a foreground media service, and its notification (asked for at run time on
+         Android 13 and later; listening works without it, only the notification is missing). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Speech engines are discovered through this intent. Since Android 11 a package is only
+         visible when queried for, so without this the phone may report no engine at all. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <application
         android:name=".WatchReaderApp"
@@ -70,6 +83,12 @@
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/progress" />
             </intent-filter>
         </service>
+
+        <!-- Reads a book aloud with the screen off and the reader closed. -->
+        <service
+            android:name=".service.ReadAloudService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
     </application>
 </manifest>

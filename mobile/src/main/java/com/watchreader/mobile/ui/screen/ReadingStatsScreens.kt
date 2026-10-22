@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.watchreader.mobile.R
 import com.watchreader.mobile.ui.navigation.ScrollToTopOn
+import com.watchreader.mobile.data.model.PHONE_LISTEN
 import com.watchreader.mobile.data.model.ReadingTime
 import com.watchreader.mobile.ui.viewmodel.BookListViewModel
 import com.watchreader.shared.stats.ReadingDay
@@ -163,7 +164,8 @@ fun BookDetailsScreen(bookId: String, listVm: BookListViewModel, onBack: () -> U
             StatRow(stringResource(R.string.details_reading_time), formatDuration(rows.sumOf { it.millis }))
             SourceBreakdown(rows)
             // The pace is the reader's own on this book, from the pages read rather than listened to.
-            val pace = charsPerMinute(rows.map { ReadingDay(it.day, it.source, it.millis, it.chars) })
+            // Listening on the phone is listening, not reading, however it is filed.
+            val pace = charsPerMinute(rows.map { ReadingDay(it.day, if (it.source == PHONE_LISTEN) ReadingSource.LISTEN else it.source, it.millis, it.chars) })
             val left = book.totalChars - book.readOffsetChars
             if (pace != null && progress < 1f && left > 0) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -209,12 +211,12 @@ private fun StatsTopBar(title: String, onBack: (() -> Unit)? = null) {
 @Composable
 private fun SourceBreakdown(rows: List<ReadingTime>) {
     val sources = listOf(
-        ReadingSource.WATCH to R.string.stats_on_watch,
-        ReadingSource.PHONE to R.string.stats_on_phone,
-        ReadingSource.LISTEN to R.string.stats_listening,
+        setOf(ReadingSource.WATCH) to R.string.stats_on_watch,
+        setOf(ReadingSource.PHONE) to R.string.stats_on_phone,
+        setOf(ReadingSource.LISTEN, PHONE_LISTEN) to R.string.stats_listening,
     )
-    for ((source, label) in sources) {
-        val millis = rows.filter { it.source == source }.sumOf { it.millis }
+    for ((kinds, label) in sources) {
+        val millis = rows.filter { it.source in kinds }.sumOf { it.millis }
         if (millis > 0) StatRow(stringResource(label), formatDuration(millis), indent = true)
     }
 }

@@ -20,8 +20,11 @@ import com.watchreader.shared.stats.ReadingClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,6 +104,13 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private val clock = ReadingClock()
     private var screenUp = false
 
+    /** The book is being read aloud (see [setReadAloud]); [listening] while the voice plays. */
+    private var readAloud = false
+    private var listening = false
+    private val _moved = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    /** Each place the reader turned or jumped to, for the voice to go on from while it reads this book. */
+    val moved: SharedFlow<Int> = _moved.asSharedFlow()
+
     init {
         viewModelScope.launch {
             val found = BookRepository.getById(bookId)
@@ -118,7 +128,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
             knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
-            if (screenUp) clock.start(System.currentTimeMillis())
+            if (screenUp && !listening) clock.start(System.currentTimeMillis())
             withContext(NonCancellable + Dispatchers.IO) { BookRepository.markOpened(bookId) }
             // A book imported before contents were kept is scanned for headings, all of it; the
             // first page goes up before that, and the scan runs off the main thread.
@@ -135,6 +145,8 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private fun follow(offset: Int, at: Long) {
         if (at <= knownStamp) return
         knownStamp = at
+        // The voice saves the places it reads, and the page follows the voice already.
+        if (readAloud) return
         val p = paginator
         val current = page
         if (p == null || current == null) {
@@ -248,6 +260,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         // Preserve the chosen anchor even on the phone's last page: the watch has smaller pages.
         saveProgress(toWatch = true, anchor = target)
         _returnTo.value = returnPoint.offset
+        _moved.tryEmit(target)
     }
 
     fun toggleBookmark() {
@@ -281,6 +294,49 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         positionAnchor = null
         flipsSinceSync++
         saveProgress(toWatch = flipsSinceSync >= SYNC_EVERY_FLIPS)
+        page?.let { _moved.tryEmit(it.start) }
+    }
+
+    /**
+     * Turns to the sentence the voice is reading, which begins at [offset], without saving it: the
+     * voice saves its own place. The next page is taken when the sentence runs onto it, so the
+     * pages turn as they would by hand rather than starting wherever a sentence does.
+     */
+    fun followSpoken(offset: Int) {
+        positionAnchor = offset.coerceIn(0, text.length)
+        val p = paginator
+        val current = page
+        if (p == null || current == null) {
+            // Not laid out yet: the first page opens at the sentence instead.
+            restoreOffset = offset.coerceIn(0, text.length)
+            return
+        }
+        if (offset in current.start until current.end) return
+        page = if (offset >= current.end) {
+            val next = p.pageFrom(current.end)
+            if (offset in next.start until next.end) next else p.pageFrom(offset)
+        } else {
+            p.pageFrom(offset)
+        }
+        reachedReturnPoint()
+        publish()
+    }
+
+    /**
+     * This book is being read aloud ([active]), and the voice is playing. Listening is counted by
+     * the voice, so reading time stops while it plays; the places it saves are not offered back
+     * as the watch's, and the pages turned before it began are not sent over its newer ones.
+     */
+    fun setReadAloud(active: Boolean, playing: Boolean) {
+        if (active && !readAloud) {
+            flipsSinceSync = 0
+            lastMove = null
+        }
+        readAloud = active
+        if (playing == listening) return
+        listening = playing
+        val now = System.currentTimeMillis()
+        if (playing) credit(clock.stop(now), 0) else if (screenUp && loaded) clock.start(now)
     }
 
     /** Where the open page is kept: its start, or the end of the book when it is the last one. */
@@ -308,7 +364,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     fun onScreenResumed() {
         screenUp = true
         bookmarkReader.refresh()
-        if (loaded) clock.start(System.currentTimeMillis())
+        if (loaded && !listening) clock.start(System.currentTimeMillis())
     }
 
     /**

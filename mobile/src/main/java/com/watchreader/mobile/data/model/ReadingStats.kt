@@ -4,8 +4,14 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
+ * Listening to a book read aloud on the phone. It is a source of its own because each report from
+ * the watch replaces every row of the watch's listening whole, and would wipe the phone's with it.
+ */
+const val PHONE_LISTEN = "phone_listen"
+
+/**
  * Time spent on one book on one day from one source: read on the phone, read on the watch, or
- * listened to on the watch. The phone writes its own rows; the watch's arrive in its reports.
+ * listened to on either. The phone writes its own rows; the watch's arrive in its reports.
  */
 @Entity(tableName = "reading_time", primaryKeys = ["bookId", "day", "source"])
 data class ReadingTime(
