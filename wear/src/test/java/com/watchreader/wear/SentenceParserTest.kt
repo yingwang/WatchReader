@@ -2,6 +2,8 @@ package com.watchreader.wear
 
 import com.watchreader.wear.tts.SentenceParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SentenceParserTest {
@@ -34,6 +36,21 @@ class SentenceParserTest {
         val ranges = SentenceParser.ranges(text)
         assertEquals(listOf("他说：“走吧。”", "她没有动。", "The end."), ranges.map { text.substring(it.first, it.last + 1) })
         assertEquals(ranges.map { text.substring(it.first, it.last + 1) }, SentenceParser.split(text))
+    }
+
+    @Test
+    fun aLongRunWithoutPunctuationIsNeverCutInsideAPair() {
+        // Rare ideographs (U+20000) and emoji with no stop or comma anywhere: the cut that keeps
+        // an utterance short must fall between characters, not between the halves of one.
+        for (text in listOf("𠀀".repeat(450), "字" + "😀".repeat(450))) {
+            val ranges = SentenceParser.ranges(text)
+            assertTrue(ranges.size > 1)
+            for (range in ranges) {
+                assertFalse("starts inside a pair at ${range.first}", text[range.first].isLowSurrogate())
+                assertFalse("ends inside a pair at ${range.last}", text[range.last].isHighSurrogate())
+            }
+            assertEquals(text, ranges.joinToString("") { text.substring(it.first, it.last + 1) })
+        }
     }
 
     @Test
