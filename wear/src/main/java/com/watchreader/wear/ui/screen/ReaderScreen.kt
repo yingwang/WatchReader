@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -167,7 +168,11 @@ fun ReaderScreen(
     var showBookmarks by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(!prefs.readerHintSeen) }
     var crownTravel by remember { mutableFloatStateOf(0f) }
-    var autoTurn by remember { mutableStateOf(prefs.autoTurnEnabled) }
+    // Auto page turn is switched on for this reading of this book only, as on the phone; only its
+    // pace is kept. It used to be a setting, so it came back on in the next book and the next
+    // session, and stopping at the end of a book never wrote it off. It lasts while this book's
+    // page is in the back stack, a visit to the appearance settings included.
+    var autoTurn by rememberSaveable(bookId) { mutableStateOf(false) }
     var autoSeconds by remember { mutableFloatStateOf(prefs.autoTurnSeconds) }
     var boundaryMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(boundaryMessage) {
@@ -219,15 +224,12 @@ fun ReaderScreen(
         }
     }
     // Reading aloud turns pages by itself, so the two never run together: starting a voice
-    // switches auto page turn off and remembers that, which is also what the switch then shows.
-    // Turning it back on afterwards is the reader's call, not something that happens by itself.
+    // switches auto page turn off, which is also what the switch then shows. Turning it back on
+    // afterwards is the reader's call, not something that happens by itself.
     LaunchedEffect(ttsHere, ttsState) {
         vm.setReadAloud(ttsHere)
         vm.setListening(ttsHere && ttsState == TtsState.PLAYING)
-        if (ttsHere && ttsState == TtsState.PLAYING && autoTurn) {
-            autoTurn = false
-            prefs.autoTurnEnabled = false
-        }
+        if (ttsHere && ttsState == TtsState.PLAYING && autoTurn) autoTurn = false
         // The double tap that pauses the voice is said once, on the page where it works, the
         // first time a voice reads here.
         if (ttsHere && ttsState == TtsState.PLAYING && !prefs.doubleTapHintSeen) {
@@ -447,7 +449,6 @@ fun ReaderScreen(
                         onAutoTurnChange = { on ->
                             if (on && ttsHere) TtsService.stop(context)
                             autoTurn = on
-                            prefs.autoTurnEnabled = on
                             tick()
                         },
                         background = colors.background,

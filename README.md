@@ -22,9 +22,9 @@ A minimalist e-book reader for Wear OS with a companion phone app. Add a book on
 
 - **Measured pagination**: each line is measured against the real page box with a `TextMeasurer` and broken where the platform breaks it; only the pages you look at are ever measured, so a long novel opens at 90% instantly, and the page before is found by binary search for the start whose page ends exactly where this one begins. On the round watch screen the page is a left-aligned block inscribed in the circle, so no line is clipped
 - **Read aloud**: a `mediaPlayback` foreground service reads the book sentence by sentence with the system's TTS engine, each sentence in the language it is written in (scripts such as Chinese, Japanese, Korean, Cyrillic, Greek, Arabic, Hebrew, Thai and Devanagari sentence by sentence, and the language of Latin-script text once for the whole book), and keeps going with the screen off or after you leave the reader. The reader follows along and highlights the sentence. A sleep timer stops it after 15 to 60 minutes. The engine is started and shut down off the main thread, because a cold start on a watch takes seconds
-- **Auto page turn**, from slow to fast; reading aloud and auto page turn stop each other
+- **Auto page turn**, from slow to fast, switched on for the book you are reading and that reading only; the pace is kept. Reading aloud and auto page turn stop each other
 - **Bookmarks**, kept in step between phone and watch, deletions included
-- **Progress both ways**: whichever device you read on keeps the place and tells the other; the later reading wins. The phone offers, rather than forces, a newer place read on the watch while a book is open
+- **Progress both ways**: whichever device you read on keeps the place and tells the other; the later reading wins. Each device offers, rather than forces, a newer place read on the other while a book is open
 - **Contents**: the book's own table of contents for EPUB and FB2, headings found in the text for plain text; a jump can be undone
 
 ### Phone

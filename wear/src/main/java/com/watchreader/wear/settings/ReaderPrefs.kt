@@ -32,12 +32,12 @@ class ReaderPrefs(context: Context) {
         get() = prefs.getFloat(KEY_SPEECH_RATE, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_SPEECH_RATE, value.coerceIn(0.5f, 2.0f)).apply()
 
-    /** Auto page turn while reading, off unless the reader switches it on in Settings. */
-    var autoTurnEnabled: Boolean
-        get() = prefs.getBoolean(KEY_AUTO_TURN_ENABLED, false)
-        set(value) = prefs.edit().putBoolean(KEY_AUTO_TURN_ENABLED, value).apply()
-
-    /** Seconds a page stays open before auto page turn moves on. */
+    /**
+     * Seconds a page stays open before auto page turn moves on. Only the pace is kept: auto page
+     * turn itself is switched on for one reading of one book. Whether it was on used to be kept
+     * too, under "auto_turn_enabled"; that is no longer read, so an "on" an older version left
+     * there does not start the pages turning by themselves.
+     */
     var autoTurnSeconds: Float
         get() = prefs.getFloat(KEY_AUTO_TURN_SECONDS, DEFAULT_AUTO_TURN_SECONDS)
         set(value) = prefs.edit().putFloat(KEY_AUTO_TURN_SECONDS, value.coerceIn(MIN_AUTO_TURN_SECONDS, MAX_AUTO_TURN_SECONDS)).apply()
@@ -75,7 +75,6 @@ class ReaderPrefs(context: Context) {
             return best
         }
         private const val KEY_AUTO_TURN_SECONDS = "auto_turn_seconds"
-        private const val KEY_AUTO_TURN_ENABLED = "auto_turn_enabled"
         private const val NAME = "watchreader_settings"
         private const val KEY_FONT_SIZE = "font_size"
         private const val KEY_FONT_FAMILY = "font_family"
