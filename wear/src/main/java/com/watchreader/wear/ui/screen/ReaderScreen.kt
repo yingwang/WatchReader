@@ -56,7 +56,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -373,7 +377,12 @@ fun ReaderScreen(
                     text = boundaryMessage ?: stringResource(R.string.reader_percent, (s.fraction * 100).toInt()),
                     color = if (boundaryMessage != null) colors.text else colors.dim,
                     fontSize = 9.sp,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 6.dp)
+                        // "End of the book" and the like are said when they come up; the
+                        // percentage of every page turned is not.
+                        .semantics { if (boundaryMessage != null) liveRegion = LiveRegionMode.Polite },
                 )
                 if (ttsHere) {
                     val waitingFor = fetching
@@ -564,17 +573,14 @@ private fun Toolbar(
                 }
                 items(listOf(0) + SleepTimer.MINUTES) { minutes ->
                     val selected = if (minutes == 0) sleepTimer == null else sleepTimer?.minutes == minutes
+                    val name = if (minutes == 0) stringResource(R.string.sleep_timer_off) else stringResource(R.string.sleep_timer_minutes, minutes)
                     Chip(
                         onClick = { onSleepTimer(minutes); sleepOptions = false },
                         enabled = minutes == 0 || (ttsHere && ttsState == TtsState.PLAYING),
-                        label = {
-                            Text(
-                                (if (selected) "● " else "") + if (minutes == 0) stringResource(R.string.sleep_timer_off)
-                                else stringResource(R.string.sleep_timer_minutes, minutes),
-                            )
-                        },
+                        // The dot shows the choice in force; TalkBack says "selected" instead.
+                        label = { Text((if (selected) "● " else "") + name, modifier = Modifier.clearAndSetSemantics { contentDescription = name }) },
                         colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
-                        modifier = Modifier.fillMaxWidth(0.84f),
+                        modifier = Modifier.fillMaxWidth(0.84f).semantics { this.selected = selected },
                     )
                 }
                 item {
@@ -596,12 +602,20 @@ private fun Toolbar(
                     Text(stringResource(R.string.reader_no_chapters), color = textColor, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(0.8f))
                 }
                 items(chapters) { chapter ->
+                    val current = chapter == currentChapter
                     Chip(
                         onClick = { onChapter(chapter) },
-                        label = { Text((if (chapter == currentChapter) "● " else "") + chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        secondaryLabel = if (chapter == currentChapter) ({ Text(stringResource(R.string.reader_current_chapter)) }) else null,
+                        label = {
+                            Text(
+                                (if (current) "● " else "") + chapter.title,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clearAndSetSemantics { contentDescription = chapter.title },
+                            )
+                        },
+                        secondaryLabel = if (current) ({ Text(stringResource(R.string.reader_current_chapter)) }) else null,
                         colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
-                        modifier = Modifier.fillMaxWidth(0.84f),
+                        modifier = Modifier.fillMaxWidth(0.84f).semantics { selected = current },
                     )
                 }
                 item { Chip(onClick = { contents = false }, label = { Text(stringResource(R.string.reader_controls)) }, colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor), modifier = Modifier.fillMaxWidth(0.84f)) }

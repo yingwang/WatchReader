@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalView
@@ -182,7 +183,13 @@ private fun BookRow(
             .fillMaxWidth(0.84f)
             .clip(RoundedCornerShape(24.dp))
             .background(if (featured) Color(0xFF35312D) else ListRowBg)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            // Deleting is a long press only; TalkBack names it, as it does the row's part as a button.
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = stringResource(R.string.library_delete_yes),
+                role = Role.Button,
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Column {
@@ -213,7 +220,7 @@ private fun SettingsRow(onSettings: () -> Unit) {
             .fillMaxWidth(0.84f)
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(24.dp))
-            .clickable(onClick = onSettings)
+            .clickable(role = Role.Button, onClick = onSettings)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
