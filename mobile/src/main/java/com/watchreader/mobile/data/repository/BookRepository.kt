@@ -309,8 +309,8 @@ object BookRepository {
 
     /**
      * Whether the library holds any book the reader chose. The bundled guide is put there by the
-     * app, so a library with only the guide in it is still a new reader's, and is offered the
-     * free classics an empty one is.
+     * app, so a library with only the guide in it is still a new reader's, and points to Discover
+     * as an empty one does.
      */
     fun hasOwnBooks(books: List<Book>): Boolean = books.any { it.id != SAMPLE_ID }
 

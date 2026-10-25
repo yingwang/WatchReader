@@ -13,6 +13,10 @@ object ProgressDataSync {
     const val PREFIX = "/reading-progress/"
     private val writes = Mutex()
 
+    /**
+     * Keeps [progress] as this node's copy for its book, for the other device to read now or when
+     * it comes back in reach. A reading older than the copy already kept is dropped.
+     */
     suspend fun publish(context: Context, progress: ReadingProgress) = writes.withLock {
         val client = Wearable.getDataClient(context)
         val node = Wearable.getNodeClient(context).localNode.await()

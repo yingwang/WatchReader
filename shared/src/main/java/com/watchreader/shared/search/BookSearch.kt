@@ -45,10 +45,13 @@ object BookSearch {
     }
 }
 
+/** Short stretches of a book's text for showing a search hit or a bookmark in a list. */
 object TextExcerpt {
+    /** Whether [offset] lies between two characters rather than inside a surrogate pair. */
     fun isBoundary(text: String, offset: Int): Boolean = offset <= 0 || offset >= text.length ||
         !(text[offset - 1].isHighSurrogate() && text[offset].isLowSurrogate())
 
+    /** The first line or so from [offset], which must be a character boundary inside [text]. */
     fun bookmark(text: String, offset: Int): String {
         require(offset in text.indices && isBoundary(text, offset))
         var end = (offset + 160).coerceAtMost(text.length)
