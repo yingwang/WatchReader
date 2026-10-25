@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.watchreader.wear.data.model.WearBook
 import com.watchreader.wear.data.repository.WearBookRepository
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.SaveStamps
 import com.watchreader.shared.bookmark.BookmarkRepository
 import com.watchreader.shared.bookmark.ReaderBookmarks
 import com.watchreader.shared.reader.LineMeasurer
@@ -91,6 +92,7 @@ class ReaderViewModel(
      * old place with the time of the turn and send it back over the newer reading.
      */
     private var knownStamp = 0L
+    private val stamps = SaveStamps()
 
     /** Reading time: runs while the page is on screen and the voice is not reading it aloud. */
     private val clock = ReadingClock()
@@ -301,7 +303,8 @@ class ReaderViewModel(
         if (anchor != null) positionAnchor = anchor.coerceIn(0, text.length)
         val b = book ?: return
         val offset = anchor?.coerceIn(0, text.length) ?: savedOffset() ?: return
-        val at = System.currentTimeMillis()
+        // Each save is later than the one before, so the last of several in a millisecond wins.
+        val at = stamps.next()
         lastMove = offset to at
         knownStamp = maxOf(knownStamp, at)
         if (toPhone) {

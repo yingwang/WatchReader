@@ -10,6 +10,7 @@ import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.tts.ReadAloudPlayback
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.SaveStamps
 import com.watchreader.shared.bookmark.BookmarkRepository
 import com.watchreader.shared.bookmark.ReaderBookmarks
 import com.watchreader.shared.search.ReaderSearch
@@ -87,6 +88,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
      * old place with the time of the turn and send it back over the newer reading.
      */
     private var knownStamp = 0L
+    private val stamps = SaveStamps()
 
     private val returnPoint = ReturnPoint()
     private val _returnTo = MutableStateFlow<Int?>(null)
@@ -362,7 +364,8 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (anchor != null) positionAnchor = anchor.coerceIn(0, text.length)
         val b = book ?: return
         val offset = anchor?.coerceIn(0, text.length) ?: savedOffset() ?: return
-        val at = System.currentTimeMillis()
+        // Each save is later than the one before, so the last of several in a millisecond wins.
+        val at = stamps.next()
         lastMove = offset to at
         knownStamp = maxOf(knownStamp, at)
         if (toWatch) flipsSinceSync = 0
