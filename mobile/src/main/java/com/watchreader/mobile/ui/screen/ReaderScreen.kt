@@ -242,19 +242,24 @@ fun ReaderScreen(
                             val ready = state as? ReaderUiState.Ready
                             val back = returnTo
                             if (back != null && ready != null && ready.totalChars > 0) {
-                                InputChip(
-                                    selected = false,
-                                    onClick = vm::goBack,
-                                    label = { Text(stringResource(R.string.reader_back_to, (back * 100L / ready.totalChars).toInt()), maxLines = 1) },
-                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, Modifier.size(InputChipDefaults.IconSize)) },
-                                    trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    InputChip(
+                                        selected = false,
+                                        onClick = vm::goBack,
+                                        label = { Text(stringResource(R.string.reader_back_to, (back * 100L / ready.totalChars).toInt()), maxLines = 1) },
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, Modifier.size(InputChipDefaults.IconSize)) },
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    // A button of its own beside the chip: as the chip's trailing icon the
+                                    // cross was an 18 dp target, too small to hit without going back instead.
+                                    IconButton(onClick = vm::forgetReturnPoint) {
                                         Icon(
                                             Icons.Filled.Close,
                                             contentDescription = stringResource(R.string.reader_back_forget),
-                                            modifier = Modifier.size(InputChipDefaults.IconSize).clickable(onClick = vm::forgetReturnPoint),
+                                            modifier = Modifier.size(InputChipDefaults.IconSize),
                                         )
-                                    },
-                                )
+                                    }
+                                }
                             } else {
                                 Text(book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
@@ -478,6 +483,11 @@ fun ReaderScreen(
             bookTitle = book?.title.orEmpty(),
             author = book?.author,
             onJump = { vm.jumpTo(it.start); showHighlights = false },
+            onEditNote = {
+                showHighlights = false
+                marks.noteEditor = NoteEditor(it.id, null, it.quote, it.note)
+            },
+            onDelete = { highlightsVm.delete(it.id) },
             onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
             onDismiss = { showHighlights = false },
         )

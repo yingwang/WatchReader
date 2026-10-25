@@ -36,4 +36,6 @@
     <string name="highlights_load_error">Could not load highlights. Your saved highlights have been kept.</string>
     <string name="highlight_position">At %1$d%%</string>
     <string name="highlight_position_chapter">%1$s · %2$d%%</string>
+    <!-- What a tap on a row of the list does, as TalkBack says it: "Double-tap to go to the passage". -->
+    <string name="highlight_go_to">go to the passage</string>
 </resources>

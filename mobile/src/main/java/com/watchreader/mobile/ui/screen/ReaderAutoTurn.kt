@@ -2,8 +2,11 @@ package com.watchreader.mobile.ui.screen
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -233,31 +236,46 @@ fun AutoTurnIndicator(auto: AutoTurnState, modifier: Modifier = Modifier) {
     val name = stringResource(R.string.auto_turn)
     val state = stringResource(if (paused) R.string.auto_turn_state_paused else R.string.auto_turn_state_turning)
     val ink = MaterialTheme.colorScheme.onBackground
-    Row(
-        modifier
-            .clip(CircleShape)
-            .background(ink.copy(alpha = 0.08f))
-            .clickable(onClickLabel = stringResource(R.string.auto_turn_open), role = Role.Button, onClick = auto::openSheet)
+    val press = remember { MutableInteractionSource() }
+    // The pill is a line of small print tall; the finger gets a 48 dp target around it that
+    // reaches over the page's margin, so the line under the page keeps its height.
+    OverhangingTouchTarget(
+        target = Modifier
+            .clickable(
+                interactionSource = press,
+                indication = null,
+                onClickLabel = stringResource(R.string.auto_turn_open),
+                role = Role.Button,
+                onClick = auto::openSheet,
+            )
             .semantics {
                 contentDescription = name
                 stateDescription = state
-            }
-            .padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            },
+        modifier = modifier,
     ) {
-        if (paused) {
-            Icon(Icons.Filled.Pause, contentDescription = null, tint = ink.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
-        } else {
-            TurnProgress(auto, MaterialTheme.colorScheme.primary, ink.copy(alpha = 0.2f), Modifier.size(16.dp))
+        Row(
+            Modifier
+                .clip(CircleShape)
+                .background(ink.copy(alpha = 0.08f))
+                .indication(press, LocalIndication.current)
+                .padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (paused) {
+                Icon(Icons.Filled.Pause, contentDescription = null, tint = ink.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+            } else {
+                TurnProgress(auto, MaterialTheme.colorScheme.primary, ink.copy(alpha = 0.2f), Modifier.size(16.dp))
+            }
+            Text(
+                stringResource(if (paused) R.string.auto_turn_paused else R.string.auto_turn),
+                color = ink.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                // Spoken through the pill's own name and state.
+                modifier = Modifier.padding(start = 6.dp).clearAndSetSemantics { },
+            )
         }
-        Text(
-            stringResource(if (paused) R.string.auto_turn_paused else R.string.auto_turn),
-            color = ink.copy(alpha = 0.8f),
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            // Spoken through the pill's own name and state.
-            modifier = Modifier.padding(start = 6.dp).clearAndSetSemantics { },
-        )
     }
 }
 
