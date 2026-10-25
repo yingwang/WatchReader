@@ -111,6 +111,20 @@ class TextSelectionTest {
         assertEquals("rag mats. At isn't", picked(SelectionDrag.moveEnd(text, pageStart, rag, pageStart + 19)))
     }
 
+    @Test fun aHandleNeverCutsACharacterOutsideTheBasicPlaneInHalf() {
+        // 𠀀 (U+20000) and 😀 are two UTF-16 units each; a selection of one of them alone, with the
+        // other handle pulled onto it, keeps both units.
+        val text = "古字𠀀在此😀。"
+        val rare = text.indexOf("𠀀")
+        val selected = TextSpan(rare, rare + 4)
+        assertEquals(TextSpan(rare, rare + 2), SelectionDrag.moveEnd(text, 0, selected, 0))
+        assertEquals(TextSpan(rare, rare + 2), SelectionDrag.moveEnd(text, 0, selected, rare + 1))
+        val emoji = text.indexOf("😀")
+        val pageStart = 30
+        val tail = TextSpan(pageStart + rare, pageStart + emoji + 2)
+        assertEquals(TextSpan(pageStart + emoji, pageStart + emoji + 2), SelectionDrag.moveStart(text, pageStart, tail, pageStart + text.length))
+    }
+
     @Test fun chineseHandlesStillMoveOneCharacterAtATime() {
         val text = "春天的早晨，河面上起了一层薄雾。"
         val selected = TextSpan(2, 4)

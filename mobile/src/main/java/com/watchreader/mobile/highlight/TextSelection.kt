@@ -84,7 +84,9 @@ object SelectionDrag {
     }
 
     fun moveEnd(text: String, pageStart: Int, current: TextSpan, to: Int): TextSpan {
-        val limit = current.start + 1
+        // One character past the start, which is two units when it is an emoji or a rare ideograph.
+        val first = current.start - pageStart
+        val limit = current.start + if (first in text.indices) Character.charCount(text.codePointAt(first)) else 1
         var end = snapIn(text, pageStart, to.coerceIn(limit, pageStart + text.length)) - pageStart
         if (inWord(text, end - 1) && inWord(text, end)) {
             while (inWord(text, end)) end++
