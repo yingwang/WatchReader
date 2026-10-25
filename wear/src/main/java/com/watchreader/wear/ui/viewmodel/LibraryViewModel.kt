@@ -22,6 +22,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val books: StateFlow<List<WearBook>> = WearBookRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** The delete runs to the end even when the library is left straight after (see WearBookRepository.delete). */
     fun deleteBook(id: String) {
         TtsService.stopIfPlaying(getApplication(), id)
         viewModelScope.launch { WearBookRepository.delete(id, tellPhone = true) }

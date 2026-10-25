@@ -152,11 +152,14 @@ class BookSender(private val context: Context) {
         }.onFailure { Log.w(TAG, "Could not tell the watch to delete $bookId", it) }
     }
 
-    /** Persists progress for reconnection, then notifies reachable older peers by message. */
-    suspend fun sendProgress(progress: ReadingProgress) {
+    /** Persists progress in the data layer, for the watch to pick up when it next connects. */
+    suspend fun publishProgress(progress: ReadingProgress) {
         runCatching { ProgressDataSync.publish(context, progress) }
             .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
-        // Keep immediate messages for peers which have not upgraded yet.
+    }
+
+    /** Tells a watch in reach at once, after [publishProgress]; older watch apps hear only this. */
+    suspend fun messageProgress(progress: ReadingProgress) {
         val watch = findWatch() as? WatchLookup.Ready ?: return
         runCatching {
             Wearable.getMessageClient(context)
