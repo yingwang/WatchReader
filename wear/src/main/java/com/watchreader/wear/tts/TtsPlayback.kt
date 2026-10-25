@@ -30,6 +30,26 @@ object TtsPlayback {
     private val _sleepTimer = MutableStateFlow<SleepTimer.State?>(null)
     val sleepTimer: StateFlow<SleepTimer.State?> = _sleepTimer.asStateFlow()
 
+    /**
+     * The book the reader jumped away from while it was read aloud, until reading starts again
+     * (see TtsService.stopForJump). Nothing the service still has queued for it may move the page
+     * or save a place over the jump. Read and written on the main thread only.
+     */
+    private var letGo: String? = null
+
+    /** The reader jumped elsewhere in [bookId] and is stopping the voice. */
+    internal fun letGo(bookId: String) {
+        letGo = bookId
+    }
+
+    /** Whether [bookId] was let go of by a jump and has not been played since. */
+    internal fun isLetGo(bookId: String?): Boolean = bookId != null && bookId == letGo
+
+    /** Reading aloud starts again: the voice has the page once more. */
+    internal fun takeBack() {
+        letGo = null
+    }
+
     internal fun sleepTimer(timer: SleepTimer.State?) {
         _sleepTimer.value = timer
     }

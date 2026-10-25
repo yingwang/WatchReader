@@ -191,10 +191,11 @@ fun ReaderScreen(
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    // Follow the voice: turn the page when the spoken sentence leaves it.
+    // Follow the voice: turn the page when the spoken sentence leaves it. A page turned by hand
+    // while it reads is brought back by the next sentence; a jump lets the voice go first.
     LaunchedEffect(bookId) {
         combine(TtsPlayback.bookId, TtsPlayback.sentence) { id, range -> if (id == bookId) range else null }
-            .collect { range -> if (range != null) vm.followSpoken(range.first) }
+            .collect { range -> if (range != null && !TtsPlayback.isLetGo(bookId)) vm.followSpoken(range.first) }
     }
 
     BackHandler(enabled = showToolbar) { showToolbar = false }
@@ -436,12 +437,12 @@ fun ReaderScreen(
                         totalChars = s.totalChars,
                         canUndoJump = s.canUndoJump,
                         onUndoJump = {
-                            if (ttsHere) TtsService.stop(context)
+                            if (ttsHere) TtsService.stopForJump(context, bookId)
                             vm.undoJump()
                             showToolbar = false
                         },
                         onChapter = { chapter ->
-                            if (ttsHere) TtsService.stop(context)
+                            if (ttsHere) TtsService.stopForJump(context, bookId)
                             vm.jumpToChapter(chapter)
                             showToolbar = false
                             tick()
@@ -462,7 +463,7 @@ fun ReaderScreen(
                             showToolbar = false
                         },
                         onJump = { f ->
-                            if (ttsHere) TtsService.stop(context)
+                            if (ttsHere) TtsService.stopForJump(context, bookId)
                             vm.jumpToFraction(f)
                             tick()
                         },
@@ -486,7 +487,7 @@ fun ReaderScreen(
                 onDelete = vm::removeBookmark,
                 onRetry = vm::retryBookmarks,
                 onJump = { offset ->
-                    if (ttsHere) TtsService.stop(context)
+                    if (ttsHere) TtsService.stopForJump(context, bookId)
                     vm.jumpToBookmark(offset)
                     showBookmarks = false
                     tick()
