@@ -501,8 +501,7 @@ class ReadAloudService : Service() {
                     sentencesSinceSave = 0
                     val toWatch = ++savesSinceSync >= SYNC_EVERY_SAVES
                     if (toWatch) savesSinceSync = 0
-                    val listened = takeListening(stop = false)
-                    book?.let { BookRepository.recordListening(it.id, listened) }
+                    recordListening(takeListening(stop = false))
                     saveProgress(range.first, toWatch)
                 }
                 if (serial == session.generation && state == ReadAloudState.PLAYING) topUp(index)
@@ -560,12 +559,8 @@ class ReadAloudService : Service() {
             if (serial != session.generation) return@launch
             if (index >= s.size - 1) {
                 val offset = if (failed) s.spoken(index, start).first else s.text.length
-                val listened = takeListening(stop = true)
-                book?.let { BookRepository.recordListening(it.id, listened) }
-                if (!failed) {
-                    finishedBook = true
-                    book?.let { BookRepository.markFinished(it.id) }
-                }
+                if (!failed) finishedBook = true
+                recordListening(takeListening(stop = true), finished = !failed)
                 saveProgress(offset, toWatch = true)
                 if (serial == session.generation) finish()
             } else if (chapterStop >= 0 && index >= chapterStop - 1) {
@@ -609,7 +604,7 @@ class ReadAloudService : Service() {
         val offset = spokenStart()
         val listened = takeListening(stop = true)
         scope.launch {
-            book?.let { BookRepository.recordListening(it.id, listened) }
+            recordListening(listened)
             if (offset != null && at != 0L) saveProgress(offset, toWatch = true, atEpochMs = at)
         }
     }
@@ -778,6 +773,19 @@ class ReadAloudService : Service() {
         foreground = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * Counts [millis] of listening to the book being read, taken off the clock already, and with
+     * [finished] marks the book read to its end. Neither may be lost to onDestroy() cancelling the
+     * service's scope part-way, as a pause followed at once by a stop would.
+     */
+    private suspend fun recordListening(millis: Long, finished: Boolean = false) {
+        val b = book ?: return
+        withContext(NonCancellable) {
+            BookRepository.recordListening(b.id, millis)
+            if (finished) BookRepository.markFinished(b.id)
+        }
     }
 
     private suspend fun saveProgress(offset: Int, toWatch: Boolean, atEpochMs: Long = System.currentTimeMillis()) {

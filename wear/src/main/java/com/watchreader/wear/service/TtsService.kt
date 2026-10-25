@@ -398,7 +398,7 @@ class TtsService : Service() {
                 TtsPlayback.sentence(range)
                 if (++sentencesSinceSave >= SAVE_EVERY) {
                     sentencesSinceSave = 0
-                    book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, takeListening(stop = false), 0) }
+                    recordListening(takeListening(stop = false))
                     saveProgress(range.first, toPhone = false)
                 }
                 if (serial == session.generation && TtsPlayback.state.value == TtsState.PLAYING) topUp(index)
@@ -455,11 +455,8 @@ class TtsService : Service() {
             if (serial != session.generation) return@launch
             if (index >= sentences.size - 1) {
                 val offset = if (failed) sentences.getOrNull(index)?.first ?: text.length else text.length
-                book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, takeListening(stop = true), 0) }
-                if (!failed) {
-                    finishedBook = true
-                    book?.let { WearBookRepository.markFinished(it.id) }
-                }
+                if (!failed) finishedBook = true
+                recordListening(takeListening(stop = true), finished = !failed)
                 saveProgress(offset, toPhone = true)
                 if (serial == session.generation) finish()
             }
@@ -480,7 +477,7 @@ class TtsService : Service() {
         val at = currentStartedAt
         val listened = takeListening(stop = true)
         scope.launch {
-            book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, listened, 0) }
+            recordListening(listened)
             sentences.getOrNull(current)?.let { saveProgress(it.first, toPhone = true, at) }
         }
     }
@@ -516,6 +513,19 @@ class TtsService : Service() {
         TtsPlayback.set(TtsState.IDLE, null, null)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * Counts [millis] of listening to the book being read, taken off the clock already, and with
+     * [finished] marks the book read to its end. Neither may be lost to onDestroy() cancelling the
+     * service's scope part-way, as a pause followed at once by a stop would.
+     */
+    private suspend fun recordListening(millis: Long, finished: Boolean = false) {
+        val b = book ?: return
+        withContext(NonCancellable) {
+            WearBookRepository.recordTime(b.id, ReadingSource.LISTEN, millis, 0)
+            if (finished) WearBookRepository.markFinished(b.id)
+        }
     }
 
     private suspend fun saveProgress(offset: Int, toPhone: Boolean, atEpochMs: Long = System.currentTimeMillis()) {
