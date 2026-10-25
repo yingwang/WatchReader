@@ -186,12 +186,14 @@ class TtsService : Service() {
                 WearBookRepository.recordTime(left.id, ReadingSource.LISTEN, leftListened, 0)
             }
         }
-        if (left != null && leftAt != null && leftStamp != 0L && !finishedBook) {
+        if (left != null && leftAt != null && leftStamp != 0L && !finishedBook && !TtsPlayback.isLetGo(left.id)) {
             GlobalScope.launch(Dispatchers.IO + NonCancellable) {
                 WearBookRepository.updateProgress(left.id, leftAt, leftStamp)
                 WearBookRepository.sendProgressToPhone(left, leftAt, leftStamp)
             }
         }
+        // Reading starts again, from the place the reader chose: the voice has the page back.
+        TtsPlayback.takeBack()
         val serial = session.invalidate()
         tts?.stop()
         finishedBook = false
@@ -377,6 +379,9 @@ class TtsService : Service() {
         override fun onStart(utteranceId: String) {
             scope.launch {
                 val index = session.index(utteranceId) ?: return@launch
+                // A sentence that was already on its way when the reader jumped elsewhere and
+                // stopped the voice: it must not pull the page back or save its place.
+                if (TtsPlayback.isLetGo(book?.id)) return@launch
                 if (sleepTimer.checkExpired()) return@launch
                 val serial = session.generation
                 if (TtsPlayback.state.value != TtsState.PLAYING) return@launch
@@ -398,7 +403,7 @@ class TtsService : Service() {
                 TtsPlayback.sentence(range)
                 if (++sentencesSinceSave >= SAVE_EVERY) {
                     sentencesSinceSave = 0
-                    book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, takeListening(stop = false), 0) }
+                    recordListening(takeListening(stop = false))
                     saveProgress(range.first, toPhone = false)
                 }
                 if (serial == session.generation && TtsPlayback.state.value == TtsState.PLAYING) topUp(index)
@@ -445,6 +450,7 @@ class TtsService : Service() {
     private fun utteranceOver(utteranceId: String, failed: Boolean) {
         scope.launch {
             val index = session.index(utteranceId) ?: return@launch
+            if (TtsPlayback.isLetGo(book?.id)) return@launch
             if (sleepTimer.checkExpired()) return@launch
             val serial = session.generation
             if (TtsPlayback.state.value != TtsState.PLAYING || index !in sentences.indices) return@launch
@@ -455,11 +461,8 @@ class TtsService : Service() {
             if (serial != session.generation) return@launch
             if (index >= sentences.size - 1) {
                 val offset = if (failed) sentences.getOrNull(index)?.first ?: text.length else text.length
-                book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, takeListening(stop = true), 0) }
-                if (!failed) {
-                    finishedBook = true
-                    book?.let { WearBookRepository.markFinished(it.id) }
-                }
+                if (!failed) finishedBook = true
+                recordListening(takeListening(stop = true), finished = !failed)
                 saveProgress(offset, toPhone = true)
                 if (serial == session.generation) finish()
             }
@@ -479,9 +482,10 @@ class TtsService : Service() {
         goForeground(titleOrLoading(), playing = false)
         val at = currentStartedAt
         val listened = takeListening(stop = true)
+        val keepPlace = !TtsPlayback.isLetGo(book?.id)
         scope.launch {
-            book?.let { WearBookRepository.recordTime(it.id, ReadingSource.LISTEN, listened, 0) }
-            sentences.getOrNull(current)?.let { saveProgress(it.first, toPhone = true, at) }
+            recordListening(listened)
+            if (keepPlace) sentences.getOrNull(current)?.let { saveProgress(it.first, toPhone = true, at) }
         }
     }
 
@@ -518,6 +522,19 @@ class TtsService : Service() {
         stopSelf()
     }
 
+    /**
+     * Counts [millis] of listening to the book being read, taken off the clock already, and with
+     * [finished] marks the book read to its end. Neither may be lost to onDestroy() cancelling the
+     * service's scope part-way, as a pause followed at once by a stop would.
+     */
+    private suspend fun recordListening(millis: Long, finished: Boolean = false) {
+        val b = book ?: return
+        withContext(NonCancellable) {
+            WearBookRepository.recordTime(b.id, ReadingSource.LISTEN, millis, 0)
+            if (finished) WearBookRepository.markFinished(b.id)
+        }
+    }
+
     private suspend fun saveProgress(offset: Int, toPhone: Boolean, atEpochMs: Long = System.currentTimeMillis()) {
         val b = book ?: return
         WearBookRepository.updateProgress(b.id, offset, atEpochMs)
@@ -536,6 +553,8 @@ class TtsService : Service() {
         // reader made while it was being spoken carries a later stamp and must win at both ends.
         val at = if (finishedBook || currentStartedAt == 0L) System.currentTimeMillis() else currentStartedAt
         val listened = takeListening(stop = true)
+        // Stopped by a jump elsewhere in the book: the jump is the place, not the sentence.
+        val keepPlace = !TtsPlayback.isLetGo(b?.id)
         // The service's own scope goes first, so no save from the listener lands after this one.
         scope.cancel()
         if (b != null && offset != null) {
@@ -544,8 +563,10 @@ class TtsService : Service() {
             // main thread. It rides a job that outlives the service and finishes on its own.
             GlobalScope.launch(Dispatchers.IO + NonCancellable) {
                 WearBookRepository.recordTime(b.id, ReadingSource.LISTEN, listened, 0)
-                WearBookRepository.updateProgress(b.id, offset, at)
-                WearBookRepository.sendProgressToPhone(b, offset, at)
+                if (keepPlace) {
+                    WearBookRepository.updateProgress(b.id, offset, at)
+                    WearBookRepository.sendProgressToPhone(b, offset, at)
+                }
             }
         }
         // stop() and shutdown() both take the engine's lock, which its connection set-up holds
@@ -648,6 +669,20 @@ class TtsService : Service() {
                     .putExtra(EXTRA_BOOK_ID, bookId)
                     .putExtra(EXTRA_SLEEP_MINUTES, minutes),
             )
+        }
+
+        /**
+         * Stops the voice for a jump the reader made elsewhere in [bookId]: the contents, a
+         * bookmark, the slider, the way back. The stop reaches the service later, and a sentence
+         * already on its way could start in between; it pulled the page back to the voice, and
+         * the service saved that sentence on its way out, stamped later than the jump, so the
+         * place went back to where the voice was, here and on the phone. The book is let go of
+         * at once instead (see [TtsPlayback.isLetGo]); the listening time is still counted.
+         */
+        fun stopForJump(context: Context, bookId: String) {
+            if (TtsPlayback.bookId.value != bookId) return
+            TtsPlayback.letGo(bookId)
+            stop(context)
         }
 
         fun stopIfPlaying(context: Context, bookId: String) {

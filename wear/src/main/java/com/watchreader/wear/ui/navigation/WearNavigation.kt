@@ -38,7 +38,7 @@ fun WearNavigation(openRequest: WearActivity.OpenRequest?, resumeBookId: String?
             }
             composable("reader/{bookId}") { backStackEntry ->
                 val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
-                ReaderScreen(bookId = bookId)
+                ReaderScreen(bookId = bookId, onAppearance = { navController.navigate("appearance") })
             }
             composable("settings") {
                 SettingsScreen(

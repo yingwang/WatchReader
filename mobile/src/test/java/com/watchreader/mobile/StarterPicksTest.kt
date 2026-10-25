@@ -2,12 +2,16 @@ package com.watchreader.mobile
 
 import com.watchreader.mobile.data.model.Book
 import com.watchreader.mobile.data.model.FreeBook
+import com.watchreader.mobile.data.model.FreeBookDetails
+import com.watchreader.mobile.data.model.FreeBookFile
 import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.data.repository.GutenbergCatalog
 import com.watchreader.mobile.data.repository.StarterShelf
+import com.watchreader.mobile.ui.viewmodel.refusalOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -105,5 +109,14 @@ class StarterPicksTest {
         assertFalse(BookRepository.hasOwnBooks(listOf(book("sample"))))
         assertTrue(BookRepository.hasOwnBooks(listOf(book("sample"), book("2b1f6c1e-own"))))
         assertTrue(BookRepository.hasOwnBooks(listOf(book("2b1f6c1e-own"))))
+    }
+
+    @Test
+    fun onlyAPublicDomainBookWithAFileToReadCanBeAdded() {
+        val file = FreeBookFile("https://www.gutenberg.org/ebooks/1342.epub3.images", isEpub = true)
+        assertNull(refusalOf(FreeBookDetails(listOf("en"), emptyList(), publicDomain = true, files = listOf(file))))
+        assertEquals(R.string.free_not_public_domain, refusalOf(FreeBookDetails(listOf("en"), emptyList(), publicDomain = false, files = listOf(file))))
+        // An audio book has no file the reader can open.
+        assertEquals(R.string.free_nothing_to_read, refusalOf(FreeBookDetails(listOf("en"), emptyList(), publicDomain = true, files = emptyList())))
     }
 }

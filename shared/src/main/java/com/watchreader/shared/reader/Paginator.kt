@@ -34,9 +34,14 @@ class Paginator(
 
     val length: Int get() = text.length
 
-    /** The page that begins at [start] (leading blank lines and spaces are skipped). */
+    /**
+     * The page that begins at [start] (leading blank lines and spaces are skipped). A [start] in the
+     * middle of a surrogate pair, as a jump to a percentage can land, is moved back onto the
+     * character it belongs to, so a page never opens on half an emoji or a rare ideograph.
+     */
     fun pageFrom(start: Int): Page {
         var pos = skipBlank(start)
+        if (insidePair(pos)) pos--
         val lines = ArrayList<Line>(geometry.slots.size)
         for (slot in geometry.slots.indices) {
             if (paragraphGaps && lines.isNotEmpty() && pos < text.length && text[pos] == '\n') {
@@ -96,6 +101,10 @@ class Paginator(
         return Page(first, e, cut, text.substring(first, e))
     }
 
+    /** Whether [pos] falls between the two halves of a surrogate pair. */
+    private fun insidePair(pos: Int): Boolean =
+        pos > 0 && pos < text.length && text[pos].isLowSurrogate() && text[pos - 1].isHighSurrogate()
+
     /** First position at or after [pos] that is not a space, tab or line break. */
     fun skipBlank(pos: Int): Int {
         var p = pos.coerceIn(0, text.length)
@@ -117,6 +126,16 @@ class Paginator(
             p++
         }
         return pos
+    }
+
+    /**
+     * Where a jump to [fraction] of the way through the book lands: the start of the paragraph
+     * there, so the page opens at the head of a paragraph rather than part-way into a word, or
+     * the very end for the whole way.
+     */
+    fun offsetAtFraction(fraction: Float): Int {
+        if (fraction >= 1f) return length
+        return paragraphStart((fraction.coerceIn(0f, 1f) * length).toInt())
     }
 
     /** Start of the paragraph containing [offset]; used when jumping to a percentage. */

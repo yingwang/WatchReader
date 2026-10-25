@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalView
@@ -102,7 +103,8 @@ fun LibraryScreen(
                 items(orderedBooks, key = { it.id }) { book ->
                     val featured = book.id == currentBook?.id
                     val listening = ttsBook == book.id && ttsState != TtsState.IDLE
-                    val progress = if (book.totalChars > 0) book.readOffsetChars.toFloat() / book.totalChars else 0f
+                    // A place saved before offsets from the phone were kept within the book can lie past its end.
+                    val progress = if (book.totalChars > 0) (book.readOffsetChars.toFloat() / book.totalChars).coerceIn(0f, 1f) else 0f
                     val subtitle = when {
                         listening -> stringResource(R.string.library_listening)
                         progress > 0f -> stringResource(R.string.library_progress, (progress * 100).toInt())
@@ -111,7 +113,7 @@ fun LibraryScreen(
                     BookRow(
                         title = book.title,
                         subtitle = subtitle,
-                        progress = progress.coerceIn(0f, 1f),
+                        progress = progress,
                         featured = featured,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -181,7 +183,13 @@ private fun BookRow(
             .fillMaxWidth(0.84f)
             .clip(RoundedCornerShape(24.dp))
             .background(if (featured) Color(0xFF35312D) else ListRowBg)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            // Deleting is a long press only; TalkBack names it, as it does the row's part as a button.
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = stringResource(R.string.library_delete_yes),
+                role = Role.Button,
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Column {
@@ -212,7 +220,7 @@ private fun SettingsRow(onSettings: () -> Unit) {
             .fillMaxWidth(0.84f)
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(24.dp))
-            .clickable(onClick = onSettings)
+            .clickable(role = Role.Button, onClick = onSettings)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {

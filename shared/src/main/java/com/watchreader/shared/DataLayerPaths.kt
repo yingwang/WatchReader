@@ -5,7 +5,12 @@ package com.watchreader.shared
  *
  * A book travels over one ChannelClient channel whose path is [BOOK_CHANNEL_PREFIX] + book id;
  * the first line of the stream is the book's metadata (see [BookTransfer]) and the rest is the
- * UTF-8 text. Everything else is a MessageClient message.
+ * UTF-8 text. The paths below are MessageClient messages. What must reach a device that is out of
+ * reach is kept as DataItems instead, under prefixes their own objects own: reading progress
+ * ([ProgressDataSync.PREFIX]), deletes waiting for the watch ([PendingDeletes.PREFIX]), bookmarks
+ * ([com.watchreader.shared.bookmark.BookmarkSync.PREFIX]) and the watch's reading time
+ * ([com.watchreader.shared.stats.ReadingStatsSync.PREFIX]). Each app's manifest filters its
+ * listener service on these paths, so a new one has to be added there as well.
  */
 object DataLayerPaths {
     /** Phone -> watch channel carrying one book. Full path: "/book/<id>". */
@@ -24,16 +29,17 @@ object DataLayerPaths {
     const val PROGRESS_PATH = "/progress"
 
     /**
-     * Watch -> phone message, payload is the id of a book whose contents the watch cannot use.
-     * Books sent before the phone passed its contents along left the watch to find the chapters
-     * itself, which it cannot always do well; asking costs one message rather than a resend.
+     * Reserved for a watch -> phone message naming a book whose contents the watch cannot use.
+     * Neither app sends or handles it yet: the phone's manifest does not listen for it, and a book
+     * sent before the phone passed its contents along shows no chapters on the watch until it is
+     * sent again.
      */
     const val REQUEST_CONTENTS_PATH = "/request_contents"
 
     /**
      * Phone -> watch message, payload is a [BookContents] JSON. The phone sends it once the watch
-     * confirms a book whose contents did not fit in its header (see [BookTransfer.contentsLeftOut]),
-     * and it is the answer to [REQUEST_CONTENTS_PATH] as well. A watch that predates it ignores it.
+     * confirms a book whose contents did not fit in its header (see [BookTransfer.contentsLeftOut]).
+     * A watch that predates it ignores it.
      */
     const val CONTENTS_PATH = "/contents"
 

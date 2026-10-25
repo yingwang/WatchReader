@@ -1,12 +1,15 @@
 package com.watchreader.mobile
 
 import com.watchreader.mobile.util.EpubParser
+import com.watchreader.mobile.util.ZipEntries
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.util.zip.InflaterInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -511,6 +514,17 @@ class EpubParserTest {
     }
 
     @Test
+    fun theInflatersOfAnArchiveReadByItsDirectoryAreEndedWithTheReading() {
+        val bytes = zipWithTrailingSizes(oldStyleBook)
+        val taken = ArrayList<InputStream>()
+        ZipEntries.read(bytes) { files -> files.forEach { (_, input) -> taken += input } }
+        val inflated = taken.filterIsInstance<InflaterInputStream>()
+        assertTrue(inflated.size > 1)
+        // An ended inflater refuses to go on: its native memory has been given back.
+        for (input in inflated) assertThrows(NullPointerException::class.java) { input.read() }
+    }
+
+    @Test
     fun aDamagedArchiveIsRefusedInWords() {
         val bytes = zipWithTrailingSizes(oldStyleBook)
         val refusal = assertThrows(IllegalArgumentException::class.java) { EpubParser.parse(bytes.copyOf(bytes.size - 30)) }
@@ -752,5 +766,31 @@ class EpubParserTest {
             EpubParser.authors("<metadata><dc:creator>Multatuli</dc:creator><dc:creator/><dc:creator> </dc:creator><dc:creator>Multatuli</dc:creator></metadata>"),
         )
         assertEquals("", EpubParser.authors("<metadata><dc:title>No one</dc:title></metadata>"))
+    }
+
+    @Test
+    fun aLongChapterNameIsNeverCutInsideAnEmoji() {
+        // A name is cut at eighty units, and here a two-unit emoji straddles that point.
+        val long = "a".repeat(79) + "😀 and the rest of a very long heading"
+        val headings = EpubParser.parse(
+            epub(
+                "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>""",
+                "content.opf" to """
+                    <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+                    <item id="a" href="a.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="b" href="b.xhtml" media-type="application/xhtml+xml"/>
+                    </manifest><spine><itemref idref="a"/><itemref idref="b"/></spine></package>
+                """.trimIndent(),
+                "a.xhtml" to "<html><body><h1>$long</h1><p>Body A.</p></body></html>",
+                "b.xhtml" to "<html><body><h1>Short</h1><p>Body B.</p></body></html>",
+            ),
+        )
+        assertEquals("a".repeat(79), headings.chapters.first().title)
+        // The same goes for a name taken from the book's own contents.
+        val listed = EpubParser.parse(
+            epub(ncxBook.map { (name, text) -> name to if (name.endsWith(".ncx")) text.replace("Declared A", long) else text }, blob = null),
+        )
+        assertEquals("a".repeat(79), listed.chapters.first().title)
+        assertEquals("Declared B", listed.chapters[1].title)
     }
 }

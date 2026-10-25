@@ -27,9 +27,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -51,9 +54,15 @@ import com.watchreader.shared.stats.ReadingSource
 import com.watchreader.shared.stats.charsPerMinute
 import com.watchreader.shared.stats.formatDuration
 import com.watchreader.shared.stats.lastDays
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -67,10 +76,11 @@ import java.util.Locale
 fun ReadingStatsScreen(listVm: BookListViewModel, onDetails: (String) -> Unit, scrollToTop: Int = 0) {
     val rows by listVm.readingTime.collectAsState()
     val books by listVm.books.collectAsState()
-    val week = remember { lastDays(7) }
+    val today = rememberToday()
+    val week = remember(today) { lastDays(7, today) }
     val inWeek = rows.filter { it.day in week }
     val perDay = week.map { day -> inWeek.filter { it.day == day }.sumOf { it.millis } }
-    val streak = remember(rows) { streak(rows) }
+    val streak = remember(rows, today) { streak(rows, today) }
     val scroll = rememberScrollState()
     ScrollToTopOn(scrollToTop) { scroll.animateScrollTo(0) }
 
@@ -288,6 +298,31 @@ private fun durationOrNothing(millis: Long): String =
 private val dateFormat = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
 
 private fun date(epochMs: Long): String = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).format(dateFormat)
+
+/**
+ * Today's date, which moves on at midnight while the page stays open; it was worked out once, and
+ * a page left open overnight showed yesterday as today. It is looked at again whenever the page
+ * comes back to the screen too, since a delay does not run on while the phone sleeps.
+ */
+@Composable
+internal fun rememberToday(): LocalDate {
+    var today by remember { mutableStateOf(LocalDate.now()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                today = LocalDate.now()
+                // Within the hour at the latest, for a clock or a time zone changed meanwhile.
+                delay(millisUntilTomorrow(ZonedDateTime.now()).coerceIn(1_000, 60 * 60_000L))
+            }
+        }
+    }
+    return today
+}
+
+/** From [now] to the start of the next day where it is; a day can be 23 or 25 hours long. */
+internal fun millisUntilTomorrow(now: ZonedDateTime): Long =
+    Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay(now.zone)).toMillis()
 
 /**
  * Days in a row with some reading, up to today. A day not yet read does not break the run until

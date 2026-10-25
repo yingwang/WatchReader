@@ -218,4 +218,17 @@ class Fb2ParserTest {
         assertEquals("The Book\n\nFirst part.\n\nSecond part.", parsed.text)
         assertTrue(parsed.chapters.isEmpty())
     }
+
+    @Test
+    fun aLongChapterNameIsNeverCutInsideAnEmoji() {
+        // A name is cut at eighty units, and here a two-unit emoji straddles that point.
+        val long = "Глава " + "я".repeat(73) + "😀 и дальше"
+        val bytes = """
+            <FictionBook><description><title-info><book-title>Длинное</book-title></title-info></description>
+            <body><section><title><p>$long</p></title><p>Текст главы.</p></section></body>
+            </FictionBook>
+        """.trimIndent().toByteArray()
+        val title = Fb2Parser.parse(bytes).chapters.single().title
+        assertEquals(long.take(79), title)
+    }
 }

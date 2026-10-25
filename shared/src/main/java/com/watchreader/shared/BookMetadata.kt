@@ -2,6 +2,12 @@ package com.watchreader.shared
 
 import org.json.JSONObject
 
+/**
+ * The header a book travels under (see [BookTransfer]). [sizeBytes] is the length of the UTF-8 body
+ * that follows it, which the watch checks before it keeps the book; [totalChars] is the text's
+ * length in UTF-16 units, the unit every offset is in; [tocJson] is the contents as [BookToc.toJson]
+ * writes them, left out when they would not fit in the header.
+ */
 data class BookMetadata(
     val id: String,
     val title: String,

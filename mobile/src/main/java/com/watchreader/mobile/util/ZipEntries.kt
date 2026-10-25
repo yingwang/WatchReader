@@ -30,11 +30,34 @@ internal object ZipEntries {
         } catch (e: IOException) {
             e
         }
-        val listed = listed(bytes) ?: throw IllegalArgumentException(DAMAGED, failure)
-        return try {
-            block(listed)
-        } catch (e: IOException) {
-            throw IllegalArgumentException(DAMAGED, e)
+        // Each compressed file read by the directory has an inflater of its own, whose memory is
+        // native and goes only when it is ended; none outlives the reading.
+        val inflaters = Inflaters()
+        try {
+            val listed = listed(bytes, inflaters) ?: throw IllegalArgumentException(DAMAGED, failure)
+            return try {
+                block(listed)
+            } catch (e: IOException) {
+                throw IllegalArgumentException(DAMAGED, e)
+            }
+        } finally {
+            inflaters.endAll()
+        }
+    }
+
+    /** The inflaters handed out while an archive is read by its directory, ended once each is done with. */
+    private class Inflaters {
+        private val open = ArrayList<Inflater>()
+
+        /** A new inflater; the ones before it are ended, since a file's stream is good only until the next is taken. */
+        fun next(): Inflater {
+            endAll()
+            return Inflater(true).also { open += it }
+        }
+
+        fun endAll() {
+            open.forEach { it.end() }
+            open.clear()
         }
     }
 
@@ -68,7 +91,7 @@ internal object ZipEntries {
     }
 
     /** The files the central directory lists; null when there is no readable directory. */
-    private fun listed(bytes: ByteArray): Sequence<Pair<String, InputStream>>? {
+    private fun listed(bytes: ByteArray, inflaters: Inflaters): Sequence<Pair<String, InputStream>>? {
         // The directory's end record closes the archive, followed only by a comment of up to 64 KB.
         var end = bytes.size - END_RECORD
         val lowest = maxOf(0, bytes.size - END_RECORD - 0xFFFF)
@@ -99,7 +122,7 @@ internal object ZipEntries {
                 // A raw deflate stream wants one byte past its end before it will say it is done.
                 DEFLATED -> files.add(name to {
                     val data = SequenceInputStream(ByteArrayInputStream(bytes, start, length), ByteArrayInputStream(ByteArray(1)))
-                    InflaterInputStream(data, Inflater(true))
+                    InflaterInputStream(data, inflaters.next())
                 })
             }
         }

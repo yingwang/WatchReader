@@ -44,7 +44,11 @@ object SentenceParser {
             }
             if (c in SOFT) lastSoft = i + 1
             if (i - start >= MAX_SENTENCE) {
-                val cut = if (lastSoft > start) lastSoft else i + 1
+                var cut = if (lastSoft > start) lastSoft else i + 1
+                // A cut with no comma to go to never falls between the two halves of an emoji or a
+                // rare ideograph, which the voice would read, and the page highlight draw, as two
+                // broken characters.
+                if (cut < text.length && text[cut].isLowSurrogate() && text[cut - 1].isHighSurrogate()) cut++
                 emit(text, start, cut, out)
                 start = cut
                 i = cut

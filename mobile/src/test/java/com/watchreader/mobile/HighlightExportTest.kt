@@ -90,6 +90,33 @@ class HighlightExportTest {
         assertEquals(expected, HighlightMarkdown.build("Pride and Prejudice", "Jane Austen", highlights, chapters, 10_000))
     }
 
+    @Test fun linesThatWouldBeMarkdownOfTheirOwnStayWords() {
+        val note = "# not a heading\n- not a list\n> not a quote\n1. not numbered\n2) nor this\n    not code\n---\n<b>not HTML</b>\nPlain #hashtag - and 3.5 stays"
+        val passage = "# Chapter One\n\n* * *"
+        val text = HighlightMarkdown.build("Book", null, listOf(h("a", 0, 5, passage, note = note)), emptyList(), 100)
+        val expected = """
+            # Book
+
+            > \# Chapter One
+            >
+            > \* * *
+
+            \# not a heading
+            \- not a list
+            \> not a quote
+            1\. not numbered
+            2\) nor this
+            not code
+            \---
+            \<b>not HTML</b>
+            Plain #hashtag - and 3.5 stays
+
+            *0%*
+
+        """.trimIndent()
+        assertEquals(expected, text)
+    }
+
     @Test fun aBookWithoutAuthorOrChaptersExportsTitleAndQuotes() {
         val text = HighlightMarkdown.build("Notes\nfrom a file", null, listOf(h("a", 0, 5, "Hello")), emptyList(), 100)
         assertEquals("# Notes from a file\n\n> Hello\n\n*0%*\n", text)

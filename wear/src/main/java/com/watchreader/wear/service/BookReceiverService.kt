@@ -14,6 +14,7 @@ import com.watchreader.shared.bookmark.BookmarkSync
 import com.watchreader.shared.BookReceipt
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
+import com.watchreader.shared.ListenerGuard
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
@@ -48,8 +49,10 @@ class BookReceiverService : WearableListenerService() {
 
     override fun onDataChanged(events: DataEventBuffer) {
         runBlocking {
-            for (event in events) {
-                if (event.type != DataEvent.TYPE_CHANGED) continue
+            // A bookmark file the app will not read or a full disk fails that one event; the rest
+            // of the batch is still applied, and the process stays up (see ListenerGuard).
+            ListenerGuard.each(events, { event, e -> Log.w(TAG, "Could not apply ${pathOf(event)}", e) }) { event ->
+                if (event.type != DataEvent.TYPE_CHANGED) return@each
                 val item = event.dataItem
                 BookmarkSync.receive(this@BookReceiverService, item.uri.path, item.data)
                 ProgressDataSync.decode(item.uri.path, item.data)?.let { WearBookRepository.applyProgressFromPhone(it) }
@@ -61,7 +64,13 @@ class BookReceiverService : WearableListenerService() {
         }
     }
 
+    private fun pathOf(event: DataEvent): String? = runCatching { event.dataItem.uri.path }.getOrNull()
+
     override fun onMessageReceived(messageEvent: MessageEvent) {
+        ListenerGuard.guard({ Log.w(TAG, "Could not handle ${messageEvent.path}", it) }) { handle(messageEvent) }
+    }
+
+    private fun handle(messageEvent: MessageEvent) {
         when (messageEvent.path) {
             DataLayerPaths.DELETE_BOOK_PATH -> {
                 val bookId = String(messageEvent.data, Charsets.UTF_8)
@@ -96,12 +105,17 @@ class BookReceiverService : WearableListenerService() {
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         val bookId = DataLayerPaths.bookIdFromChannelPath(channel.path) ?: return
         val client = Wearable.getChannelClient(this)
-        val tmp = File(WearBookRepository.getBooksDir(), "$bookId.part")
+        val tmp = PartFiles.forBook(WearBookRepository.getBooksDir(), bookId)
         val receipt = try {
             val input = BufferedInputStream(Tasks.await(client.getInputStream(channel)), 32 * 1024)
             val meta = input.use { stream ->
                 val header = BookTransfer.readHeader(stream)
-                tmp.outputStream().use { out -> BookTransfer.copyBody(stream, out, header.sizeBytes) }
+                tmp.outputStream().use { out ->
+                    BookTransfer.copyBody(stream, out, header.sizeBytes)
+                    // On the disk before it takes the book's name: a watch that runs flat soon
+                    // after could otherwise come back with the name over an empty or short file.
+                    out.fd.sync()
+                }
                 header
             }
             if (meta.id != bookId) throw IllegalStateException("Header is for ${meta.id}, channel is for $bookId")

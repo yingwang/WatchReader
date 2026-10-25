@@ -22,6 +22,7 @@ import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.ReadingProgress
+import com.watchreader.shared.RemovalGuard
 import com.watchreader.shared.TextNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -51,6 +52,9 @@ object BookRepository {
     private lateinit var stats: ReadingStatsDao
     private lateinit var booksDir: File
     private lateinit var appContext: Context
+
+    /** A delete and the saves that could bring the deleted book's reading back never overlap. */
+    private val removal = RemovalGuard { id -> dao.getById(id) != null }
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -146,34 +150,45 @@ object BookRepository {
         }
     }
 
+    /**
+     * Deletes a book and everything kept for it. The read-aloud service and a reader screen just
+     * closed save on their way out; those saves wait for the delete and then find the book gone,
+     * rather than writing its time and its synced place back (see [RemovalGuard]).
+     */
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
-        val book = dao.getById(id) ?: return@withContext
-        File(book.filePath).delete()
-        book.coverPath?.let { File(it).delete() }
-        dao.deleteById(id)
-        stats.forget(id)
-        // Highlights and notes are the phone's own and go with the book; the watch never had them.
-        runCatching { HighlightRepository.forget(appContext.filesDir, id) }
-            .onFailure { Log.w("WatchReader", "Could not delete the highlights of $id", it) }
-        runCatching { ProgressDataSync.forget(appContext, id) }
-            .onFailure { Log.w("WatchReader", "Could not drop synced progress for $id", it) }
+        removal.removing {
+            val book = dao.getById(id) ?: return@removing
+            File(book.filePath).delete()
+            book.coverPath?.let { File(it).delete() }
+            dao.deleteById(id)
+            stats.forget(id)
+            // Highlights and notes are the phone's own and go with the book; the watch never had them.
+            runCatching { HighlightRepository.forget(appContext.filesDir, id) }
+                .onFailure { Log.w("WatchReader", "Could not delete the highlights of $id", it) }
+            runCatching { ProgressDataSync.forget(appContext, id) }
+                .onFailure { Log.w("WatchReader", "Could not drop synced progress for $id", it) }
+        }
     }
 
-    /** Time read on the phone, on the day it ends. */
+    /** Time read on the phone, on the day it ends. Time for a book deleted meanwhile is dropped, as below. */
     suspend fun recordReading(bookId: String, millis: Long, chars: Int, at: Long = System.currentTimeMillis()) {
         if (millis <= 0 && chars <= 0) return
-        stats.add(bookId, dayOf(at), ReadingSource.PHONE, millis.coerceAtLeast(0), chars.coerceAtLeast(0))
+        removal.ifKept(bookId) { stats.add(bookId, dayOf(at), ReadingSource.PHONE, millis.coerceAtLeast(0), chars.coerceAtLeast(0)) }
     }
 
     /** Time spent listening to a book read aloud on the phone, on the day it ends. */
     suspend fun recordListening(bookId: String, millis: Long, at: Long = System.currentTimeMillis()) {
         if (millis <= 0) return
-        stats.add(bookId, dayOf(at), PHONE_LISTEN, millis, 0)
+        removal.ifKept(bookId) { stats.add(bookId, dayOf(at), PHONE_LISTEN, millis, 0) }
     }
 
-    suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) = stats.markOpened(bookId, at)
+    suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) {
+        removal.ifKept(bookId) { stats.markOpened(bookId, at) }
+    }
 
-    suspend fun markFinished(bookId: String, at: Long = System.currentTimeMillis()) = stats.markFinished(bookId, at)
+    suspend fun markFinished(bookId: String, at: Long = System.currentTimeMillis()) {
+        removal.ifKept(bookId) { stats.markFinished(bookId, at) }
+    }
 
     /** The watch's reading time for one book, as it last reported it. */
     suspend fun applyWatchReport(report: ReadingReport) {
@@ -254,7 +269,8 @@ object BookRepository {
      * [atEpochMs] is when the page was turned; a save repeated later keeps that stamp, so both
      * sides' guards still let a more recent reading from the other device win. Telling the watch
      * costs a capability lookup and wakes its listener, so the reader does it every few turns
-     * and on the way out rather than on every page.
+     * and on the way out rather than on every page. A book deleted meanwhile is not told about:
+     * its kept place would come back in the data layer.
      */
     suspend fun saveProgress(
         context: Context,
@@ -270,8 +286,13 @@ object BookRepository {
             percentage = (offset.toFloat() / total).coerceIn(0f, 1f),
             lastReadEpochMs = atEpochMs,
         )
-        applyProgress(progress)
-        if (toWatch) BookSender(context).sendProgress(progress)
+        val sender = if (toWatch) BookSender(context) else null
+        removal.ifKept(book.id) {
+            applyProgress(progress)
+            sender?.publishProgress(progress)
+            true
+        } ?: return
+        sender?.messageProgress(progress)
     }
 
     /**
@@ -309,8 +330,8 @@ object BookRepository {
 
     /**
      * Whether the library holds any book the reader chose. The bundled guide is put there by the
-     * app, so a library with only the guide in it is still a new reader's, and is offered the
-     * free classics an empty one is.
+     * app, so a library with only the guide in it is still a new reader's, and points to Discover
+     * as an empty one does.
      */
     fun hasOwnBooks(books: List<Book>): Boolean = books.any { it.id != SAMPLE_ID }
 

@@ -152,7 +152,7 @@ internal fun SelectionControls(marks: ReaderMarks, lastColor: HighlightColor, ac
     ToolbarPlacement(bounds, handleRoom) { SelectionToolbar(lastColor, actions) }
 }
 
-private val HANDLE_TOUCH = 40.dp
+private val HANDLE_TOUCH = MIN_TOUCH_TARGET
 private val HANDLE_RADIUS = 8.dp
 
 /**
@@ -254,7 +254,7 @@ internal fun ColorRow(selected: HighlightColor?, onPick: (HighlightColor) -> Uni
             val description = stringResource(R.string.highlight_in_color, stringResource(color.label))
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(MIN_TOUCH_TARGET)
                     .clip(CircleShape)
                     .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onPick(color) })
                     .semantics { contentDescription = description },

@@ -9,6 +9,8 @@
     <string name="reader_page_light">Light</string>
     <string name="reader_page_sepia">Sepia</string>
     <string name="reader_go_to">Go to %1$d%%</string>
+    <!-- Beside "Go to 42%" above the contents' slider: makes the jump. -->
+    <string name="reader_go">Go</string>
     <string name="reader_previous_page">Previous page</string>
     <string name="reader_next_page">Next page</string>
     <string name="reader_show_controls">Show title bar</string>

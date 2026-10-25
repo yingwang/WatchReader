@@ -78,6 +78,38 @@ class BookmarkStoreTest {
         } finally { folder.deleteRecursively() }
     }
 
+    @Test fun aWriteCutShortLeavesThePreviousFileReadable() = runBlocking {
+        val folder = File("build/test-fixtures/bookmarks-${UUID.randomUUID()}")
+        try {
+            val file = File(folder, "records.json")
+            val mark = BookmarkStore(BookmarkFileStorage(file)) { 100 }.put("book", 8, "line")
+            // The process died while the next snapshot was being written beside the file.
+            val pending = File(folder, "records.json.pending")
+            pending.writeText("{\"version\":1,\"writerId\":\"")
+            val restarted = BookmarkStore(BookmarkFileStorage(file)) { 200 }
+            restarted.load()
+            assertEquals(listOf(mark), Bookmark.visible(restarted.records.value, "book"))
+            // The next save takes the half-written file's place.
+            restarted.put("book", 9, "next")
+            assertFalse(pending.exists())
+            assertEquals(2, BookmarkFileStorage(file).read()!!.records.size)
+        } finally { folder.deleteRecursively() }
+    }
+
+    @Test fun snapshotsFromANewerVersionOrWithARecordTwiceAreRefused() {
+        val record = Bookmark("book", 1, "line", 5, "writer")
+        val saved = BookmarkCodec.encodeSnapshot(BookmarkSnapshot("writer", listOf(record)))
+        assertEquals(listOf(record), BookmarkCodec.decodeSnapshot(saved).records)
+        assertThrows(IllegalArgumentException::class.java) {
+            BookmarkCodec.decodeSnapshot(saved.replace("\"version\":1", "\"version\":2"))
+        }
+        val twice = org.json.JSONObject(saved).also { root ->
+            val records = root.getJSONArray("records")
+            records.put(records.getJSONObject(0))
+        }.toString()
+        assertThrows(IllegalArgumentException::class.java) { BookmarkCodec.decodeSnapshot(twice) }
+    }
+
     @Test fun corruptStoreIsNotOverwrittenAsEmpty() = runBlocking {
         val disk = object : BookmarkStorage {
             override fun read(): BookmarkSnapshot = BookmarkCodec.decodeSnapshot("{bad}")

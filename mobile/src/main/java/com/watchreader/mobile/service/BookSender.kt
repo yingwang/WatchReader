@@ -10,6 +10,7 @@ import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.watchreader.mobile.data.model.Book
+import com.watchreader.mobile.transfer.TransferLimits
 import com.watchreader.shared.BookMetadata
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
@@ -85,7 +86,8 @@ class BookSender(private val context: Context) {
                     }
                 }
             }
-            withTimeout(180_000) {
+            // A long book takes longer to cross: the time allowed grows with it, within limits.
+            withTimeout(TransferLimits.sendTimeoutMs(staged.length())) {
                 val opened = client.openChannel(nodeId, DataLayerPaths.bookChannelPath(book.id)).await()
                 channel = opened
                 val closed = CompletableDeferred<Boolean>()
@@ -152,11 +154,14 @@ class BookSender(private val context: Context) {
         }.onFailure { Log.w(TAG, "Could not tell the watch to delete $bookId", it) }
     }
 
-    /** Persists progress for reconnection, then notifies reachable older peers by message. */
-    suspend fun sendProgress(progress: ReadingProgress) {
+    /** Persists progress in the data layer, for the watch to pick up when it next connects. */
+    suspend fun publishProgress(progress: ReadingProgress) {
         runCatching { ProgressDataSync.publish(context, progress) }
             .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
-        // Keep immediate messages for peers which have not upgraded yet.
+    }
+
+    /** Tells a watch in reach at once, after [publishProgress]; older watch apps hear only this. */
+    suspend fun messageProgress(progress: ReadingProgress) {
         val watch = findWatch() as? WatchLookup.Ready ?: return
         runCatching {
             Wearable.getMessageClient(context)

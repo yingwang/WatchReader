@@ -10,6 +10,7 @@ import com.watchreader.mobile.data.repository.BookRepository
 import com.watchreader.mobile.tts.ReadAloudPlayback
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
+import com.watchreader.shared.SaveStamps
 import com.watchreader.shared.bookmark.BookmarkRepository
 import com.watchreader.shared.bookmark.ReaderBookmarks
 import com.watchreader.shared.search.ReaderSearch
@@ -56,6 +57,23 @@ sealed class ReaderUiState {
  * against the geometry and measurer the screen supplies, so the same book re-flows when the
  * phone is rotated.
  */
+/** How the reader moved through the book: a page turned by hand, or a jump. */
+enum class ReaderMove {
+    /** The next or the previous page, by a tap, a swipe or the page turning by itself. */
+    TURN,
+
+    /** The contents, the slider, a bookmark, a search result, a highlight, the way back, the watch's place. */
+    JUMP;
+
+    /**
+     * Whether the voice reading this book aloud goes on from the new place. A jump takes it
+     * along. A page turned by hand only shows that page, and the next sentence brings the reader
+     * back to the voice, as on the watch; while the voice is paused, a turned page does not move
+     * it either, and playing goes on from where it stopped.
+     */
+    val movesVoice: Boolean get() = this == JUMP
+}
+
 class ReaderViewModel(application: Application, private val bookId: String) : AndroidViewModel(application) {
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
@@ -87,6 +105,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
      * old place with the time of the turn and send it back over the newer reading.
      */
     private var knownStamp = 0L
+    private val stamps = SaveStamps()
 
     private val returnPoint = ReturnPoint()
     private val _returnTo = MutableStateFlow<Int?>(null)
@@ -115,7 +134,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
     private var readAloud = false
     private var listening = false
     private val _moved = MutableSharedFlow<Int>(extraBufferCapacity = 1)
-    /** Each place the reader turned or jumped to, for the voice to go on from while it reads this book. */
+    /** Each place the reader jumped to, for the voice to go on from while it reads this book (see [ReaderMove]). */
     val moved: SharedFlow<Int> = _moved.asSharedFlow()
 
     init {
@@ -245,6 +264,12 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         moveTo(target)
     }
 
+    /** A jump from the contents' slider, to the start of the paragraph [fraction] of the way in, as on the watch. */
+    fun jumpToFraction(fraction: Float) {
+        val p = paginator ?: return
+        jumpTo(p.offsetAtFraction(fraction))
+    }
+
     /** Back to where the reading was before the look-up. */
     fun goBack() {
         val back = returnPoint.take() ?: return
@@ -273,7 +298,11 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         // Preserve the chosen anchor even on the phone's last page: the watch has smaller pages.
         saveProgress(toWatch = true, anchor = target)
         _returnTo.value = returnPoint.offset
-        _moved.tryEmit(target)
+        moved(ReaderMove.JUMP, target)
+    }
+
+    private fun moved(how: ReaderMove, offset: Int) {
+        if (how.movesVoice) _moved.tryEmit(offset)
     }
 
     fun toggleBookmark() {
@@ -307,7 +336,7 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         positionAnchor = null
         flipsSinceSync++
         saveProgress(toWatch = flipsSinceSync >= SYNC_EVERY_FLIPS)
-        page?.let { _moved.tryEmit(it.start) }
+        page?.let { moved(ReaderMove.TURN, it.start) }
     }
 
     /**
@@ -362,7 +391,8 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         if (anchor != null) positionAnchor = anchor.coerceIn(0, text.length)
         val b = book ?: return
         val offset = anchor?.coerceIn(0, text.length) ?: savedOffset() ?: return
-        val at = System.currentTimeMillis()
+        // Each save is later than the one before, so the last of several in a millisecond wins.
+        val at = stamps.next()
         lastMove = offset to at
         knownStamp = maxOf(knownStamp, at)
         if (toWatch) flipsSinceSync = 0

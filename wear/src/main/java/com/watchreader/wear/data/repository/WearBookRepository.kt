@@ -7,6 +7,8 @@ import com.google.android.gms.wearable.Wearable
 import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.ProgressDataSync
+import com.watchreader.shared.RemovalGuard
+import com.watchreader.shared.offsetWithin
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
 import com.watchreader.shared.stats.ReadingDay
@@ -18,8 +20,15 @@ import com.watchreader.wear.data.db.WearBookDao
 import com.watchreader.wear.data.db.WearDatabase
 import com.watchreader.wear.R
 import com.watchreader.wear.data.model.WearBook
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -31,6 +40,18 @@ object WearBookRepository {
     private lateinit var stats: ReadingStatsDao
     private lateinit var booksDir: File
     private lateinit var appContext: Context
+
+    /** A delete and the saves that could bring the deleted book's reading back never overlap. */
+    private val removal = RemovalGuard { id -> dao.getById(id) != null }
+
+    private val _fromPhone = MutableSharedFlow<ReadingProgress>(extraBufferCapacity = 16)
+
+    /**
+     * Each place read on the phone, as it is taken here, for a book open in the reader to offer.
+     * The book's row changes for the watch's own readings too, the voice's among them; these are
+     * the phone's alone.
+     */
+    val fromPhone: SharedFlow<ReadingProgress> = _fromPhone.asSharedFlow()
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -54,7 +75,7 @@ object WearBookRepository {
         if (seeded >= SAMPLE_VERSION) return@withContext
         val deletedByUser = seeded > 0 && dao.getById(SAMPLE_ID) == null
         if (!deletedByUser) {
-            runCatching {
+            val laidDown = runCatching {
                 val text = appContext.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
                 val file = File(booksDir, "$SAMPLE_ID.txt")
                 file.writeText(text, Charsets.UTF_8)
@@ -75,7 +96,10 @@ object WearBookRepository {
                         totalChars = text.length,
                     )
                 )
-            }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }
+            }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }.isSuccess
+            // A guide that could not be laid down (a full disk, most likely) is tried again at the
+            // next start, rather than marked done and never offered again.
+            if (!laidDown) return@withContext
         }
         prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
     }
@@ -89,18 +113,25 @@ object WearBookRepository {
 
     suspend fun insert(book: WearBook) = dao.upsert(book)
 
-    /** Removes a book locally; [tellPhone] sends the phone a note so it can show "not on watch". */
-    suspend fun delete(id: String, tellPhone: Boolean) {
-        val book = dao.getById(id) ?: return
-        File(book.filePath).delete()
-        File(book.filePath + ".toc.json").delete()
-        dao.deleteById(id)
-        stats.forget(id)
-        runCatching { ProgressDataSync.forget(appContext, id) }
-            .onFailure { Log.w(TAG, "Could not drop synced progress for $id", it) }
-        runCatching { ReadingStatsSync.forget(appContext, id) }
-            .onFailure { Log.w(TAG, "Could not drop synced reading time for $id", it) }
-        if (tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
+    /**
+     * Removes a book locally; [tellPhone] sends the phone a note so it can show "not on watch".
+     *
+     * Once begun it runs to the end, the note to the phone included, even when the screen that
+     * asked for it goes: the library is often left the moment a book is deleted, and a delete cut
+     * off part-way left the file gone and the row there, or the phone never told.
+     */
+    suspend fun delete(id: String, tellPhone: Boolean) = withContext(NonCancellable) {
+        val removed = removal.removing {
+            val book = dao.getById(id) ?: return@removing false
+            File(book.filePath).delete()
+            File(book.filePath + ".toc.json").delete()
+            dao.deleteById(id)
+            stats.forget(id)
+            attempt("drop synced progress for $id") { ProgressDataSync.forget(appContext, id) }
+            attempt("drop synced reading time for $id") { ReadingStatsSync.forget(appContext, id) }
+            true
+        }
+        if (removed && tellPhone) sendToPhone(DataLayerPaths.BOOK_REMOVED_PATH, id.toByteArray(Charsets.UTF_8))
     }
 
     /**
@@ -117,9 +148,17 @@ object WearBookRepository {
         dao.updateProgress(id, offset, atEpochMs)
     }
 
-    /** Progress read on the phone. The later of the two readings wins (see the DAO's guard). */
+    /**
+     * Progress read on the phone. The later of the two readings wins (see the DAO's guard). The
+     * phone's offset is into its own copy of the text, which can be longer than the one here, so
+     * it is kept within this one.
+     */
     suspend fun applyProgressFromPhone(progress: ReadingProgress) {
-        dao.updateProgress(progress.bookId, progress.charOffset.coerceAtLeast(0), progress.lastReadEpochMs)
+        val book = dao.getById(progress.bookId) ?: return
+        val offset = offsetWithin(progress.charOffset, book.totalChars)
+        if (dao.updateProgress(progress.bookId, offset, progress.lastReadEpochMs) > 0) {
+            _fromPhone.tryEmit(progress.copy(charOffset = offset))
+        }
     }
 
     /**
@@ -133,27 +172,40 @@ object WearBookRepository {
             .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
     }
 
-    /** Time read on the watch ([source] watch) or listened to ([source] listen), on the day it ends. */
+    /**
+     * Time read on the watch ([source] watch) or listened to ([source] listen), on the day it ends.
+     * Time for a book deleted meanwhile is dropped, as are its milestones below.
+     */
     suspend fun recordTime(bookId: String, source: String, millis: Long, chars: Int, at: Long = System.currentTimeMillis()) {
         if (millis <= 0 && chars <= 0) return
-        stats.add(bookId, dayOf(at), source, millis.coerceAtLeast(0), chars.coerceAtLeast(0))
+        removal.ifKept(bookId) { stats.add(bookId, dayOf(at), source, millis.coerceAtLeast(0), chars.coerceAtLeast(0)) }
     }
 
-    suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) = stats.markOpened(bookId, at)
+    suspend fun markOpened(bookId: String, at: Long = System.currentTimeMillis()) {
+        removal.ifKept(bookId) { stats.markOpened(bookId, at) }
+    }
 
-    suspend fun markFinished(bookId: String, at: Long = System.currentTimeMillis()) = stats.markFinished(bookId, at)
+    suspend fun markFinished(bookId: String, at: Long = System.currentTimeMillis()) {
+        removal.ifKept(bookId) { stats.markFinished(bookId, at) }
+    }
 
     /** The watch's whole reading history of a book, sent to the phone to show; the watch shows none. */
     suspend fun sendStatsToPhone(bookId: String) {
+        removal.ifKept(bookId) { publishStats(bookId) }
+    }
+
+    private suspend fun publishStats(bookId: String) {
         val milestone = stats.milestoneFor(bookId)
         val days = stats.timeFor(bookId).map { ReadingDay(it.day, it.source, it.millis, it.chars) }
         if (milestone == null && days.isEmpty()) return
         val report = ReadingReport(bookId, milestone?.firstOpenedEpochMs ?: 0, milestone?.finishedEpochMs ?: 0, days)
-        runCatching { ReadingStatsSync.publish(appContext, report) }
-            .onFailure { Log.w(TAG, "Could not persist reading time for sync", it) }
+        attempt("persist reading time for sync") { ReadingStatsSync.publish(appContext, report) }
     }
 
-    /** Persists progress for reconnection; the phone shows it on the book's cover. */
+    /**
+     * Persists progress for reconnection; the phone shows it on the book's cover. A reading of a
+     * book deleted meanwhile is not sent: its kept place would come back with it.
+     */
     suspend fun sendProgressToPhone(book: WearBook, offset: Int, atEpochMs: Long = System.currentTimeMillis()) {
         val total = book.totalChars.takeIf { it > 0 } ?: return
         val progress = ReadingProgress(
@@ -162,10 +214,11 @@ object WearBookRepository {
             percentage = (offset.toFloat() / total).coerceIn(0f, 1f),
             lastReadEpochMs = atEpochMs,
         )
-        runCatching { ProgressDataSync.publish(appContext, progress) }
-            .onFailure { Log.w(TAG, "Could not persist progress for sync", it) }
-        // Reading time goes with every reading sent, so the phone's figures are as fresh as its place.
-        sendStatsToPhone(book.id)
+        removal.ifKept(book.id) {
+            attempt("persist progress for sync") { ProgressDataSync.publish(appContext, progress) }
+            // Reading time goes with every reading sent, so the phone's figures are as fresh as its place.
+            publishStats(book.id)
+        } ?: return
         sendToPhone(DataLayerPaths.PROGRESS_PATH, progress.toJson().toByteArray(Charsets.UTF_8))
     }
 
@@ -199,13 +252,29 @@ object WearBookRepository {
     }
 
     private suspend fun sendToPhone(path: String, payload: ByteArray) {
-        runCatching {
+        attempt("reach the phone for $path") {
             val nodes = Wearable.getCapabilityClient(appContext)
                 .getCapability(DataLayerPaths.PHONE_CAPABILITY, CapabilityClient.FILTER_REACHABLE)
                 .await().nodes
             val node = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull() ?: return
             Wearable.getMessageClient(appContext).sendMessage(node.id, path, payload).await()
-        }.onFailure { Log.w(TAG, "Could not reach the phone for $path", it) }
+        }
+    }
+
+    /**
+     * Runs one step that may fail on its own, a call to Play services most often, and logs a
+     * failure so the work around it goes on. A cancellation of the caller is not such a failure
+     * and goes through; a task that Play services cancelled is.
+     */
+    private suspend inline fun attempt(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            Log.w(TAG, "Could not $what", e)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not $what", e)
+        }
     }
 
     private const val SAMPLE_ID = "sample"

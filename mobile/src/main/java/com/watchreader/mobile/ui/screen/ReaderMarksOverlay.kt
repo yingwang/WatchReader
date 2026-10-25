@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.watchreader.mobile.R
 import com.watchreader.mobile.highlight.Highlight
 import com.watchreader.mobile.highlight.TextIntents
@@ -85,8 +86,11 @@ internal fun ReaderMarksOverlay(marks: ReaderMarks, bookTitle: String?, snackbar
     BackHandler(enabled = marks.active) { marks.clear() }
 
     val copy: (String) -> Unit = { text ->
-        TextIntents.copy(context, context.getString(R.string.highlight_clip_label), text)
-        if (TextIntents.needsCopyConfirmation) say(context.getString(R.string.highlight_copied))
+        if (!TextIntents.copy(context, context.getString(R.string.highlight_clip_label), text)) {
+            say(context.getString(R.string.highlight_too_much_text))
+        } else if (TextIntents.needsCopyConfirmation) {
+            say(context.getString(R.string.highlight_copied))
+        }
     }
 
     SelectionControls(
@@ -125,7 +129,11 @@ internal fun ReaderMarksOverlay(marks: ReaderMarks, bookTitle: String?, snackbar
                 marks.clear()
             },
             share = {
-                marks.selectedText?.let { TextIntents.share(context, it.trim(), bookTitle, context.getString(R.string.highlight_share)) }
+                marks.selectedText?.let {
+                    if (!TextIntents.share(context, it.trim(), bookTitle, context.getString(R.string.highlight_share))) {
+                        say(context.getString(R.string.highlight_too_much_text))
+                    }
+                }
                 marks.clear()
             },
         ),
@@ -215,7 +223,8 @@ private fun HighlightMenu(
 
 /**
  * Writing a note, with the words it is about above it. A new note on selected words makes them a
- * highlight in the last colour; clearing an existing note leaves its highlight.
+ * highlight in the last colour; clearing an existing note leaves its highlight. Only Cancel or
+ * Back puts it away: a stray tap beside the dialog would throw the draft away unasked.
  */
 @Composable
 private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: () -> Unit) {
@@ -223,6 +232,7 @@ private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: 
     val focus = remember { FocusRequester() }
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = false),
         title = { Text(stringResource(if (editor.initial.isBlank()) R.string.highlight_note_action else R.string.highlight_edit_note)) },
         text = {
             Column {
@@ -242,6 +252,10 @@ private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: 
                     maxLines = 8,
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).focusRequester(focus),
                 )
+                // Asked from inside the dialog, once the field is there to take it: a dialog
+                // brought back after a rotation is composed before its window is, and a request
+                // made from outside it then found no field and threw.
+                LaunchedEffect(Unit) { focus.requestFocus() }
             }
         },
         confirmButton = {
@@ -252,5 +266,4 @@ private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.highlight_note_cancel)) } },
     )
-    LaunchedEffect(Unit) { focus.requestFocus() }
 }

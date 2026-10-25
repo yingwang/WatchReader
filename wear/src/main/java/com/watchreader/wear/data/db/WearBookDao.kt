@@ -28,5 +28,6 @@ interface WearBookDao {
         "UPDATE wear_book SET readOffsetChars = :offset, lastReadEpochMs = :epochMs " +
             "WHERE id = :id AND :epochMs >= lastReadEpochMs",
     )
-    suspend fun updateProgress(id: String, offset: Int, epochMs: Long)
+    /** The number of rows changed: 0 when the book is not here or holds a later reading. */
+    suspend fun updateProgress(id: String, offset: Int, epochMs: Long): Int
 }

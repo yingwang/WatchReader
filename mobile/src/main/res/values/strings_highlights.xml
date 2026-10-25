@@ -17,6 +17,7 @@
     <string name="highlight_no_look_up">No app on this phone can look up words.</string>
     <string name="highlight_no_translate">No app on this phone can translate text.</string>
     <string name="highlight_copied">Copied</string>
+    <string name="highlight_too_much_text">That is too much text to copy or share at once.</string>
     <string name="highlight_clip_label">Highlight</string>
 
     <!-- A highlight tapped on the page -->
@@ -36,4 +37,6 @@
     <string name="highlights_load_error">Could not load highlights. Your saved highlights have been kept.</string>
     <string name="highlight_position">At %1$d%%</string>
     <string name="highlight_position_chapter">%1$s · %2$d%%</string>
+    <!-- What a tap on a row of the list does, as TalkBack says it: "Double-tap to go to the passage". -->
+    <string name="highlight_go_to">go to the passage</string>
 </resources>

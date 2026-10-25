@@ -48,6 +48,20 @@ class ReadAloudScriptTest {
         }
     }
 
+    @Test fun aLongRunWithoutPunctuationIsNeverCutInsideAPair() {
+        // Rare ideographs (U+20000) and emoji with no stop or comma anywhere: the cut that keeps
+        // an utterance short must fall between characters, not between the halves of one.
+        for (text in listOf("𠀀".repeat(450), "字" + "😀".repeat(450))) {
+            val script = ReadAloudScript.of(text)
+            assertTrue(script.size > 1)
+            for (range in script.sentences) {
+                assertTrue("starts inside a pair at ${range.first}", !text[range.first].isLowSurrogate())
+                assertTrue("ends inside a pair at ${range.last}", !text[range.last].isHighSurrogate())
+            }
+            assertEquals(text, script.all().joinToString(""))
+        }
+    }
+
     @Test fun aQuoteOpeningALineStaysWithItsLine() {
         val text = "He waited.\n\"Come in,\" she said.\n“好。”\n"
         assertEquals(listOf("He waited.", "\"Come in,\" she said.", "“好。”"), SentenceParser.split(text))

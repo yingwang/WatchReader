@@ -18,8 +18,10 @@ data class ReadingDay(val day: String, val source: String, val millis: Long, val
 
 /**
  * Everything the watch knows about the time spent on one book: when it was first opened and
- * finished there (0 when not yet), and the time per day. It is the whole history each time, so
- * the phone can replace what it had rather than add to it, and a report arriving twice is harmless.
+ * finished there (0 when not yet), and the time per day. It is the whole history each time. The
+ * phone keeps the larger figure for each day rather than adding them up, so a report arriving
+ * twice is harmless, and keeps days the report no longer has, so a history begun again on the
+ * watch does not wipe what the phone already showed.
  */
 data class ReadingReport(
     val bookId: String,
