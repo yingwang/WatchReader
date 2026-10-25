@@ -10,10 +10,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Build
+import android.util.Log
 
 /**
  * Hands selected text to other apps on the phone: a dictionary, a translator, the clipboard, the
  * share sheet. Each returns false when nothing on the phone could take it, for the screen to say so.
+ *
+ * Everything handed over goes through a Binder transaction, which has a limit of about a megabyte
+ * shared by the whole process. The highlights and notes of a much-marked book, exported as one
+ * Markdown text, can go past it, and the system then throws (TransactionTooLargeException, inside
+ * a RuntimeException from startActivity); that is a false here too, not a crash.
  */
 object TextIntents {
     fun lookUp(context: Context, text: String, chooserTitle: String): Boolean =
@@ -22,10 +28,16 @@ object TextIntents {
     fun translate(context: Context, text: String, chooserTitle: String): Boolean =
         hand(context, text, HandoffChoice.translate(handlers(context)), chooserTitle)
 
-    /** Puts [text] on the clipboard. */
-    fun copy(context: Context, label: String, text: String) {
-        val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    /** Puts [text] on the clipboard; false when the clipboard would not take it. */
+    fun copy(context: Context, label: String, text: String): Boolean {
+        val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return false
+        return try {
+            clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+            true
+        } catch (e: RuntimeException) {
+            Log.w("WatchReader", "Could not copy ${text.length} characters", e)
+            false
+        }
     }
 
     /** Android 13 and later show their own note of a copy; before that the app says it. */
@@ -80,6 +92,10 @@ object TextIntents {
             false
         } catch (_: SecurityException) {
             // An app may list an activity it then refuses to be started from outside.
+            false
+        } catch (e: RuntimeException) {
+            // Most often more text than a Binder transaction can carry.
+            Log.w("WatchReader", "Could not hand the text over", e)
             false
         }
     }

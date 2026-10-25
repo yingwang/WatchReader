@@ -17,6 +17,7 @@
     <string name="highlight_no_look_up">No app on this phone can look up words.</string>
     <string name="highlight_no_translate">No app on this phone can translate text.</string>
     <string name="highlight_copied">Copied</string>
+    <string name="highlight_too_much_text">That is too much text to copy or share at once.</string>
     <string name="highlight_clip_label">Highlight</string>
 
     <!-- A highlight tapped on the page -->

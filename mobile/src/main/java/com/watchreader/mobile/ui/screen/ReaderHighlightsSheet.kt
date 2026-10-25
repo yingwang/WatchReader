@@ -66,6 +66,11 @@ internal fun ReaderHighlightsSheet(
 ) {
     val context = LocalContext.current
     val markdown = { HighlightMarkdown.build(bookTitle, author, state.items, chapters, totalChars) }
+    val tooMuch = { onMessage(context.getString(R.string.highlight_too_much_text)) }
+    val copy: (String, String) -> Unit = { label, text ->
+        if (!TextIntents.copy(context, label, text)) tooMuch()
+        else if (TextIntents.needsCopyConfirmation) onMessage(context.getString(R.string.highlight_copied))
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.8f)) {
             Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -75,12 +80,11 @@ internal fun ReaderHighlightsSheet(
                     modifier = Modifier.weight(1f),
                 )
                 val any = state.items.isNotEmpty()
+                TextButton(onClick = { copy(context.getString(R.string.highlights_title), markdown()) }, enabled = any) {
+                    Text(stringResource(R.string.highlight_copy))
+                }
                 TextButton(onClick = {
-                    TextIntents.copy(context, context.getString(R.string.highlights_title), markdown())
-                    if (TextIntents.needsCopyConfirmation) onMessage(context.getString(R.string.highlight_copied))
-                }, enabled = any) { Text(stringResource(R.string.highlight_copy)) }
-                TextButton(onClick = {
-                    TextIntents.share(context, markdown(), bookTitle, context.getString(R.string.highlights_export))
+                    if (!TextIntents.share(context, markdown(), bookTitle, context.getString(R.string.highlights_export))) tooMuch()
                 }, enabled = any) { Text(stringResource(R.string.highlights_export)) }
             }
             when {
@@ -96,10 +100,7 @@ internal fun ReaderHighlightsSheet(
                         totalChars,
                         onClick = { onJump(highlight) },
                         onEditNote = { onEditNote(highlight) },
-                        onCopy = {
-                            TextIntents.copy(context, context.getString(R.string.highlight_clip_label), highlight.quote)
-                            if (TextIntents.needsCopyConfirmation) onMessage(context.getString(R.string.highlight_copied))
-                        },
+                        onCopy = { copy(context.getString(R.string.highlight_clip_label), highlight.quote) },
                         onDelete = { onDelete(highlight) },
                     )
                     HorizontalDivider()

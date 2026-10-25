@@ -86,8 +86,11 @@ internal fun ReaderMarksOverlay(marks: ReaderMarks, bookTitle: String?, snackbar
     BackHandler(enabled = marks.active) { marks.clear() }
 
     val copy: (String) -> Unit = { text ->
-        TextIntents.copy(context, context.getString(R.string.highlight_clip_label), text)
-        if (TextIntents.needsCopyConfirmation) say(context.getString(R.string.highlight_copied))
+        if (!TextIntents.copy(context, context.getString(R.string.highlight_clip_label), text)) {
+            say(context.getString(R.string.highlight_too_much_text))
+        } else if (TextIntents.needsCopyConfirmation) {
+            say(context.getString(R.string.highlight_copied))
+        }
     }
 
     SelectionControls(
@@ -126,7 +129,11 @@ internal fun ReaderMarksOverlay(marks: ReaderMarks, bookTitle: String?, snackbar
                 marks.clear()
             },
             share = {
-                marks.selectedText?.let { TextIntents.share(context, it.trim(), bookTitle, context.getString(R.string.highlight_share)) }
+                marks.selectedText?.let {
+                    if (!TextIntents.share(context, it.trim(), bookTitle, context.getString(R.string.highlight_share))) {
+                        say(context.getString(R.string.highlight_too_much_text))
+                    }
+                }
                 marks.clear()
             },
         ),
