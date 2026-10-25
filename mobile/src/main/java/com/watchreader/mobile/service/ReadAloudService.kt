@@ -77,6 +77,8 @@ class ReadAloudService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var tts: TextToSpeech? = null
     private var engineReady = false
+    /** The engine said it could not start; the service stops once it is in the foreground (see [noEngine]). */
+    private var engineFailed = false
     private var pendingPlay: Pair<String, Int>? = null
 
     private lateinit var prefs: ReadAloudPrefs
@@ -160,8 +162,12 @@ class ReadAloudService : Service() {
             engineReady = status == TextToSpeech.SUCCESS
             if (!engineReady) {
                 Log.e(TAG, "TTS engine failed to initialise")
-                ReadAloudPlayback.notice(ReadAloudNotice.NoEngine)
-                finish()
+                // With no engine it can reach, TextToSpeech says so from inside its constructor,
+                // here in onCreate, before onStartCommand has put the service in the foreground.
+                // A service started with startForegroundService() that stops before then takes
+                // the app down with it, so the stop waits for the notification to be up.
+                engineFailed = true
+                if (foreground) noEngine()
                 return@TextToSpeech
             }
             tts?.setAudioAttributes(AudioFocusKeeper.ATTRIBUTES)
@@ -176,6 +182,10 @@ class ReadAloudService : Service() {
             // The system demands startForeground() promptly after startForegroundService(), even
             // if the book then turns out to be missing and the service stops straight away.
             publish()
+            if (engineFailed) {
+                noEngine()
+                return START_NOT_STICKY
+            }
             val id = intent.getStringExtra(EXTRA_BOOK_ID)
             if (id == null) {
                 finish()
@@ -746,6 +756,12 @@ class ReadAloudService : Service() {
     }
 
     private fun chapterAt(offset: Int): String? = chapters.lastOrNull { it.start <= offset }?.title
+
+    /** The phone has no speech engine to read with: the reader is told, and the service goes. Only once in the foreground. */
+    private fun noEngine() {
+        ReadAloudPlayback.notice(ReadAloudNotice.NoEngine)
+        finish()
+    }
 
     private fun finish() {
         sleepTimer.cancel()
