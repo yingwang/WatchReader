@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.watchreader.mobile.data.model.ReadingMilestone
 import com.watchreader.mobile.data.model.ReadingTime
+import com.watchreader.mobile.data.model.mergeWatchReport
 import com.watchreader.shared.stats.ReadingReport
 import com.watchreader.shared.stats.ReadingSource
 import kotlinx.coroutines.flow.Flow
@@ -59,17 +60,18 @@ abstract class ReadingStatsDao {
         setFinished(bookId, at)
     }
 
-    @Query("DELETE FROM reading_time WHERE bookId = :bookId AND source IN (:sources)")
-    protected abstract suspend fun deleteSources(bookId: String, sources: List<String>)
+    @Query("SELECT * FROM reading_time WHERE bookId = :bookId AND source IN (:sources)")
+    protected abstract suspend fun rowsFor(bookId: String, sources: List<String>): List<ReadingTime>
 
-    /** The watch sends its whole history of a book each time; it replaces what came before. */
+    /**
+     * The watch sends its whole history of a book each time. It is merged into what the phone
+     * has, never put in its place: see [mergeWatchReport].
+     */
     @Transaction
     open suspend fun applyWatchReport(report: ReadingReport) {
-        deleteSources(report.bookId, listOf(ReadingSource.WATCH, ReadingSource.LISTEN))
-        putRows(
-            report.days.filter { it.source == ReadingSource.WATCH || it.source == ReadingSource.LISTEN }
-                .map { ReadingTime(report.bookId, it.day, it.source, it.millis, it.chars) },
-        )
+        val stored = rowsFor(report.bookId, listOf(ReadingSource.WATCH, ReadingSource.LISTEN))
+        val changed = mergeWatchReport(stored, report)
+        if (changed.isNotEmpty()) putRows(changed)
         if (report.firstOpenedEpochMs > 0 || report.finishedEpochMs > 0) {
             ensureMilestone(report.bookId)
             setOpened(report.bookId, report.firstOpenedEpochMs)
