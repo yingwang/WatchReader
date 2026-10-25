@@ -141,7 +141,7 @@ object EpubParser {
             val name = heading?.takeIf { it.isNotBlank() }
                 ?: text.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.takeUnless { SPLIT_CONTINUATION.containsMatchIn(path) }
                 ?: ""
-            if (name.isNotBlank()) chapters.add(Chapter(name.take(80), result.length))
+            if (name.isNotBlank()) chapters.add(Chapter(clipTitle(name), result.length))
             result.append(text).append("\n\n")
         }
         // A book kept in one document names its chapters by anchor, so the anchor is what places
@@ -464,7 +464,7 @@ object EpubParser {
         } ?: nav
         return Regex("""<(?:\w+:)?a\b([^>]*)>(.*?)</(?:\w+:)?a\s*>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
             .findAll(toc)
-            .mapNotNull { m -> attr(m.groupValues[1], "href")?.trim()?.let { htmlToText(m.groupValues[2]).trim().take(80) to target(navDir, it) } }
+            .mapNotNull { m -> attr(m.groupValues[1], "href")?.trim()?.let { clipTitle(htmlToText(m.groupValues[2]).trim()) to target(navDir, it) } }
             .filter { it.first.isNotBlank() }
             .toList()
     }
@@ -472,7 +472,20 @@ object EpubParser {
     /** An NCX label: entities decoded and the lines a pretty-printer broke it into joined back up. */
     private fun labelText(raw: String): String {
         val text = raw.replace(Regex("""<!\[CDATA\[(.*?)]]>""", RegexOption.DOT_MATCHES_ALL), "$1")
-        return decodeEntities(text).replace(Regex("\\s+"), " ").trim().take(80)
+        return clipTitle(decodeEntities(text).replace(Regex("\\s+"), " ").trim())
+    }
+
+    /** Longest a chapter's name in the contents may run. */
+    private const val MAX_TITLE_CHARS = 80
+
+    /**
+     * [title] cut to [MAX_TITLE_CHARS], never between the two halves of an emoji or a rare
+     * ideograph: the half left at the end shows as a box and is stored as a question mark.
+     */
+    internal fun clipTitle(title: String): String {
+        if (title.length <= MAX_TITLE_CHARS) return title
+        val cut = if (title[MAX_TITLE_CHARS].isLowSurrogate() && title[MAX_TITLE_CHARS - 1].isHighSurrogate()) MAX_TITLE_CHARS - 1 else MAX_TITLE_CHARS
+        return title.substring(0, cut)
     }
 
     private val NAV_POINT = Regex("""<(?:\w+:)?navPoint\b[^>]*>""", RegexOption.IGNORE_CASE)

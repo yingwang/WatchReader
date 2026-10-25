@@ -306,7 +306,7 @@ object Fb2Parser {
             name.last() in ".!?:;,…—–-" -> "$name $line"
             else -> "$name. $line"
         }
-    }.take(80)
+    }.let(EpubParser::clipTitle)
 
     /** Whitespace of any kind, the no-break space included, as a single space; control codes gone. */
     private fun clean(text: String): String {

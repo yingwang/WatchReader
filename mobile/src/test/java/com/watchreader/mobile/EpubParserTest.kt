@@ -753,4 +753,30 @@ class EpubParserTest {
         )
         assertEquals("", EpubParser.authors("<metadata><dc:title>No one</dc:title></metadata>"))
     }
+
+    @Test
+    fun aLongChapterNameIsNeverCutInsideAnEmoji() {
+        // A name is cut at eighty units, and here a two-unit emoji straddles that point.
+        val long = "a".repeat(79) + "😀 and the rest of a very long heading"
+        val headings = EpubParser.parse(
+            epub(
+                "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>""",
+                "content.opf" to """
+                    <package><metadata><dc:title>Probe</dc:title></metadata><manifest>
+                    <item id="a" href="a.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="b" href="b.xhtml" media-type="application/xhtml+xml"/>
+                    </manifest><spine><itemref idref="a"/><itemref idref="b"/></spine></package>
+                """.trimIndent(),
+                "a.xhtml" to "<html><body><h1>$long</h1><p>Body A.</p></body></html>",
+                "b.xhtml" to "<html><body><h1>Short</h1><p>Body B.</p></body></html>",
+            ),
+        )
+        assertEquals("a".repeat(79), headings.chapters.first().title)
+        // The same goes for a name taken from the book's own contents.
+        val listed = EpubParser.parse(
+            epub(ncxBook.map { (name, text) -> name to if (name.endsWith(".ncx")) text.replace("Declared A", long) else text }, blob = null),
+        )
+        assertEquals("a".repeat(79), listed.chapters.first().title)
+        assertEquals("Declared B", listed.chapters[1].title)
+    }
 }
