@@ -63,7 +63,7 @@ object WearBookRepository {
         if (seeded >= SAMPLE_VERSION) return@withContext
         val deletedByUser = seeded > 0 && dao.getById(SAMPLE_ID) == null
         if (!deletedByUser) {
-            runCatching {
+            val laidDown = runCatching {
                 val text = appContext.assets.open(SAMPLE_ASSET).use { it.readBytes().toString(Charsets.UTF_8) }
                 val file = File(booksDir, "$SAMPLE_ID.txt")
                 file.writeText(text, Charsets.UTF_8)
@@ -84,7 +84,10 @@ object WearBookRepository {
                         totalChars = text.length,
                     )
                 )
-            }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }
+            }.onFailure { Log.w(TAG, "Could not lay down the sample book", it) }.isSuccess
+            // A guide that could not be laid down (a full disk, most likely) is tried again at the
+            // next start, rather than marked done and never offered again.
+            if (!laidDown) return@withContext
         }
         prefs.edit().putInt(KEY_SAMPLE_VERSION, SAMPLE_VERSION).apply()
     }
