@@ -1,12 +1,15 @@
 package com.watchreader.mobile
 
 import com.watchreader.mobile.util.EpubParser
+import com.watchreader.mobile.util.ZipEntries
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.util.zip.InflaterInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -508,6 +511,17 @@ class EpubParserTest {
         val parsed = EpubParser.parse(bytes)
         assertEquals("An Old Book", parsed.title)
         assertEquals("One\n\nBody one.\n\nTwo\n\nBody two.\n\nThree\n\nBody three.", parsed.text)
+    }
+
+    @Test
+    fun theInflatersOfAnArchiveReadByItsDirectoryAreEndedWithTheReading() {
+        val bytes = zipWithTrailingSizes(oldStyleBook)
+        val taken = ArrayList<InputStream>()
+        ZipEntries.read(bytes) { files -> files.forEach { (_, input) -> taken += input } }
+        val inflated = taken.filterIsInstance<InflaterInputStream>()
+        assertTrue(inflated.size > 1)
+        // An ended inflater refuses to go on: its native memory has been given back.
+        for (input in inflated) assertThrows(NullPointerException::class.java) { input.read() }
     }
 
     @Test
