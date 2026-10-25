@@ -89,6 +89,7 @@ import androidx.wear.compose.material.ToggleChip
 import androidx.wear.compose.material.ToggleChipDefaults
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.CompactChip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.PositionIndicator
@@ -150,6 +151,7 @@ fun ReaderScreen(
     }
 
     val state by vm.state.collectAsState()
+    val offeredPlace by vm.phonePlace.collectAsState()
     val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
     val ttsState by TtsPlayback.state.collectAsState()
     val ttsBook by TtsPlayback.bookId.collectAsState()
@@ -220,6 +222,7 @@ fun ReaderScreen(
     // switches auto page turn off and remembers that, which is also what the switch then shows.
     // Turning it back on afterwards is the reader's call, not something that happens by itself.
     LaunchedEffect(ttsHere, ttsState) {
+        vm.setReadAloud(ttsHere)
         vm.setListening(ttsHere && ttsState == TtsState.PLAYING)
         if (ttsHere && ttsState == TtsState.PLAYING && autoTurn) {
             autoTurn = false
@@ -400,6 +403,23 @@ fun ReaderScreen(
                         color = colors.dim,
                         fontSize = 10.sp,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                    )
+                } else if (offeredPlace != null && s.totalChars > 0) {
+                    // The phone has read on elsewhere while this page was open: offered, not
+                    // followed, and Return to before jump in the controls comes back here.
+                    val percent = ((offeredPlace ?: 0).toLong() * 100 / s.totalChars).toInt()
+                    val goThere = stringResource(R.string.reader_phone_place_go, percent)
+                    CompactChip(
+                        onClick = { vm.goToPhonePlace(); tick() },
+                        label = { Text(stringResource(R.string.reader_phone_place, percent), fontSize = 11.sp, maxLines = 1) },
+                        colors = ChipDefaults.chipColors(backgroundColor = colors.text.copy(alpha = 0.18f).compositeOver(colors.background), contentColor = colors.text),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 4.dp)
+                            .semantics {
+                                contentDescription = goThere
+                                liveRegion = LiveRegionMode.Polite
+                            },
                     )
                 } else if (autoTurn) {
                     Text(

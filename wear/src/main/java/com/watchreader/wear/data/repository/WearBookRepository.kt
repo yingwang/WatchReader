@@ -26,6 +26,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -40,6 +43,15 @@ object WearBookRepository {
 
     /** A delete and the saves that could bring the deleted book's reading back never overlap. */
     private val removal = RemovalGuard { id -> dao.getById(id) != null }
+
+    private val _fromPhone = MutableSharedFlow<ReadingProgress>(extraBufferCapacity = 16)
+
+    /**
+     * Each place read on the phone, as it is taken here, for a book open in the reader to offer.
+     * The book's row changes for the watch's own readings too, the voice's among them; these are
+     * the phone's alone.
+     */
+    val fromPhone: SharedFlow<ReadingProgress> = _fromPhone.asSharedFlow()
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -143,7 +155,10 @@ object WearBookRepository {
      */
     suspend fun applyProgressFromPhone(progress: ReadingProgress) {
         val book = dao.getById(progress.bookId) ?: return
-        dao.updateProgress(progress.bookId, offsetWithin(progress.charOffset, book.totalChars), progress.lastReadEpochMs)
+        val offset = offsetWithin(progress.charOffset, book.totalChars)
+        if (dao.updateProgress(progress.bookId, offset, progress.lastReadEpochMs) > 0) {
+            _fromPhone.tryEmit(progress.copy(charOffset = offset))
+        }
     }
 
     /**

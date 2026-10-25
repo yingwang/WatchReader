@@ -88,4 +88,7 @@
     <string name="reader_current_chapter">Current chapter</string>
     <string name="reader_confirm_jump">Go to this position</string>
     <string name="reader_undo_jump">Return to before jump</string>
+    <!-- Over the page when the phone has read on elsewhere in the open book; %1$d is how far, in percent. -->
+    <string name="reader_phone_place">Phone: %1$d%%</string>
+    <string name="reader_phone_place_go">Go to where you were on the phone, %1$d%%</string>
 </resources>

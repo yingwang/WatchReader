@@ -15,8 +15,10 @@ import com.watchreader.shared.reader.LineMeasurer
 import com.watchreader.shared.reader.PageGeometry
 import com.watchreader.shared.reader.Paginator
 import com.watchreader.shared.reader.JumpHistory
+import com.watchreader.shared.reader.placeToOffer
 import com.watchreader.shared.stats.ReadingClock
 import com.watchreader.shared.stats.ReadingSource
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -86,10 +88,9 @@ class ReaderViewModel(
     private var lastMove: Pair<Int, Long>? = null
 
     /**
-     * The stamp of the latest reading this screen knows of, its own or one it has followed. A
-     * row carrying a later one was read on the phone while this screen sat open or in the
-     * background, and the page moves there: turning on from the page left open would stamp the
-     * old place with the time of the turn and send it back over the newer reading.
+     * The stamp of the latest reading this screen knows of, its own or one from the phone. A
+     * place from the phone with a later one was read there while this screen sat open or in the
+     * background; it is offered (see [phonePlace]).
      */
     private var knownStamp = 0L
     private val stamps = SaveStamps()
@@ -98,8 +99,23 @@ class ReaderViewModel(
     private val clock = ReadingClock()
     private var screenUp = false
     private var listening = false
+    /** The voice is reading this book, playing or paused; the page is its to move. */
+    private var readAloud = false
+
+    private val _phonePlace = MutableStateFlow<Int?>(null)
+
+    /**
+     * A place read on the phone, newer than anything seen here, while this book was open. It is
+     * offered rather than followed: being moved without warning in the middle of a page, back as
+     * easily as forward, is worse than being asked. Turning a page here lets it go.
+     */
+    val phonePlace: StateFlow<Int?> = _phonePlace.asStateFlow()
 
     init {
+        // Listening from the start, so a place that comes in while the book loads is not missed.
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            WearBookRepository.fromPhone.collect { if (it.bookId == bookId) fromPhone(it.charOffset, it.lastReadEpochMs) }
+        }
         viewModelScope.launch {
             val found = WearBookRepository.getById(bookId)
             if (found == null) {
@@ -111,9 +127,14 @@ class ReaderViewModel(
                 _state.value = ReaderUiState.Missing
                 return@launch
             }
-            restoreOffset = found.readOffsetChars.coerceIn(0, text.length)
+            // The book opens at its newest place, which a place from the phone taken while it
+            // loaded can be.
+            if (found.lastReadEpochMs >= knownStamp) {
+                restoreOffset = found.readOffsetChars
+                knownStamp = found.lastReadEpochMs
+            }
+            restoreOffset = restoreOffset.coerceIn(0, text.length)
             positionAnchor = restoreOffset
-            knownStamp = found.lastReadEpochMs
             loaded = true
             rebuild()
             if (screenUp && !listening) clock.start(System.currentTimeMillis())
@@ -122,28 +143,39 @@ class ReaderViewModel(
             // its own is scanned for headings, which takes a moment on a long one.
             chapters = WearBookRepository.loadChapters(found, text)
             publish()
-            WearBookRepository.observe(bookId).collect { row -> row?.let { follow(it.readOffsetChars, it.lastReadEpochMs) } }
         }
     }
 
-    /** Moves to a place read on the other device, when it is newer than anything seen here. */
-    private fun follow(offset: Int, at: Long) {
+    /**
+     * A place read on the phone. Newer than anything seen here, it is where the book opens if no
+     * page is up yet; once the reader is on a page it is offered, unless the voice has the page.
+     */
+    private fun fromPhone(offset: Int, at: Long) {
         if (at <= knownStamp) return
         knownStamp = at
-        positionAnchor = offset.coerceIn(0, text.length)
         val p = paginator
         val current = page
-        if (p == null || current == null) {
-            // Not laid out yet: the first page will open here instead.
-            restoreOffset = offset.coerceIn(0, text.length)
+        if (!loaded || p == null || current == null) {
+            // Not laid out yet: the first page will open here instead. Before the text is in,
+            // it is kept within the book once it is (see init).
+            restoreOffset = if (loaded) offset.coerceIn(0, text.length) else offset.coerceAtLeast(0)
+            if (loaded) positionAnchor = restoreOffset
             return
         }
-        val target = offset.coerceIn(0, p.length)
-        // The voice reading aloud saves the sentence it is on, which is on this page already.
-        if (target in current.start until current.end) return
-        if (target >= p.length && current.end >= p.length) return
+        if (readAloud) return
+        _phonePlace.value = placeToOffer(offset, current.start, current.end, p.length)
+    }
+
+    /** Goes to the place read on the phone; the toolbar's way back returns to this page. */
+    fun goToPhonePlace() {
+        val target = _phonePlace.value ?: return
+        _phonePlace.value = null
+        val p = paginator ?: return
+        page?.let { jumpHistory.record(it.start) }
+        positionAnchor = target
         page = if (target >= p.length && p.length > 0) p.pageEndingAt(p.length) else p.pageFrom(target)
         credit(clock.turn(System.currentTimeMillis()), 0)
+        // The place is the phone's, kept here already under the phone's stamp; nothing to save.
         lastMove = null
         flipsSinceSync = 0
         publish()
@@ -208,6 +240,7 @@ class ReaderViewModel(
         }
         if (target.start == current?.start) return
         current?.let { jumpHistory.record(it.start) }
+        _phonePlace.value = null
         positionAnchor = null
         page = target
         credit(clock.turn(System.currentTimeMillis()), 0)
@@ -220,6 +253,7 @@ class ReaderViewModel(
         val p = paginator ?: return
         if (chapter !in chapters) return
         page?.let { jumpHistory.record(it.start) }
+        _phonePlace.value = null
         positionAnchor = null
         page = p.pageFrom(chapter.start.coerceIn(0, p.length))
         credit(clock.turn(System.currentTimeMillis()), 0)
@@ -231,6 +265,7 @@ class ReaderViewModel(
     fun undoJump() {
         val p = paginator ?: return
         val offset = jumpHistory.take() ?: return
+        _phonePlace.value = null
         positionAnchor = null
         page = p.pageFrom(offset.coerceIn(0, p.length))
         credit(clock.turn(System.currentTimeMillis()), 0)
@@ -254,6 +289,7 @@ class ReaderViewModel(
         val p = paginator ?: return
         if (offset !in text.indices || bookmarks.value.items.none { it.offset == offset }) return
         page?.let { jumpHistory.record(it.start) }
+        _phonePlace.value = null
         page = p.pageFrom(offset)
         credit(clock.turn(System.currentTimeMillis()), 0)
         publish()
@@ -285,6 +321,8 @@ class ReaderViewModel(
     }
 
     private fun flipped() {
+        // Reading on here is the answer to a place offered from the phone.
+        _phonePlace.value = null
         positionAnchor = null
         jumpHistory.turned()
         flipsSinceSync++
@@ -360,6 +398,12 @@ class ReaderViewModel(
                 else WearBookRepository.sendStatsToPhone(b.id)
             }
         }
+    }
+
+    /** The voice is reading this book, playing or paused: it has the page, and the phone's place is not offered. */
+    fun setReadAloud(on: Boolean) {
+        readAloud = on
+        if (on) _phonePlace.value = null
     }
 
     /** The voice is reading this book aloud: that time is listening, counted by the service. */
