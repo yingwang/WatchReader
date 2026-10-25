@@ -107,8 +107,9 @@ class ReaderListen internal constructor(
 
 /**
  * Connects the reader to the voice: the page follows the sentence being read and turns with it,
- * a page turned or a jump made by hand while listening moves the voice there, and what the voice
- * has to say (a missing voice above all) comes up on the reader's snackbar.
+ * a jump made while listening moves the voice there, and what the voice has to say (a missing
+ * voice above all) comes up on the reader's snackbar. A page turned by hand does not move the
+ * voice: the next sentence brings the page back, as on the watch.
  */
 @Composable
 fun rememberReaderListen(bookId: String, vm: ReaderViewModel, snackbar: SnackbarHostState): ReaderListen {

@@ -4,6 +4,7 @@ import com.watchreader.mobile.ui.screen.LineSpacing
 import com.watchreader.mobile.ui.screen.PageMargin
 import com.watchreader.mobile.ui.screen.ReadingPreset
 import com.watchreader.mobile.ui.screen.TextSettings
+import com.watchreader.mobile.ui.viewmodel.ReaderMove
 import com.watchreader.mobile.ui.viewmodel.ReaderUiState
 import com.watchreader.mobile.ui.viewmodel.ReturnPoint
 import com.watchreader.shared.reader.Paginator
@@ -27,6 +28,13 @@ class ReaderNavigationTest {
         assertEquals(5_000, point.offset)
         point.reached(4_900, 5_800, 10_000)
         assertNull(point.offset)
+    }
+
+    @Test fun whileListeningOnlyAJumpTakesTheVoiceAlong() {
+        // As on the watch, a page turned by hand is shown and the next sentence brings the
+        // reader back; the contents, a bookmark, a search result and the way back move the voice.
+        assertEquals(false, ReaderMove.TURN.movesVoice)
+        assertEquals(true, ReaderMove.JUMP.movesVoice)
     }
 
     @Test fun theEndOfTheBookIsReachedOnTheLastPage() {
