@@ -105,12 +105,17 @@ class BookReceiverService : WearableListenerService() {
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         val bookId = DataLayerPaths.bookIdFromChannelPath(channel.path) ?: return
         val client = Wearable.getChannelClient(this)
-        val tmp = File(WearBookRepository.getBooksDir(), "$bookId.part")
+        val tmp = PartFiles.forBook(WearBookRepository.getBooksDir(), bookId)
         val receipt = try {
             val input = BufferedInputStream(Tasks.await(client.getInputStream(channel)), 32 * 1024)
             val meta = input.use { stream ->
                 val header = BookTransfer.readHeader(stream)
-                tmp.outputStream().use { out -> BookTransfer.copyBody(stream, out, header.sizeBytes) }
+                tmp.outputStream().use { out ->
+                    BookTransfer.copyBody(stream, out, header.sizeBytes)
+                    // On the disk before it takes the book's name: a watch that runs flat soon
+                    // after could otherwise come back with the name over an empty or short file.
+                    out.fd.sync()
+                }
                 header
             }
             if (meta.id != bookId) throw IllegalStateException("Header is for ${meta.id}, channel is for $bookId")

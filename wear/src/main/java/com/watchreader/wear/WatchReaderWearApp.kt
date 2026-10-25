@@ -6,6 +6,7 @@ import com.watchreader.shared.bookmark.BookmarkRepository
 import com.watchreader.shared.PendingDeletes
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.wear.data.repository.WearBookRepository
+import com.watchreader.wear.service.PartFiles
 import com.watchreader.wear.service.TtsService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,10 @@ class WatchReaderWearApp : Application() {
     override fun onCreate() {
         super.onCreate()
         WearBookRepository.init(this)
+        // Books whose transfer was cut off without cleaning up after itself. Nothing can be
+        // receiving yet: the receiver runs in this process, which is only now starting.
+        runCatching { PartFiles.clearLeftovers(WearBookRepository.getBooksDir()) }
+            .onFailure { Log.w("WatchReader", "Could not clear unfinished transfers", it) }
         BookmarkRepository.get(this).requestSync()
         TtsService.ensureNotificationChannel(this)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
