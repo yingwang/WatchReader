@@ -102,7 +102,8 @@ fun LibraryScreen(
                 items(orderedBooks, key = { it.id }) { book ->
                     val featured = book.id == currentBook?.id
                     val listening = ttsBook == book.id && ttsState != TtsState.IDLE
-                    val progress = if (book.totalChars > 0) book.readOffsetChars.toFloat() / book.totalChars else 0f
+                    // A place saved before offsets from the phone were kept within the book can lie past its end.
+                    val progress = if (book.totalChars > 0) (book.readOffsetChars.toFloat() / book.totalChars).coerceIn(0f, 1f) else 0f
                     val subtitle = when {
                         listening -> stringResource(R.string.library_listening)
                         progress > 0f -> stringResource(R.string.library_progress, (progress * 100).toInt())
@@ -111,7 +112,7 @@ fun LibraryScreen(
                     BookRow(
                         title = book.title,
                         subtitle = subtitle,
-                        progress = progress.coerceIn(0f, 1f),
+                        progress = progress,
                         featured = featured,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)

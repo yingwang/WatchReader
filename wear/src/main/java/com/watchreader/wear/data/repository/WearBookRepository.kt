@@ -8,6 +8,7 @@ import com.watchreader.shared.DataLayerPaths
 import com.watchreader.shared.ReadingProgress
 import com.watchreader.shared.ProgressDataSync
 import com.watchreader.shared.RemovalGuard
+import com.watchreader.shared.offsetWithin
 import com.watchreader.shared.BookToc
 import com.watchreader.shared.Chapter
 import com.watchreader.shared.stats.ReadingDay
@@ -132,9 +133,14 @@ object WearBookRepository {
         dao.updateProgress(id, offset, atEpochMs)
     }
 
-    /** Progress read on the phone. The later of the two readings wins (see the DAO's guard). */
+    /**
+     * Progress read on the phone. The later of the two readings wins (see the DAO's guard). The
+     * phone's offset is into its own copy of the text, which can be longer than the one here, so
+     * it is kept within this one.
+     */
     suspend fun applyProgressFromPhone(progress: ReadingProgress) {
-        dao.updateProgress(progress.bookId, progress.charOffset.coerceAtLeast(0), progress.lastReadEpochMs)
+        val book = dao.getById(progress.bookId) ?: return
+        dao.updateProgress(progress.bookId, offsetWithin(progress.charOffset, book.totalChars), progress.lastReadEpochMs)
     }
 
     /**
