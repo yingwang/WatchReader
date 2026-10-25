@@ -247,6 +247,12 @@ class ReaderViewModel(application: Application, private val bookId: String) : An
         moveTo(target)
     }
 
+    /** A jump from the contents' slider, to the start of the paragraph [fraction] of the way in, as on the watch. */
+    fun jumpToFraction(fraction: Float) {
+        val p = paginator ?: return
+        jumpTo(p.offsetAtFraction(fraction))
+    }
+
     /** Back to where the reading was before the look-up. */
     fun goBack() {
         val back = returnPoint.take() ?: return

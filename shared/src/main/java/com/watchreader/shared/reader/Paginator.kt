@@ -128,6 +128,16 @@ class Paginator(
         return pos
     }
 
+    /**
+     * Where a jump to [fraction] of the way through the book lands: the start of the paragraph
+     * there, so the page opens at the head of a paragraph rather than part-way into a word, or
+     * the very end for the whole way.
+     */
+    fun offsetAtFraction(fraction: Float): Int {
+        if (fraction >= 1f) return length
+        return paragraphStart((fraction.coerceIn(0f, 1f) * length).toInt())
+    }
+
     /** Start of the paragraph containing [offset]; used when jumping to a percentage. */
     fun paragraphStart(offset: Int): Int {
         val o = offset.coerceIn(0, text.length)

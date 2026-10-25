@@ -33,8 +33,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -85,6 +88,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -485,19 +489,44 @@ fun ReaderScreen(
                 // however far down the current chapter is.
                 // It starts at the percentage the page shows, truncated the same way.
                 var target by remember { mutableFloatStateOf(ready.fraction) }
+                // Whether a finger is on the slider, rather than TalkBack or a keyboard moving it.
+                var touched by remember { mutableStateOf(false) }
+                val goTo = stringResource(R.string.reader_go_to, (target * 100).toInt())
+                val go = {
+                    vm.jumpToFraction(target)
+                    showContents = false
+                }
                 Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp)) {
-                    Text(
-                        stringResource(R.string.reader_go_to, (target * 100).toInt()),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleSmall,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            goTo,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.titleSmall,
+                            // Said by the button beside it.
+                            modifier = Modifier.weight(1f).clearAndSetSemantics { },
+                        )
+                        TextButton(onClick = go, modifier = Modifier.semantics { contentDescription = goTo }) {
+                            Text(stringResource(R.string.reader_go))
+                        }
+                    }
                     Slider(
                         value = target,
                         onValueChange = { target = it },
                         // Only the release moves the book: every step of a drag is not a place read.
+                        // A step taken without a finger, as TalkBack and a keyboard take them one at
+                        // a time, only moves the mark and leaves the sheet open for the next; Go
+                        // makes the jump.
                         onValueChangeFinished = {
-                            vm.jumpTo((target * ready.totalChars).roundToInt())
-                            showContents = false
+                            if (touched) {
+                                touched = false
+                                go()
+                            }
+                        },
+                        modifier = Modifier.pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                touched = true
+                            }
                         },
                     )
                 }

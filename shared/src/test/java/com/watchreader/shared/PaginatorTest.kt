@@ -86,4 +86,21 @@ class PaginatorTest {
         }
         assertTrue(pages > 5)
     }
+
+    @Test
+    fun aJumpToAShareOfTheBookOpensAtTheStartOfAParagraph() {
+        val paragraphs = List(10) { i -> "Paragraph $i begins here and runs on for a while." }
+        val book = paragraphs.joinToString("\n")
+        val p = Paginator(book, rect(lines = 3, charsPerLine = 5), codePointMeasurer)
+        val starts = paragraphs.runningFold(0) { at, para -> at + para.length + 1 }.dropLast(1)
+        for (step in 0..99) {
+            val at = p.offsetAtFraction(step / 100f)
+            assertTrue("$step% opens at $at, inside a paragraph", at in starts)
+            assertTrue("$step% opens after the place asked for", at <= (step / 100f * book.length).toInt())
+        }
+        assertEquals(0, p.offsetAtFraction(0f))
+        assertEquals(starts[5], p.offsetAtFraction((starts[5] + 10f) / book.length))
+        assertEquals(book.length, p.offsetAtFraction(1f))
+        assertEquals(0, p.offsetAtFraction(-0.5f))
+    }
 }
