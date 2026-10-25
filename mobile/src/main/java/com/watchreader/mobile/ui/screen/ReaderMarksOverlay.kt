@@ -252,6 +252,10 @@ private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: 
                     maxLines = 8,
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).focusRequester(focus),
                 )
+                // Asked from inside the dialog, once the field is there to take it: a dialog
+                // brought back after a rotation is composed before its window is, and a request
+                // made from outside it then found no field and threw.
+                LaunchedEffect(Unit) { focus.requestFocus() }
             }
         },
         confirmButton = {
@@ -262,5 +266,4 @@ private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.highlight_note_cancel)) } },
     )
-    LaunchedEffect(Unit) { focus.requestFocus() }
 }
