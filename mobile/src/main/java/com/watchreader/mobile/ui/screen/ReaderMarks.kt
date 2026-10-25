@@ -1,10 +1,13 @@
 package com.watchreader.mobile.ui.screen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import com.watchreader.mobile.highlight.SelectionDrag
@@ -19,7 +22,32 @@ data class OpenedHighlight(val id: String, val at: Offset)
  * The note being written. [highlightId] is the highlight it belongs to, or null for a note on the
  * words selected now, which become a highlight when it is saved.
  */
-data class NoteEditor(val highlightId: String?, val span: TextSpan?, val quote: String, val initial: String)
+data class NoteEditor(val highlightId: String?, val span: TextSpan?, val quote: String, val initial: String) {
+    companion object {
+        /**
+         * Keeps the note being written, and with it the dialog and its draft, through a rotation,
+         * a fold opened or a switch to dark mode. The activity is made again for each of those,
+         * and an editor kept only in memory went with it, taking what had been typed along.
+         */
+        val Saver: Saver<NoteEditor?, ArrayList<Any?>> = Saver(
+            save = { editor ->
+                editor?.let { arrayListOf(it.highlightId, it.span?.start ?: -1, it.span?.end ?: -1, it.quote, it.initial) }
+            },
+            restore = { saved ->
+                val start = saved.getOrNull(1) as? Int
+                val end = saved.getOrNull(2) as? Int
+                val quote = saved.getOrNull(3) as? String
+                val initial = saved.getOrNull(4) as? String
+                if (saved.size != 5 || start == null || end == null || quote == null || initial == null) {
+                    null
+                } else {
+                    val span = if (start >= 0 && end >= start) TextSpan(start, end) else null
+                    NoteEditor(saved[0] as? String, span, quote, initial)
+                }
+            },
+        )
+    }
+}
 
 /**
  * What the reader has selected or opened on the page, and how a press, a tap or a handle changes
@@ -28,14 +56,14 @@ data class NoteEditor(val highlightId: String?, val span: TextSpan?, val quote: 
  * page it was made on; when the page changes, or is laid out again in another size, it goes.
  */
 @Stable
-class ReaderMarks(val highlights: ReaderHighlightsViewModel) {
+class ReaderMarks(val highlights: ReaderHighlightsViewModel, editorState: MutableState<NoteEditor?> = mutableStateOf(null)) {
     /** The selected words, in book offsets; null when nothing is selected. */
     var selection by mutableStateOf<TextSpan?>(null)
         private set
 
     var opened by mutableStateOf<OpenedHighlight?>(null)
 
-    var noteEditor by mutableStateOf<NoteEditor?>(null)
+    var noteEditor by editorState
 
     /** The page as last drawn, for finding what lies under a finger. */
     internal var layout by mutableStateOf<PageTextLayout?>(null)
@@ -127,5 +155,9 @@ class ReaderMarks(val highlights: ReaderHighlightsViewModel) {
     }
 }
 
+/** The note being written is saved with the screen's state (see [NoteEditor.Saver]); the rest lasts as long as the page. */
 @Composable
-fun rememberReaderMarks(highlights: ReaderHighlightsViewModel): ReaderMarks = remember(highlights) { ReaderMarks(highlights) }
+fun rememberReaderMarks(highlights: ReaderHighlightsViewModel): ReaderMarks {
+    val noteEditor = rememberSaveable(highlights, stateSaver = NoteEditor.Saver) { mutableStateOf<NoteEditor?>(null) }
+    return remember(highlights, noteEditor) { ReaderMarks(highlights, noteEditor) }
+}

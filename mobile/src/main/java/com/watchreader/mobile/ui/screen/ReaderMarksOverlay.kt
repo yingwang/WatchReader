@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.watchreader.mobile.R
 import com.watchreader.mobile.highlight.Highlight
 import com.watchreader.mobile.highlight.TextIntents
@@ -215,7 +216,8 @@ private fun HighlightMenu(
 
 /**
  * Writing a note, with the words it is about above it. A new note on selected words makes them a
- * highlight in the last colour; clearing an existing note leaves its highlight.
+ * highlight in the last colour; clearing an existing note leaves its highlight. Only Cancel or
+ * Back puts it away: a stray tap beside the dialog would throw the draft away unasked.
  */
 @Composable
 private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: () -> Unit) {
@@ -223,6 +225,7 @@ private fun NoteDialog(editor: NoteEditor, onSave: (String) -> Unit, onDismiss: 
     val focus = remember { FocusRequester() }
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = false),
         title = { Text(stringResource(if (editor.initial.isBlank()) R.string.highlight_note_action else R.string.highlight_edit_note)) },
         text = {
             Column {
