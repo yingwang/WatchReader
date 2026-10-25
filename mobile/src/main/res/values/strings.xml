@@ -17,6 +17,8 @@
     <string name="status_sent">On watch</string>
     <string name="status_failed">Failed</string>
     <string name="status_failed_reason">Failed · %1$s</string>
+    <!-- The reason under a book that stopped going back to the queue; %1$d is the number of tries. -->
+    <string name="transfer_gave_up">Gave up after %1$d tries</string>
 
     <string name="delete_title">Delete this book?</string>
     <string name="delete_body">It is removed from the phone and from the watch.</string>

@@ -10,6 +10,7 @@ import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.watchreader.mobile.data.model.Book
+import com.watchreader.mobile.transfer.TransferLimits
 import com.watchreader.shared.BookMetadata
 import com.watchreader.shared.BookTransfer
 import com.watchreader.shared.DataLayerPaths
@@ -85,7 +86,8 @@ class BookSender(private val context: Context) {
                     }
                 }
             }
-            withTimeout(180_000) {
+            // A long book takes longer to cross: the time allowed grows with it, within limits.
+            withTimeout(TransferLimits.sendTimeoutMs(staged.length())) {
                 val opened = client.openChannel(nodeId, DataLayerPaths.bookChannelPath(book.id)).await()
                 channel = opened
                 val closed = CompletableDeferred<Boolean>()
