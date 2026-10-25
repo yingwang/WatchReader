@@ -38,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -124,9 +125,11 @@ import kotlin.math.roundToInt
 /** One page per crown notch; the raw stream is far finer than that. */
 private const val CROWN_PIXELS_PER_PAGE = 120f
 
+/** [onAppearance] opens the text size and layout settings, from which Back returns to this page. */
 @Composable
 fun ReaderScreen(
     bookId: String,
+    onAppearance: () -> Unit = {},
     vm: ReaderViewModel = viewModel(
         key = bookId,
         factory = ReaderViewModel.Factory(LocalContext.current.applicationContext as android.app.Application, bookId),
@@ -136,12 +139,16 @@ fun ReaderScreen(
     val view = LocalView.current
     val density = LocalDensity.current
     val prefs = remember { ReaderPrefs(context) }
-    val colors = remember { pageColors(prefs.theme) }
-    val fontSize = remember { prefs.fontSize }
-    val fontFamily = remember { Typefaces.familyFor(prefs.fontFamily) }
-    val marginTopBottom = remember { prefs.marginTopBottom }
-    val marginSides = remember { prefs.marginSides }
-    val textStyle = remember(fontSize, fontFamily) {
+    // Read again whenever the page comes back (see below): the text size and layout can be
+    // changed from this page's controls, and the book is laid out afresh from the same place.
+    var theme by remember { mutableStateOf(prefs.theme) }
+    var fontSize by remember { mutableIntStateOf(prefs.fontSize) }
+    var fontKey by remember { mutableStateOf(prefs.fontFamily) }
+    var marginTopBottom by remember { mutableIntStateOf(prefs.marginTopBottom) }
+    var marginSides by remember { mutableIntStateOf(prefs.marginSides) }
+    val colors = remember(theme) { pageColors(theme) }
+    val fontFamily = remember(fontKey) { Typefaces.familyFor(fontKey) }
+    val textStyle = remember(fontSize, fontFamily, colors) {
         TextStyle(
             color = colors.text,
             fontSize = fontSize.sp,
@@ -244,6 +251,11 @@ fun ReaderScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 autoSeconds = prefs.autoTurnSeconds
+                theme = prefs.theme
+                fontSize = prefs.fontSize
+                fontKey = prefs.fontFamily
+                marginTopBottom = prefs.marginTopBottom
+                marginSides = prefs.marginSides
                 vm.onScreenResumed()
             }
             if (event == Lifecycle.Event.ON_PAUSE) vm.onScreenPaused()
@@ -469,6 +481,7 @@ fun ReaderScreen(
                             tick()
                         },
                         onBookmarks = { showToolbar = false; showBookmarks = true },
+                        onAppearance = { showToolbar = false; onAppearance() },
                         onClose = { showToolbar = false },
                         onPlayPause = {
                             when {
@@ -534,6 +547,7 @@ fun ReaderScreen(
 private fun Toolbar(
     fraction: Float,
     onBookmarks: () -> Unit,
+    onAppearance: () -> Unit,
     ttsHere: Boolean,
     ttsState: TtsState,
     sleepTimer: SleepTimer.State?,
@@ -713,6 +727,16 @@ private fun Toolbar(
                     Chip(
                         onClick = { contents = true },
                         label = { Text(stringResource(R.string.reader_contents)) },
+                        colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
+                        modifier = Modifier.fillMaxWidth(0.84f),
+                    )
+                }
+                item {
+                    // The appearance settings, without going back to the library for them; Back
+                    // returns to this page, laid out again from the same place.
+                    Chip(
+                        onClick = onAppearance,
+                        label = { Text(stringResource(R.string.reader_text_layout)) },
                         colors = ChipDefaults.chipColors(backgroundColor = controlBg, contentColor = textColor),
                         modifier = Modifier.fillMaxWidth(0.84f),
                     )
